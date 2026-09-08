@@ -1,0 +1,66 @@
+{
+  "name": "dsh-notify-me",
+  "version": "1.0.0",
+  "description": "DSH web plugin (桌面提醒): desktop notifications and sounds when the agent needs your input (approval / question / plan review) and when a reply finishes, so you notice while working in other apps.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "notification",
+    "desktop",
+    "notify",
+    "提醒"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node smoke/smoke-test.cjs",
+    "pack": "npm pack --dry-run"
+  },
+  "author": "chromoany",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chromoany/dsh-notify-me.git"
+  },
+  "homepage": "https://github.com/chromoany/dsh-notify-me#readme",
+  "bugs": {
+    "url": "https://github.com/chromoany/dsh-notify-me/issues"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6 || ^0.1.1-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-runtime": {
+      "optional": true
+    }
+  }
+}
