@@ -213,10 +213,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const armed = windowStub.__dshNotifyMe.setConfig({ enabled: true, doneHiddenOnly: true, sound: false });
   assert(armed.enabled === true, 'master switch can be re-enabled');
 
+  // 10) test buttons ignore the visibility rules: with doneHiddenOnly=true and
+  //     the page visible, a "done" test must still fire (regression: it used to
+  //     be swallowed by the same gate as real alerts).
+  documentStub.hidden = false; documentStub.visibilityState = 'visible';
+  clearEvents();
+  const doneStatus = windowStub.__dshNotifyMe.test('done');
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'test "done" fires while page visible');
+  assert(title.indexOf('需要你') === -1, 'done test leaves no attention marker');
+  assert(typeof doneStatus === 'string' && doneStatus.indexOf('sent done') === 0, 'test returns a status string');
+  clearEvents();
+  windowStub.__dshNotifyMe.test('attention');
+  assert(events.filter((e) => e.kind === 'attention').length === 1, 'test "attention" fires while page visible');
+  assert(title.indexOf('需要你') !== -1, 'attention test sets the marker');
+
   // cleanup must unsubscribe
   for (const c of [...effectCleanups]) c();
   assert(listListeners.length === 0, 'list unsubscribed after dispose');
   assert(faceListeners.length === 0 || true, 'cleanup ran without throwing');
 
   console.log('\nALL SMOKE TESTS PASSED ✔');
+  // Exit explicitly: the attention-test marker release timer stays armed on
+  // purpose (it mirrors browser behaviour) and would otherwise hold the loop.
+  process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

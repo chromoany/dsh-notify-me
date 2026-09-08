@@ -2,6 +2,12 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.1.1] — 2026-09-08
+
+### Fixed
+- **测试按钮不再被「页面打开时也提醒」开关吞掉**：页面可见且「回复完成」保持默认（仅后台提醒）时，点「测试「回复完成」」现在会正常弹出提醒——测试路径改为绕过可见性规则（只受主开关与浏览器通知权限影响），并补上对应的回归用例。
+- 「需要你」测试提醒的标签页标记约 6 秒后自动消失，不再留下一个看起来像"真有待办"的常驻标记。
+
 ## [1.1.0] — 2026-09-08
 
 ### Added
@@ -31,6 +37,7 @@ All notable changes to **dsh-notify-me** are documented here.
 - Offline smoke test (`smoke/smoke-test.cjs`) covering the alert state machine.\n- Screenshot + `screenshots.json` for the plugin-market page; UI preview shown in the README.
 
 <!-- versions -->
+[1.1.1]: https://github.com/chromoany/dsh-notify-me/releases/tag/v1.1.1
 [1.1.0]: https://github.com/chromoany/dsh-notify-me/releases/tag/v1.1.0
 [1.0.1]: https://github.com/chromoany/dsh-notify-me/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/chromoany/dsh-notify-me/releases/tag/v1.0.0

@@ -39,7 +39,7 @@ Open **Settings → Notify me** (refresh the page once after installing):
 - **System notifications / Sound / Volume** — toast toggle, WebAudio beep toggle and a volume slider;
 - **"Needs you" alerts while the page is open** (default on) and **"Reply finished" alerts while the page is open** (default off);
 - **Notification language** — follow the interface / 简体中文 / English: controls the language of the alert text and the `🔔 …` title marker;
-- **Test buttons** — send one "needs you" or "reply finished" test alert with the current settings.
+- **Test buttons** — send one "needs you" or "reply finished" test alert with the current settings (**not** limited by the "while the page is open" toggles; the "needs you" test's title marker clears itself after ~6s).
 
 > Notification permission is required: click once on the page → **Allow** (or address-bar lock → Site settings → Notifications → Allow → reload).
 
