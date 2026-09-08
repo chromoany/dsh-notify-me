@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-me",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DSH web plugin (桌面提醒): desktop notifications and sounds when the agent needs your input (approval / question / plan review) and when a reply finishes, so you notice while working in other apps.",
   "license": "MIT",
   "type": "module",
@@ -15,6 +15,8 @@
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "keywords": [
@@ -24,6 +26,7 @@
     "notification",
     "desktop",
     "notify",
+    "reminder",
     "提醒"
   ],
   "engines": {
@@ -32,6 +35,9 @@
   "scripts": {
     "test": "node smoke/smoke-test.cjs",
     "pack": "npm pack --dry-run"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "author": "chromoany",
   "repository": {
