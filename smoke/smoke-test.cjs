@@ -167,6 +167,52 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   notifyList();
   assert(events.filter((e) => e.kind === 'done').length === 1, 'done fires when doneHiddenOnly=false even visible');
 
+  // 7) defaults expose the new keys (master switch + language), reset restores them
+  const d = windowStub.__dshNotifyMe.config;
+  assert(d.enabled === true, 'default enabled=true');
+  assert(d.language === 'auto', 'default language=auto');
+  const back = windowStub.__dshNotifyMe.setConfig({ enabled: false, language: 'en' });
+  assert(back.enabled === false && back.language === 'en', 'enabled/language settable via setConfig');
+  const restored = windowStub.__dshNotifyMe.resetConfig();
+  assert(restored.enabled === true && restored.language === 'auto', 'resetConfig restores new defaults');
+  assert(windowStub.__dshNotifyMe.config.enabled === true, 'resetConfig visible on config getter');
+
+  // 8) English pinned: attention copy + title marker switch to English
+  windowStub.__dshNotifyMe.setConfig({ language: 'en', doneHiddenOnly: false, sound: false });
+  documentStub.hidden = false; documentStub.visibilityState = 'visible';
+  clearEvents();
+  faceSnap = { ...faceSnap, running: true, pending: [{ key: 'q:en1', kind: 'question', sessionId: 's1', payload: null }] };
+  notifyFace();
+  const att = events.filter((e) => e.kind === 'attention');
+  assert(att.length === 1, 'attention fired with language=en');
+  assert(att[0].title === 'DSH · Question', 'en attention title');
+  assert(att[0].body.indexOf('Current conversation') !== -1, 'en attention body');
+  assert(title.indexOf('Action needed') !== -1 && title.indexOf('需要你') === -1, 'en title marker');
+  // en reply-finished copy
+  clearEvents();
+  await sleep(400);
+  faceSnap = { ...faceSnap, pending: [], running: true };
+  notifyFace(); // clears the marker
+  assert(title.indexOf('Action needed') === -1, 'en marker cleared');
+  documentStub.hidden = true; documentStub.visibilityState = 'hidden';
+  faceSnap = { ...faceSnap, running: false, nodes: [], partial: null };
+  notifyFace();
+  const dn = events.filter((e) => e.kind === 'done');
+  assert(dn.length === 1 && dn[0].title === 'DSH · Reply finished', 'en done title');
+  documentStub.hidden = false; documentStub.visibilityState = 'visible';
+
+  // 9) master switch off silences everything (no events, no marker)
+  windowStub.__dshNotifyMe.setConfig({ enabled: false, language: 'zh' });
+  clearEvents();
+  faceSnap = { ...faceSnap, running: true, pending: [{ key: 'q:off1', kind: 'approval', sessionId: 's1', payload: null }] };
+  notifyFace();
+  assert(events.length === 0, 'no alert while master switch is off');
+  assert(title.indexOf('需要你') === -1, 'no marker while master switch is off');
+  faceSnap = { ...faceSnap, pending: [] };
+  notifyFace();
+  const armed = windowStub.__dshNotifyMe.setConfig({ enabled: true, doneHiddenOnly: true, sound: false });
+  assert(armed.enabled === true, 'master switch can be re-enabled');
+
   // cleanup must unsubscribe
   for (const c of [...effectCleanups]) c();
   assert(listListeners.length === 0, 'list unsubscribed after dispose');
