@@ -14,13 +14,26 @@
 
 ---
 
+## Why you need it
+
+Both of DSH's permission modes cost you something:
+
+| Mode | What it costs you | Cost type |
+| --- | --- | --- |
+| No full access (`workspace-write` + ask) | **Waiting** — the agent stops on an approval; if you aren't watching the page, you're just burning wall-clock time | Time, growing with the number of sessions |
+| Full access | **Irreversible risk** — you give up the ability to intercept before anything happens | Risk, independent of whether you watch |
+
+dsh-notify-me decouples **supervision** from **sitting in front of the screen**: it pulls you back with a system notification only when a decision is genuinely needed (approval / plan review / question) or a reply finishes — **so you can afford to keep full access off** instead of trading away interception for speed. It does not lower the risk of full access itself (it is not a sandbox); it just drives the waiting cost of ask-mode down to roughly zero.
+
+---
+
 > 🔎 Looking for it? Search `dsh-notify-me`, **message alerts**, **notification**, **desktop notification**, **reminder**, **approval alert** or **可操作提醒 / 消息提醒 / 桌面通知 / 需要你操作** (npm keywords include both English and Chinese terms).
 
 ## UI Preview
 
 | Windows system notification |
 | --- |
-| ![DSH notification](docs/screenshots/notify-toast.png) |
+| ![DSH notification](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/notify-toast.png) |
 
 [Changelog](CHANGELOG.md)
 
@@ -99,7 +112,7 @@ The browser half subscribes to the client `sessions` service — the same source
 - the **selected session's** `ConversationSnapshot`: a `running: true → false` edge means a reply finished; a new entry in `pending[]` of kind `approval` / `plan-review` / `question` means the agent is waiting on you (payload text is shown in the alert when available);
 - **every other listed session's** summary: a new `pendingInteraction`, or the `completed` edge (finished while not selected), alerts you about background work.
 
-The reminder core stays dependency-free and self-contained: notification copy resolves at alert time from the chosen language (follow-interface / Simplified Chinese / English). The Settings page is an **optional** React surface — it only registers into Settings when the web profile provides the `slots` / `locale` services and react; without them the plugin degrades gracefully to alerts-only (no Settings page).
+The reminder core stays dependency-free and self-contained: notification copy resolves at alert time from the chosen language (follow-interface / Simplified Chinese / English). The Settings page is an **optional** React surface — it only registers into Settings when the web profile provides the `slots` / `locale` services and `react`; without them the plugin degrades gracefully to alerts-only (no Settings page).
 
 ## Known limitations
 

@@ -6,10 +6,24 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-browser-blue)
+![Size](https://img.shields.io/badge/bundle-%7E37KB-green)
 
 ---
 
 **离开 DSH 页面也不错过任何动静。** 当模型停下来需要你操作（审批 / 方案待确认 / 提问）、或你在别的软件时回复正好在后台完成，dsh-notify-me 会用系统通知 + 提示音 + 标签页标题标记提醒你——开关和通知语言都直接在 **DSH 设置 → 通知提醒** 里改。
+
+---
+
+## 为什么需要它
+
+DSH 的两种权限模式各有代价：
+
+| 模式 | 你付出的代价 | 代价形态 |
+| --- | --- | --- |
+| 不开完整访问（`workspace-write` + ask） | **等待**——agent 卡在审批上，不盯着页面就是干等 | 时间成本，随会话数增长 |
+| 开完整访问（full access） | **不可逆风险**——放弃的是事前拦截能力 | 风险成本，与你盯不盯无关 |
+
+dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现决策点（审批 / 方案确认 / 提问）或回复跑完时，才用系统通知把你叫回来——**让你敢不开完整访问**，不必靠放弃拦截能力来换效率。它不降低 full access 本身的权限风险（它不是沙箱），只是把 ask 模式的等待成本压到接近零。
 
 ---
 
@@ -19,7 +33,7 @@
 
 | Windows 系统通知效果 |
 | --- |
-| ![DSH 通知效果](docs/screenshots/notify-toast.png) |
+| ![DSH 通知效果](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/notify-toast.png) |
 
 [更新日志](CHANGELOG.md)
 
@@ -36,7 +50,7 @@
 
 - **启用提醒** 主开关：关闭后不再弹系统通知、不播放提示音、也不改标签页标题；
 - **系统通知 / 提示音 / 音量**：Toast、WebAudio 提示音与音量滑块；
-- **页面打开时也提醒「需要你」**（默认开）与 **页面打开时也提醒「回复完成」**（默认关）;
+- **页面打开时也提醒「需要你」**（默认开）与 **页面打开时也提醒「回复完成」**（默认关）；
 - **通知语言**：跟随界面 / 简体中文 / English——决定通知文字与 `🔔 …` 标题标记使用的语言；
 - **测试按钮**：用当前设置立即发一条「需要你」或「回复完成」测试提醒（**不受**上面「页面打开时也提醒」开关限制；「需要你」测试的标题标记约 6 秒后自动消失）。
 
@@ -45,10 +59,10 @@
 ## 提醒方式
 
 - **系统通知**：Windows 通知中心 Toast（点击可把 DSH 窗口切回前台）
-- **提示音**：WebAudio 合成音（"需要你"与"完成"使用不同音型）
+- **提示音**：WebAudio 合成音（「需要你」与「完成」使用不同音型）
 - **标签页标题标记**：有待处理事项时，标题前出现 `🔔 需要你 · …` / `🔔 Action needed · …`
 
-本插件是**浏览器层**实现：DSH 页面需保持打开（最小化/后台即可——那正是它监听的"离开"状态）。
+本插件是**浏览器层**实现：DSH 页面需保持打开（最小化/后台即可——那正是它监听的「离开」状态）。
 
 ## 安装
 
@@ -62,11 +76,11 @@ dsh plugin --profile web add dsh-notify-me
 **验证** — F12 控制台执行：
 
 ```js
-window.__dshNotifyMe.test("done")        // "完成"示例
-window.__dshNotifyMe.test("attention")   // "需要你"示例
+window.__dshNotifyMe.test("done")        // 「完成」示例
+window.__dshNotifyMe.test("attention")   // 「需要你」示例
 ```
 
-没反应？九成是：通知权限被拒绝（在页面上点一下 → 选"允许"；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
+没反应？九成是：通知权限被拒绝（在页面上点一下 → 选「允许」；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
 
 ## 控制台高级配置
 
@@ -77,8 +91,8 @@ window.__dshNotifyMe.config                       // 查看
 window.__dshNotifyMe.setConfig({
   enabled: true,           // false = 关闭所有提醒（主开关）
   language: "auto",        // 'auto' 跟随界面 | 'zh' 简体中文 | 'en' English
-  attentionHiddenOnly: false, // true = 页面可见时"需要你"不提醒
-  doneHiddenOnly: true,       // false = 页面可见时"完成"也提醒
+  attentionHiddenOnly: false, // true = 页面可见时「需要你」不提醒
+  doneHiddenOnly: true,       // false = 页面可见时「完成」也提醒
   toast: true,                // 系统通知开关
   sound: true,                // 提示音开关
   volume: 0.5,                // 音量 0~1

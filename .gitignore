@@ -1,0 +1,11 @@
+# dependencies
+node_modules/
+
+# local npm cache (used when the sandbox blocks the global cache) + tarballs
+.npm-cache/
+*.tgz
+
+# logs / OS noise
+npm-debug.log*
+Thumbs.db
+.DS_Store
