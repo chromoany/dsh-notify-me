@@ -5,8 +5,8 @@ All notable changes to **dsh-notify-me** are documented here.
 ## [1.0.1] — 2026-09-08
 
 ### Changed
-- README is now **English-first** homepage with a `简体中文` version (`README.zh.md`), plus this changelog, mirroring the ecosystem's documentation conventions.
-- `package.json`: added `publishConfig.access: public`, `repository`/`homepage`/`bugs` links, and added `README.zh.md` + `CHANGELOG.md` to the published `files` set.
+- README is now **简体中文-primary** homepage with a `简体中文` homepage plus an English version (`README.en.md`), plus this changelog, mirroring the ecosystem's documentation conventions.
+- `package.json`: added `publishConfig.access: public`, `repository`/`homepage`/`bugs` links, and added `README.en.md` + `CHANGELOG.md` to the published `files` set.
 
 ## [1.0.0] — 2026-09-08
 

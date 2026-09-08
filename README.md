@@ -1,100 +1,95 @@
 # dsh-notify-me
 
-[简体中文](README.zh.md) | English
+简体中文 | [English](README.en.md)
 
 [![npm version](https://img.shields.io/npm/v/dsh-notify-me?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-browser-blue)
-![Size](https://img.shields.io/badge/bundle-%3C20KB-green)
 
 ---
 
-**Step away from the DeepSeek Harness web UI — and still know what's going on.** When the agent stops and needs your input, or when a reply finishes while you're in another app, dsh-notify-me alerts you with a Windows desktop notification, a sound, and a tab-title marker.
+**离开 DSH 页面也不错过任何动静。** 当模型停下来需要你操作、或你在别的软件时回复正好完成，dsh-notify-me 会用系统通知 + 提示音 + 标签页标题标记提醒你。
 
 ---
 
-[Changelog](CHANGELOG.md)
+[更新日志](CHANGELOG.md)
 
-## What it alerts about
+## 提醒时机
 
-| When | What you get | Default |
+| 时机 | 提醒内容 | 默认 |
 | --- | --- | --- |
-| 🔔 **The agent needs your input** — sandbox approval / plan review / a question (`ask_user_question`) | Toast + sound + `🔔 需要你 ·` title marker | Alerts even while the page is visible |
-| ✅ **A reply finishes** — a turn completes; background sessions finishing are also reported | Toast + sound | Alerts only while the page is hidden / backgrounded |
+| 🔔 **模型需要你操作** — 审批请求 / 方案待确认（plan review）/ 提问（`ask_user_question`） | 通知 + 提示音 + `🔔 需要你 ·` 标题标记 | 页面可见也提醒 |
+| ✅ **回复完成** — 一轮回复跑完；后台会话完成也会报 | 通知 + 提示音 | 仅页面隐藏/后台时提醒 |
 
-## How it alerts
+## 提醒方式
 
-- **System notification** — native notification-center toast (clicking it brings the DSH window back to front)
-- **Sound** — WebAudio beeps (distinct patterns for "needs you" vs "done")
-- **Tab title marker** — while something is waiting on you, the tab title is prefixed with `🔔 需要你 · …`
+- **系统通知**：Windows 通知中心 Toast（点击可把 DSH 窗口切回前台）
+- **提示音**：WebAudio 合成音（"需要你"与"完成"使用不同音型）
+- **标签页标题标记**：有待处理事项时，标题前出现 `🔔 需要你 · …`
 
-This is a **browser-layer** plugin: the DSH page must stay open (minimized or backgrounded is fine — that's exactly the "away" state it watches for).
+本插件是**浏览器层**实现：DSH 页面需保持打开（最小化/后台即可——那正是它监听的"离开"状态）。
 
-## Installation
+## 安装
 
 ```powershell
-# Official DSH plugin command — installs and auto-mounts into the web profile
+# DSH 官方插件命令：安装并自动挂载进 web profile
 dsh plugin --profile web add dsh-notify-me
 ```
 
-Restart `dsh web`, then hard-refresh the page (Ctrl+Shift+R).
+重启 `dsh web` 后硬刷新页面（Ctrl+Shift+R）。
 
-**Verify** — open the DevTools console and run:
+**验证** — F12 控制台执行：
 
 ```js
-window.__dshNotifyMe.test("done")        // "reply finished" sample
-window.__dshNotifyMe.test("attention")   // "needs your input" sample
+window.__dshNotifyMe.test("done")        // "完成"示例
+window.__dshNotifyMe.test("attention")   // "需要你"示例
 ```
 
-Nothing happened? 90% of the time it's one of:
+没反应？九成是：通知权限被拒绝（在页面上点一下 → 选"允许"；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
 
-- the notification permission was declined — click anywhere on the page and choose **Allow** (address-bar lock → Site settings → Notifications → Allow → reload);
-- the DSH process wasn't restarted after install;
-- your OS/browser notification settings block the browser's toasts.
+## 配置
 
-## Configuration
-
-No settings-UI dependency — preferences live in `localStorage` and are tweakable live from the DevTools console:
+偏好存 `localStorage`，在 F12 控制台实时调整：
 
 ```js
-window.__dshNotifyMe.config                       // view current config
+window.__dshNotifyMe.config                       // 查看
 window.__dshNotifyMe.setConfig({
-  attentionHiddenOnly: false, // true = don't alert "needs you" while the page is visible
-  doneHiddenOnly: true,       // false = also alert "reply finished" while visible
-  toast: true,                // system-notification toggles
-  sound: true,                // sound toggle
-  volume: 0.5,                // 0..1
-  autoFocus: true             // clicking the toast focuses the DSH window
+  attentionHiddenOnly: false, // true = 页面可见时"需要你"不提醒
+  doneHiddenOnly: true,       // false = 页面可见时"完成"也提醒
+  toast: true,                // 系统通知开关
+  sound: true,                // 提示音开关
+  volume: 0.5,                // 音量 0~1
+  autoFocus: true             // 点通知切回 DSH 窗口
 })
-window.__dshNotifyMe.resetConfig()                // restore defaults
+window.__dshNotifyMe.resetConfig()                // 恢复默认
 ```
 
-## How it works
+## 工作原理
 
-The browser half subscribes to the client `sessions` service — the same source the UI itself renders from:
+浏览器半身订阅客户端 `sessions` 服务（与 UI 同一数据源）：
 
-- the **selected session's** `ConversationSnapshot`: a `running: true → false` edge means a reply finished; a new entry in `pending[]` of kind `approval` / `plan-review` / `question` means the agent is waiting on you (payload text is shown in the alert when available);
-- **every other listed session's** summary: a new `pendingInteraction`, or the `completed` edge (finished while not selected), alerts you about background work.
+- **当前会话** `ConversationSnapshot`：`running` true→false = 回复完成；`pending[]` 新增 `approval` / `plan-review` / `question` = 模型在等你（可行时在提醒里展示提问/审批内容）；
+- **其它已列会话**摘要：出现新 `pendingInteraction`，或 `completed` 边沿（非选中状态下跑完）→ 后台工作提醒。
 
-No React/UI code, no settings-namespace plumbing, no third-party runtime dependencies — the alert code is fully self-contained and auditable.
+无 React/UI、无 settings 命名空间依赖、无第三方运行时依赖——提醒代码完全自包含、可审计。
 
-## Known limitations
+## 已知限制
 
-- The page must be open for alerts to fire (background tab / minimized is fine; closing the tab stops it — that's inherent to a browser-layer plugin).
-- Notifications appear through the browser, so the browser needs "show notifications" permission in Windows settings, and notification-center "Do Not Disturb" must not suppress them.
-- The first sound/toast of each page load needs one user click on the page first (browser autoplay + permission policy).
-- Toasts are only produced once the notification permission is granted; declining means sound + title marker only.
+- 页面必须开着才会提醒（后台标签/最小化可以；关标签页即失效——浏览器层方案固有限制）。
+- 通知经由浏览器弹出，需允许浏览器通知权限，且勿扰模式不能屏蔽它。
+- 每次页面加载后第一次出声/弹通知前，需在页面上点击过一次（浏览器自动播放与权限策略）。
+- 未授权通知权限时只有提示音与标题标记。
 
-## Development
+## 开发自检
 
 ```powershell
 node --check lib\client.js
 node --check lib\index.js
-node smoke\smoke-test.cjs     # offline state-machine smoke test
-npm pack --dry-run            # preview the published tarball (6 files, ~10 kB)
+node smoke\smoke-test.cjs     # 离线状态机冒烟测试
+npm pack --dry-run            # 预览发布包（6 个文件，~10 kB）
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — 见 [LICENSE](LICENSE)。
