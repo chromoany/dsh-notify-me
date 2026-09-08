@@ -14,6 +14,12 @@
 
 ---
 
+## UI Preview
+
+| Windows system notification |
+| --- |
+| ![DSH notification](docs/screenshots/notify-toast.png) |
+
 [Changelog](CHANGELOG.md)
 
 ## What it alerts about

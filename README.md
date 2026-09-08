@@ -13,6 +13,12 @@
 
 ---
 
+## 效果预览
+
+| Windows 系统通知效果 |
+| --- |
+| ![DSH 通知效果](docs/screenshots/notify-toast.png) |
+
 [更新日志](CHANGELOG.md)
 
 ## 提醒时机

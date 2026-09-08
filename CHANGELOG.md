@@ -16,7 +16,7 @@ All notable changes to **dsh-notify-me** are documented here.
 - ✅ **Reply-finished alerts**: detects the selected session's `running: true → false` edge (and background sessions' completion) — toast + sound, by default only while the page is hidden/backgrounded.
 - Clicking a toast focuses the DSH window.
 - Zero-UI, zero-server-logic: pure client-side bundle subscribing to the `sessions` service; preferences in `localStorage`; auditable, self-contained code (`<20 KB`).
-- Offline smoke test (`smoke/smoke-test.cjs`) covering the alert state machine.
+- Offline smoke test (`smoke/smoke-test.cjs`) covering the alert state machine.\n- Screenshot + `screenshots.json` for the plugin-market page; UI preview shown in the README.
 
 <!-- versions -->
 [1.0.1]: https://github.com/chromoany/dsh-notify-me/compare/v1.0.0...v1.0.1
