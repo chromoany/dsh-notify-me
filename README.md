@@ -73,6 +73,8 @@ dsh plugin --profile web add dsh-notify-me
 
 重启 `dsh web` 后硬刷新页面（Ctrl+Shift+R）。
 
+**兼容性** — 实测 `0.1.1-rc.2` 与 `0.1.2-rc.1`（后者用独立 profile 启动，插件客户端模块正常进入启动清单）。逐版本声明见 `package.json` 的 `dsh.compatibility.dshReleases`。
+
 **验证** — F12 控制台执行：
 
 ```js

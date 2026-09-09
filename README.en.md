@@ -73,6 +73,8 @@ dsh plugin --profile web add dsh-notify-me
 
 Restart `dsh web`, then hard-refresh the page (Ctrl+Shift+R).
 
+**Compatibility** — verified on `0.1.1-rc.2` and `0.1.2-rc.1` (the latter booted in a separate profile; the plugin's client module lands in the boot manifest). Per-release declarations live in `package.json` under `dsh.compatibility.dshReleases`.
+
 **Verify** — open the DevTools console and run:
 
 ```js

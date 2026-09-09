@@ -2,6 +2,16 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.1.3] — 2026-09-09
+
+### 新增
+- **逐版本兼容声明**：`package.json` 增加 `dsh.compatibility.dshReleases`，声明 `0.1.1-rc.2` 与 `0.1.2-rc.1` 为 `compatible`（DSH-Store 目录用该矩阵决定条目是否保持上架）。
+- **0.1.2-rc.1 实测记录**：用独立的 `DSH_HOME` + 临时 profile 启动 0.1.2-rc.1 的 web 应用，插件客户端模块进入 `__DSH_BOOT__`（47 个条目之一），`/plugins/??dsh-notify-me/client.js` 返回 200 且按 `__ModuleLoader__.load` 注册；运行时需要的 `sessions`（0.1.2 起由 `dsh-client-ui-session` 提供）、`locale` 与 `slots`（`dsh-client-locale`）三个服务均存在。
+
+### 变更
+- `dsh.client.inject` 补上 `@deepseek-ai/dsh-client-ui-session`：0.1.2-rc.1 已移除 `@deepseek-ai/dsh-client-runtime`，`sessions` 服务改由前者提供（原条目保留，供 0.1.0/0.1.1 线使用）。
+- `peerDependencies` 由 `@deepseek-ai/dsh-client-runtime` 改为实际依赖的 `@deepseek-ai/dsh-client-locale`，范围扩到 `^0.1.2-rc.1`；仍为 optional。
+
 ## [1.1.2] — 2026-09-08
 
 ### 变更
@@ -52,6 +62,7 @@ All notable changes to **dsh-notify-me** are documented here.
 <!-- versions -->
 > 1.0.0 与 1.0.1 早于本仓库的 GitHub 标签历史（tag 从 `v1.1.0` 起，且 npm 上只有 1.0.0 / 1.1.0 / 1.1.1），故不附链接。
 
+[1.1.3]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/chromoany/dsh-notify-me/releases/tag/v1.1.0
