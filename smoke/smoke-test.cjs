@@ -104,6 +104,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   assert(typeof windowStub.__dshNotifyMe.test === 'function', 'test fn exposed');
   windowStub.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
 
+  // 0) the runtime version must track package.json (regression: it sat at 0.2.0
+  //    while the package was on 1.1.x, so bug reports named the wrong build).
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
+  assert(windowStub.__dshNotifyMe.version === pkgVersion,
+    'window.__dshNotifyMe.version (' + windowStub.__dshNotifyMe.version + ') != package.json version (' + pkgVersion + ')');
+  console.log('version OK:', pkgVersion);
+
   // 1) turn runs then finishes while the page is hidden -> done fires
   documentStub.hidden = true; documentStub.visibilityState = 'hidden';
   assert(faceListeners.length === 1 && listListeners.length === 1, 'face + list subscribed');
