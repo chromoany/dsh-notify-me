@@ -2,6 +2,11 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [未发布]
+
+### 文档
+- 新增 `docs/listing.md`：记录各插件目录/市场的收录方式（提交物、合并方式），以及本插件当前的收录状态；并记下 `awesome-dsh-plugin` 站点构建失败的排查入口（`build-site.yml` 最近一次运行 / issue #4731）。
+
 ## [1.1.3] — 2026-09-09
 
 ### 新增
