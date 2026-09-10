@@ -18,8 +18,12 @@
 ## 本插件的当前状态
 
 - npm：`dsh-notify-me` 已发布，`latest` 为 1.1.3，manifest 带 `dsh.bundle.patch` 与 `dsh.compatibility.dshReleases`。
-- imsai-sh / deepseek1024.com：条目 `catalog/plugins/chromoany--dsh-notify-me.json` 已合入 `main`，目录同步工作流已推送。
+- imsai-sh / deepseek1024.com：条目 `catalog/plugins/chromoany--dsh-notify-me.json` 已合入 `main`，`Catalog sync` 工作流已成功推送，站点 README 投影里已有本行。
 - awesome-dsh-plugin：条目 `data/plugins/chromoany__dsh-notify-me.yml` 已在 PR 中，等待合并。
+
+## 仓库侧要求的实际执行口径
+
+awesome-dsh-plugin 的 README（面向投稿者）写的是「仓库创建满 1 天且提交数 ≥ 10」，但同仓库的 `contributing.md` 与 `scripts/check-submission.mjs` 只保留年龄门槛：提交数门槛已于 2026-09-03 取消（上游 #4196，理由是历史长短反映开发习惯而非质量）。CI 实际只校验 `dsh.bundle`、仓库年龄与「不是 DSH 本体」，`dsh.client` 单独声明不算可安装。
 
 ## 维护提示
 
