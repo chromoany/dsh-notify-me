@@ -7,6 +7,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-browser-blue)
 ![Size](https://img.shields.io/badge/bundle-%7E37KB-green)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 ---
 
@@ -73,7 +74,7 @@ dsh plugin --profile web add dsh-notify-me
 
 重启 `dsh web` 后硬刷新页面（Ctrl+Shift+R）。
 
-**兼容性** — 实测 `0.1.1-rc.2` 与 `0.1.2-rc.1`（后者用独立 profile 启动，插件客户端模块正常进入启动清单）。逐版本声明见 `package.json` 的 `dsh.compatibility.dshReleases`。
+**兼容性** — 实测**真正激活**（各自独立 profile 启动：设置里出现「通知提醒」分区，即插件的 `apply` 确实执行）于 `0.1.2-rc.1` 与 `0.1.5-rc.2`；更早的 `0.1.1-rc.2` 亦验证过。逐版本声明见 `package.json` 的 `dsh.compatibility.dshReleases`。注意一个坑：若 `dsh.client.inject` 里列了新版运行时已不再提供的包，客户端条目会停在 `pending (waiting for services: …)` 而永不执行——1.1.3 在 `0.1.2-rc.1` 及以后正是这样失效的。
 
 **验证** — F12 控制台执行：
 

@@ -7,6 +7,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-browser-blue)
 ![Size](https://img.shields.io/badge/bundle-%7E37KB-green)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 ---
 
@@ -73,7 +74,7 @@ dsh plugin --profile web add dsh-notify-me
 
 Restart `dsh web`, then hard-refresh the page (Ctrl+Shift+R).
 
-**Compatibility** — verified on `0.1.1-rc.2` and `0.1.2-rc.1` (the latter booted in a separate profile; the plugin's client module lands in the boot manifest). Per-release declarations live in `package.json` under `dsh.compatibility.dshReleases`.
+**Compatibility** — verified to actually activate on `0.1.2-rc.1` and `0.1.5-rc.2` (each booted in its own profile: the Settings → Notifications section registers, i.e. the plugin's `apply` really runs), and previously on `0.1.1-rc.2`. Per-release declarations live in `package.json` under `dsh.compatibility.dshReleases`. If a plugin's client entry lists a package that a newer runtime no longer ships in `dsh.client.inject`, the entry parks at `pending (waiting for services: …)` and never runs — which is what broke 1.1.3 on `0.1.2-rc.1` and later.
 
 **Verify** — open the DevTools console and run:
 

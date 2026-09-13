@@ -7,6 +7,19 @@ All notable changes to **dsh-notify-me** are documented here.
 ### 文档
 - 新增 `docs/listing.md`：记录各插件目录/市场的收录方式（提交物、合并方式），以及本插件当前的收录状态；并记下 `awesome-dsh-plugin` 站点构建失败的排查入口（`build-site.yml` 最近一次运行 / issue #4731）。
 
+## [1.1.4] — 2026-09-13
+
+### 修复
+- **插件在 DSH `0.1.2-rc.1` 及以后的运行时上一直没有真正激活**（表现为：桌面端/网页端都不弹提醒、设置里也没有「通知提醒」分区，而启动清单里又能看到条目）。根因是 `dsh.client.inject` 里残留了 `@deepseek-ai/dsh-client-runtime`：该包从 `0.1.2-rc.1` 起已从官方客户端依赖图移除（`sessions` 服务改由 `@deepseek-ai/dsh-client-ui-session` 提供），而客户端条目的 `inject` 目标是**硬门控**——解析不到就停在 `pending (waiting for services: …)`，`apply` 永不执行。1.1.3 为兼容 0.1.0/0.1.1 线而保留该条目，正是这一处让插件在 0.1.2-rc.1 起的版本上全程哑火。
+- 相应地，`dsh.client.inject` 现在只保留 `@deepseek-ai/dsh-client-ui-session` / `@deepseek-ai/dsh-client-locale` / `@deepseek-ai/dsh-client-ui-conversation` 三个官方包。
+
+### 变更
+- 兼容声明补到实测激活的 `0.1.5-rc.1` / `0.1.5-rc.2`（DSH Desktop 2.0.9 内置 0.1.5-rc.2 线）；`peerDependencies` 范围同步放宽到 `^0.1.5-rc.1`。
+- 兼容性验证口径改为**「插件真的激活」**：在独立 `DSH_HOME` + 独立 profile 里启动目标版本，检查设置页出现本插件注册的「通知提醒」分区，而不只是看启动清单里有没有这个条目。
+
+### 更正
+- 1.1.3 的验证记录不成立：当时只确认了「条目进入 `__DSH_BOOT__`、`/plugins/??dsh-notify-me/client.js` 返回 200」，**没有验证插件是否被激活**，因此 `0.1.2-rc.1: compatible` 的声明与事实不符（该版本上插件同样被同一处 inject 门控）。同版条目里「原条目保留，供 0.1.0/0.1.1 线使用」的判断作废——保留即致命。
+
 ## [1.1.3] — 2026-09-09
 
 ### 新增
@@ -67,6 +80,7 @@ All notable changes to **dsh-notify-me** are documented here.
 <!-- versions -->
 > 1.0.0 与 1.0.1 早于本仓库的 GitHub 标签历史（tag 从 `v1.1.0` 起，且 npm 上只有 1.0.0 / 1.1.0 / 1.1.1），故不附链接。
 
+[1.1.4]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/chromoany/dsh-notify-me/compare/v1.1.0...v1.1.1

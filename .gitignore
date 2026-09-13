@@ -9,3 +9,6 @@ node_modules/
 npm-debug.log*
 Thumbs.db
 .DS_Store
+
+# local scratch (never commit: draft reports, probe scripts, one-off artifacts)
+temp/
