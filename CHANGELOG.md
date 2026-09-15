@@ -6,6 +6,22 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ### 文档
 - 新增 `docs/listing.md`：记录各插件目录/市场的收录方式（提交物、合并方式），以及本插件当前的收录状态；并记下 `awesome-dsh-plugin` 站点构建失败的排查入口（`build-site.yml` 最近一次运行 / issue #4731）。
+- issue #1 / #2 报告的「等待审批 / 提问 / 方案确认不提醒」查清并修复（见 1.1.5）。
+
+## [1.1.5] — 2026-09-14
+
+### 修复
+- **「模型在等你操作」这一路提醒在 DSH `0.1.2-alpha.2` 及以后的运行时上完全不触发**（现象：审批卡片出现、模型停下等待时，没有系统通知、没有提示音、标签页标题也不变；而「回复完成」提醒一直正常）。根因是两个待办数据源同时被上游搬走：
+  - 选中会话的快照 —— `SessionSnapshot.pending` 已不存在（0.1.2-alpha.2 起只剩 `queue / pendingSubmissions / running / …`）；
+  - 会话列表行摘要 —— `SessionSummary.pendingInteraction` 已不存在（只剩 `running / completed`）。
+
+  待办交互改为由 `dsh-client-ui-approval` / `dsh-client-ui-user-questions` 经 `ctx.uiSession.registerPendingInteraction()` 发布到**独立 store** `ctx.uiSession.pendingInteractions`（`Map<sessionId, interaction>`，`interaction.kind` 为 `approval | question | plan-review`）。本版改为订阅该 store：新出现的交互弹一次提醒（`PendingApproval` 取 `toolName` / `reason`，`PendingQuestion` 取 `questions[0].question`），交互消失时释放标签页标记，挂载时已存在的等待也提醒一次。
+  - **为什么不把 `uiSession` 写进 `inject`**：客户端条目的 `inject` 是**硬门控**——服务不存在时条目会永远停在 `pending`，而 web 启动断言会因「有条目未激活」直接抛错（这正是 1.1.3/1.1.4 两次踩过的坑）。`uiSession` 只存在于 `0.1.2-alpha.2` 及以后，写进 `inject` 会让本插件在 `0.1.1-rc.2` 上彻底失效。因此改为**惰性查找**：拿得到就订阅交互 store，拿不到就静默走旧的快照路径，两代宿主都保留完整功能。
+  - 保留 `@deepseek-ai/dsh-client-ui-session` 在 `dsh.client.inject` 中（它是客户端加载图里的 bundle 条目，与服务门控无关）；实测该条目在加载图顺序上位于 `@deepseek-ai/dsh-client-ui-session` 之后（54 个条目中第 44 位 vs 第 10 位），且官方 `dsh-client-ui-approval` / `dsh-client-ui-user-questions` / `dsh-client-ui-open-in-app` / `dsh-client-ui-layout` 等同样以 `"uiSession"` 为服务依赖。
+
+### 变更
+- 两条来源同时可用时按交互 key 去重：同一次等待只提醒一次、也只有一个标签页标记；标题标记的归属固定给交互 store（可用时），避免两路各记一个标记。
+- 测试：`smoke/smoke-test.cjs` 拆成**两代宿主**各跑一遍——旧宿主（无 `uiSession`，快照带 `pending`）与新宿主（`uiSession.pendingInteractions`），新增「重复通知不重复提醒」「挂载前已存在的等待仍提醒一次」「多会话并发等待各提醒一次并逐个释放标记」「两路去重」「主开关关闭时交互通道同样静音」等回归用例。
 
 ## [1.1.4] — 2026-09-13
 
