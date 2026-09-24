@@ -2,11 +2,27 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
-## [未发布]
+## [1.1.6] — 2026-09-24
+
+### 修复
+- **1.1.5 的「模型在等你操作」修复在真机上从未生效**（现象与 1.1.5 条目描述的一模一样：审批卡片出现、模型停下等待时，没有系统通知、没有提示音、标签页标题也不变；而「回复完成」提醒和设置页的测试按钮一切正常）。根因是**取服务的方式**：`bindUiSession()` 用 `rootCtx.uiSession` 属性读取，而 **cordis 4 只解析写在插件 `inject` 映射里的服务名**，其余名字一律抛 `cannot get property "uiSession" without inject`——同一 fiber 的兄弟条目（`dsh-client-ui-session`）提供的服务不会出现在祖先 store 里，属性查找必然落空；外层那个 `try/catch` 把这个异常吞成 `svc = null`，订阅永不建立，而 `0.1.2+` 的旧快照路径已经没有 `pending` 可用，待办提醒因此全程哑火。
+  - 改用 **`ctx.get("uiSession")`**：这是 cordis 明文的「无需 inject 读取服务」通道；`ctx.reflect.get()` 与属性读取保留为该 API 之前的兜底。服务实例被换掉时（插件 HMR）也会重新绑定，而不是抱着旧 store 的失效订阅。
+  - **仍然不把 `uiSession` 写进 `inject`**：那会让本插件在所有 `0.1.2-alpha.2` 之前的宿主上永远停在 `pending`（1.1.4 踩过的坑），而 cordis 的 `inject` 只有「必需」一种语义，没有可选依赖。
+
+### 新增
+- **`window.__dshNotifyMe.debug()`**：输出当前绑定状态（`uiSession: bound|unbound`、失败原因 `uiSessionNote`、会话基线与待办基线数量、已提醒 key、通知权限、页面可见性、最后一次提醒时刻）。这条链路失败时原本没有任何可见信号，排查只能翻宿主源码——这正是本次要补上的东西。
+- 服务「已被某个条目提供、却拿不到」时打一条 `console.warn`；旧宿主根本没有该服务属于正常情况，保持安静。
+
+### 变更
+- 新增 `smoke/cordis-host-test.mjs`：用**真正的 cordis 4** 起根上下文、由兄弟插件提供 `uiSession`，把 `lib/client.js` 真身挂上去端到端验证。先断言宿主语义本身（属性读取必抛 `without inject`、`ctx.get()` 必能解析），再驱动一次 `approval` 交互，断言弹出提醒（标题「DSH · 审批请求」、正文带 `toolName · reason`）、标题标记、同 key 不重复、交互消失后释放标记；最后再跑一遍无 `uiSession` 的旧宿主路径。找不到本机 DSH 安装时自动跳过。
+- `npm test` 现在依次跑 `smoke/smoke-test.cjs` 与 `smoke/cordis-host-test.mjs`。
+
+### 更正
+- 1.1.5 条目里「本版改为订阅该 store」的结论不成立：订阅从未建立。1.1.5 的测试之所以通过，是因为 `smoke/smoke-test.cjs` 传入的是**手写假 ctx（普通对象）**，`ctx.uiSession` 属性读取不经过 cordis 的 inject 门控——假 ctx 上的成功掩盖了真宿主上的失败。教训：用真宿主语义的 ctx 跑插件真身，比手写桩更能说明问题。
 
 ### 文档
 - 新增 `docs/listing.md`：记录各插件目录/市场的收录方式（提交物、合并方式），以及本插件当前的收录状态；并记下 `awesome-dsh-plugin` 站点构建失败的排查入口（`build-site.yml` 最近一次运行 / issue #4731）。
-- issue #1 / #2 报告的「等待审批 / 提问 / 方案确认不提醒」查清并修复（见 1.1.5）。
+- issue #1 / #2 报告的「等待审批 / 提问 / 方案确认不提醒」：1.1.5 判对了病因、开错了药（见上），1.1.6 才是真正生效的修复。
 
 ## [1.1.5] — 2026-09-14
 
