@@ -23,10 +23,20 @@ function assert(cond, msg) { if (!cond) throw new Error('ASSERT FAILED: ' + msg)
 
 // Boot the bundle over a mocked window/document and return the handles the
 // tests drive: the module exports, the exposed window API, and the stubs.
-function bootBundle() {
+function bootBundle(opts) {
   let title = 'DeepSeek Harness';
   const listeners = { pointerdown: [], keydown: [] };
   const captured = {};
+  // A granted-permission Notification stand-in so a test can grab the toast the
+  // plugin raised and click it the way Windows would.
+  let lastNotification = null;
+  class FakeNotification {
+    constructor(title, config) { this.title = title; this.config = config; this.closed = false; lastNotification = this; }
+    close() { this.closed = true; }
+  }
+  FakeNotification.permission = 'granted';
+  FakeNotification.requestPermission = () => Promise.resolve('granted');
+  const Notify = (opts && opts.withNotification) ? FakeNotification : undefined;
 
   const windowStub = {
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
@@ -40,6 +50,10 @@ function bootBundle() {
     AudioContext: undefined,
     webkitAudioContext: undefined,
   };
+  // Only present when the test asked for it: an own `Notification` key holding
+  // undefined would make `"Notification" in window` true while the global stays
+  // undefined — exactly the shape that used to break canToast().
+  if (Notify) windowStub.Notification = Notify;
   const docListeners = { visibilitychange: [] };
   const documentStub = {
     hidden: false,
@@ -57,7 +71,7 @@ function bootBundle() {
     window: windowStub,
     document: documentStub,
     location: { origin: 'http://127.0.0.1:3080' },
-    Notification: undefined,
+    Notification: Notify,
     localStorage: {
       getItem: (k) => (k in storage ? storage[k] : null),
       setItem: (k, v) => { storage[k] = String(v); },
@@ -82,6 +96,7 @@ function bootBundle() {
     doc: documentStub,
     events,
     getTitle: () => title,
+    lastNotification: () => lastNotification,
     // Drive a real visibilitychange the way the browser would.
     fireVisibility: () => { for (const fn of [...docListeners.visibilitychange]) fn(); },
   };
@@ -96,6 +111,7 @@ function buildHost({ withUiSession }) {
   let faceSnap = { sessionId: 's1', running: false, pending: [], nodes: [], partial: null };
   let uiSnapshot = new Map();
   const cleanups = [];
+  const opened = []; // sessions the plugin asked the host to select
 
   const sessionsFake = {
     list: {
@@ -108,6 +124,7 @@ function buildHost({ withUiSession }) {
         getSnapshot: () => faceSnap,
       },
     }),
+    open: (id) => { opened.push(id); },
   };
 
   const ctx = {
@@ -127,6 +144,7 @@ function buildHost({ withUiSession }) {
     ctx,
     listeners,
     cleanups,
+    opened,
     setList: (v) => { listState = v; },
     setFace: (v) => { faceSnap = v; },
     faceSnap: () => faceSnap,
@@ -472,6 +490,31 @@ async function currentHost() {
   doc.hidden = true; doc.visibilityState = 'hidden';
   b.fireVisibility();
   assert(events.length === 0, 'a wait answered on screen is not delivered later');
+
+  // 14) clicking a toast opens the conversation the alert belongs to
+  const nb = bootBundle({ withNotification: true });
+  const nhost = buildHost({ withUiSession: true });
+  nhost.setUiPending(new Map());
+  nb.doc.hidden = true; nb.doc.visibilityState = 'hidden';
+  nb.mod.apply(nhost.ctx);
+  nhost.setList({ ids: ['s2'], byId: { s2: { running: true, displayTitle: '后台任务', completed: false } }, current: 's1', phase: 'ready' });
+  nhost.setUiPending(new Map([['s2', approval('approval:50', { sessionId: 's2' })]]));
+  nhost.notifyUi();
+  const toast = nb.lastNotification();
+  assert(toast && toast.title === 'DSH · 审批请求', 'a toast was raised for the background wait');
+  toast.onclick();
+  assert(nhost.opened.length === 1 && nhost.opened[0] === 's2',
+    'clicking the toast opens the alerted session, got ' + JSON.stringify(nhost.opened));
+
+  // a session that already left the list must never be opened (open() fails loud)
+  nhost.setList({ ids: [], byId: {}, current: 's1', phase: 'ready' });
+  nhost.setUiPending(new Map([['s9', approval('approval:51', { sessionId: 's9' })]]));
+  nhost.notifyUi();
+  const goneToast = nb.lastNotification();
+  assert(goneToast !== toast, 'a second toast was raised for the vanished session');
+  goneToast.onclick();
+  assert(nhost.opened.length === 1, 'a session missing from the list is never opened');
+  for (const c of [...nhost.cleanups]) c();
 
   for (const c of [...host.cleanups]) c();
   assert(host.listeners.uiPending.length === 0, 'pendingInteractions unsubscribed after dispose');

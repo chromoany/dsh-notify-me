@@ -50,10 +50,20 @@ function findCordis() {
 
 // Boot the plugin bundle over a mocked browser and return its module exports
 // plus the handles the test drives.
-function bootBundle() {
+function bootBundle(opts) {
   let title = 'DeepSeek Harness';
   const listeners = { pointerdown: [], keydown: [] };
   const captured = {};
+  // A granted-permission Notification stand-in so the test can click the toast.
+  let lastNotification = null;
+  class FakeNotification {
+    constructor(title, config) { this.title = title; this.config = config; this.closed = false; lastNotification = this; }
+    close() { this.closed = true; }
+  }
+  FakeNotification.permission = 'granted';
+  FakeNotification.requestPermission = () => Promise.resolve('granted');
+  const Notify = (opts && opts.withNotification) ? FakeNotification : undefined;
+
   const windowStub = {
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     removeEventListener(type, fn) {
@@ -66,6 +76,9 @@ function bootBundle() {
     AudioContext: undefined,
     webkitAudioContext: undefined,
   };
+  // Only when asked for: an own key holding undefined would make
+  // `"Notification" in window` true while the global stays undefined.
+  if (Notify) windowStub.Notification = Notify;
   const docListeners = { visibilitychange: [] };
   const documentStub = {
     hidden: false,
@@ -83,7 +96,7 @@ function bootBundle() {
     window: windowStub,
     document: documentStub,
     location: { origin: 'http://127.0.0.1:3080' },
-    Notification: undefined,
+    Notification: Notify,
     localStorage: {
       getItem: (k) => (k in storage ? storage[k] : null),
       setItem: (k, v) => { storage[k] = String(v); },
@@ -103,6 +116,7 @@ function bootBundle() {
     doc: documentStub,
     events,
     getTitle: () => title,
+    lastNotification: () => lastNotification,
     // Drive a real visibilitychange the way the browser would.
     fireVisibility: () => { for (const fn of [...docListeners.visibilitychange]) fn(); },
   };
@@ -111,6 +125,7 @@ function bootBundle() {
 // The Controller-side stubs (session list + selected-session snapshot).
 function makeController() {
   const listeners = { list: [], face: [] };
+  const opened = []; // sessions the plugin asked the host to select
   let listState = { ids: [], byId: {}, current: 's1', phase: 'ready' };
   let faceSnap = { sessionId: 's1', running: false, pending: [], nodes: [], partial: null };
   const sessions = {
@@ -124,9 +139,10 @@ function makeController() {
         getSnapshot: () => faceSnap,
       },
     }),
+    open: (id) => { opened.push(id); },
   };
   return {
-    sessions, listeners,
+    sessions, listeners, opened,
     faceSnap: () => faceSnap,
     setFace: (v) => { faceSnap = v; },
     notifyFace: () => { for (const f of [...listeners.face]) f(); },
@@ -176,8 +192,8 @@ async function main() {
   };
   const slotsStub = { inject() {}, register() {} };
 
-  async function runHost({ withUiSession }) {
-    const b = bootBundle();
+  async function runHost({ withUiSession, withNotification }) {
+    const b = bootBundle({ withNotification });
     const controller = makeController();
     const root = new Context();
     let uiService = null;
@@ -221,7 +237,7 @@ async function main() {
   // ── host with uiSession (DSH >= 0.1.2) ──────────────────────────────
   console.log('\n— real cordis host WITH uiSession —');
   {
-    const h = await runHost({ withUiSession: true });
+    const h = await runHost({ withUiSession: true, withNotification: true });
     assert(h.probe.property !== 'ok',
       'probe: a plain ctx.uiSession read should throw on this host (got ' + h.probe.property + ')');
     assert(String(h.probe.property).indexOf('without inject') !== -1,
@@ -244,6 +260,14 @@ async function main() {
     assert(att[0].body.indexOf('pwsh') !== -1, 'body carries the tool name, got: ' + att[0].body);
     assert(h.getTitle().indexOf('需要你') !== -1, 'tab marker set while the approval waits');
     console.log('approval alert OK:', JSON.stringify(att[0]));
+
+    // the toast carries the session: clicking it must select that session
+    const toast = h.lastNotification();
+    assert(toast && toast.title.indexOf('审批') !== -1, 'the approval raised a clickable toast');
+    toast.onclick();
+    assert(h.controller.opened.length === 1 && h.controller.opened[0] === 's1',
+      'clicking the toast opens the alerted session, got ' + JSON.stringify(h.controller.opened));
+    console.log('toast click opened the alerted session OK');
 
     // same interaction re-published -> no duplicate
     h.uiService.publish(new Map([['s1', appr]]));
