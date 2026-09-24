@@ -66,12 +66,17 @@ function bootBundle() {
     AudioContext: undefined,
     webkitAudioContext: undefined,
   };
+  const docListeners = { visibilitychange: [] };
   const documentStub = {
     hidden: false,
     visibilityState: 'visible',
     get title() { return title; },
     set title(v) { title = v; },
-    addEventListener() {},
+    addEventListener(type, fn) { (docListeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      const arr = docListeners[type] || [];
+      const i = arr.indexOf(fn); if (i !== -1) arr.splice(i, 1);
+    },
   };
   const storage = {};
   const sandbox = {
@@ -92,7 +97,15 @@ function bootBundle() {
   if (!captured.reg) throw new Error('plugin did not register via __ModuleLoader__.load');
   const events = [];
   windowStub.__dshNotifyMe = { onEvent: (kind, payload) => events.push({ kind, ...payload }) };
-  return { mod: captured.reg.factory(() => ({})), win: windowStub, doc: documentStub, events, getTitle: () => title };
+  return {
+    mod: captured.reg.factory(() => ({})),
+    win: windowStub,
+    doc: documentStub,
+    events,
+    getTitle: () => title,
+    // Drive a real visibilitychange the way the browser would.
+    fireVisibility: () => { for (const fn of [...docListeners.visibilitychange]) fn(); },
+  };
 }
 
 // The Controller-side stubs (session list + selected-session snapshot).
@@ -220,7 +233,8 @@ async function main() {
     assert(dbg.uiSession === 'bound', 'plugin must bind the interaction store (debug: ' + JSON.stringify(dbg) + ')');
     console.log('watcher bound OK (uiSessionNote=' + dbg.uiSessionNote + ')');
 
-    // approval appears -> one attention alert + a tab marker
+    // approval appears while the user is away -> one attention alert + marker
+    h.doc.hidden = true; h.doc.visibilityState = 'hidden';
     const appr = new FakeApproval('approval:1', 's1', 'pwsh', 'needs elevated shell');
     h.uiService.publish(new Map([['s1', appr]]));
     await tick();
@@ -241,6 +255,27 @@ async function main() {
     await tick();
     assert(h.getTitle().indexOf('需要你') === -1, 'tab marker cleared once the interaction is answered');
     console.log('dedupe + marker release OK');
+
+    // a wait inside the conversation already on screen: silent while the user
+    // is looking at it, delivered once the page goes to the background
+    h.doc.hidden = false; h.doc.visibilityState = 'visible';
+    const onScreen = new FakeApproval('approval:2', 's1', 'pwsh', 'right here on screen');
+    h.uiService.publish(new Map([['s1', onScreen]]));
+    await tick();
+    assert(h.events.filter((e) => e.kind === 'attention').length === 1,
+      'a wait in the conversation on screen must not add an alert');
+    assert(h.win.__dshNotifyMe.debug().quietedKeys.indexOf('approval:2') !== -1,
+      'the on-screen wait is queued for the background');
+    console.log('on-screen wait stayed silent (queued)');
+
+    h.doc.hidden = true; h.doc.visibilityState = 'hidden';
+    h.fireVisibility();
+    await tick();
+    const flushed = h.events.filter((e) => e.kind === 'attention');
+    assert(flushed.length === 2, 'the queued wait is delivered once the page is backgrounded (got ' + flushed.length + ')');
+    console.log('background flush OK:', JSON.stringify(flushed[1]));
+    h.uiService.publish(new Map());
+    await tick();
   }
 
   // ── legacy host (no uiSession service at all) ───────────────────────
@@ -252,7 +287,9 @@ async function main() {
     assert(dbg.uiSession === 'unbound', 'legacy host must not report a bound interaction store');
     console.log('legacy fallback OK (note=' + dbg.uiSessionNote + ')');
 
-    // the legacy live source: pending inside the selected-session snapshot
+    // the legacy live source: pending inside the selected-session snapshot.
+    // The user is away, which is when the controller path has to speak up.
+    h.doc.hidden = true; h.doc.visibilityState = 'hidden';
     h.controller.setFace({
       sessionId: 's1', running: true, nodes: [], partial: null,
       pending: [{ key: 'q:legacy1', kind: 'question', sessionId: 's1', payload: { text: '继续吗？' } }],
@@ -262,6 +299,18 @@ async function main() {
     const att = h.events.filter((e) => e.kind === 'attention');
     assert(att.length === 1, 'legacy controller pending must still alert (got ' + att.length + ')');
     console.log('legacy pending alert OK:', JSON.stringify(att[0]));
+
+    // ... and the same source stays silent while that session is on screen
+    h.doc.hidden = false; h.doc.visibilityState = 'visible';
+    h.events.length = 0;
+    h.controller.setFace({
+      sessionId: 's1', running: true, nodes: [], partial: null,
+      pending: [{ key: 'q:legacy2', kind: 'question', sessionId: 's1', payload: { text: '还在看吗？' } }],
+    });
+    h.controller.notifyFace();
+    await tick();
+    assert(h.events.length === 0, 'a legacy on-screen wait stays silent while the page is visible');
+    console.log('legacy on-screen wait stayed silent');
   }
 
   console.log('\ncordis-host-test passed');

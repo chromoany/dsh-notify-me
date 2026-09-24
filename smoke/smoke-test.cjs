@@ -40,12 +40,17 @@ function bootBundle() {
     AudioContext: undefined,
     webkitAudioContext: undefined,
   };
+  const docListeners = { visibilitychange: [] };
   const documentStub = {
     hidden: false,
     visibilityState: 'visible',
     get title() { return title; },
     set title(v) { title = v; },
-    addEventListener() {},
+    addEventListener(type, fn) { (docListeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      const arr = docListeners[type] || [];
+      const i = arr.indexOf(fn); if (i !== -1) arr.splice(i, 1);
+    },
   };
   const storage = {};
   const sandbox = {
@@ -77,6 +82,8 @@ function bootBundle() {
     doc: documentStub,
     events,
     getTitle: () => title,
+    // Drive a real visibilitychange the way the browser would.
+    fireVisibility: () => { for (const fn of [...docListeners.visibilitychange]) fn(); },
   };
 }
 
@@ -233,7 +240,7 @@ async function legacyHost() {
 
   // 8) English pinned copy + marker
   win.__dshNotifyMe.setConfig({ language: 'en', doneHiddenOnly: false, sound: false });
-  doc.hidden = false; doc.visibilityState = 'visible';
+  doc.hidden = true; doc.visibilityState = 'hidden';
   events.length = 0;
   host.setFace({ ...host.faceSnap(), running: true, pending: [{ key: 'q:en1', kind: 'question', sessionId: 's1', payload: null }] });
   host.notifyFace();
@@ -425,6 +432,46 @@ async function currentHost() {
   host.setUiPending(new Map([['s1', approval('approval:12')]]));
   host.notifyUi();
   assert(events.length === 0, 'no alert while master switch is off');
+
+  // 11) a wait in the conversation already on screen stays silent while it is
+  //     on screen, and still reaches the user once the page is backgrounded
+  doc.hidden = false; doc.visibilityState = 'visible';
+  win.__dshNotifyMe.setConfig({ currentHiddenOnly: true, sound: false, language: 'zh', enabled: true });
+  host.setList({ ids: ['s1'], byId: { s1: { running: true, displayTitle: '当前会话', completed: false } }, current: 's1', phase: 'ready' });
+  events.length = 0;
+  host.setUiPending(new Map([['s1', approval('approval:40')]]));
+  host.notifyUi();
+  assert(events.length === 0, 'a wait in the conversation on screen stays silent');
+  assert(getTitle().indexOf('需要你') !== -1, 'the silent wait still marks the tab');
+  assert(win.__dshNotifyMe.debug().quietedKeys.indexOf('approval:40') !== -1,
+    'the silent wait is queued for the background');
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  b.fireVisibility();
+  const flushed = events.filter((e) => e.kind === 'attention');
+  assert(flushed.length === 1 && flushed[0].title === 'DSH · 审批请求',
+    'the queued wait is delivered once the page is backgrounded, got ' + JSON.stringify(flushed));
+
+  // 12) a background session still alerts while the page is visible
+  doc.hidden = false; doc.visibilityState = 'visible';
+  events.length = 0;
+  host.setList({ ids: ['s2'], byId: { s2: { running: true, displayTitle: '后台任务', completed: false } }, current: 's1', phase: 'ready' });
+  host.setUiPending(new Map([['s2', approval('approval:41', { sessionId: 's2' })]]));
+  host.notifyUi();
+  assert(events.filter((e) => e.kind === 'attention').length === 1,
+    'a background session still alerts while the page is visible');
+
+  // 13) a wait answered while still on screen is never delivered later
+  doc.hidden = false; doc.visibilityState = 'visible';
+  events.length = 0;
+  host.setList({ ids: ['s1'], byId: { s1: { running: true, displayTitle: '当前会话', completed: false } }, current: 's1', phase: 'ready' });
+  host.setUiPending(new Map([['s1', approval('approval:42')]]));
+  host.notifyUi();
+  assert(events.length === 0, 'an on-screen wait is silent again');
+  host.setUiPending(new Map());
+  host.notifyUi();
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  b.fireVisibility();
+  assert(events.length === 0, 'a wait answered on screen is not delivered later');
 
   for (const c of [...host.cleanups]) c();
   assert(host.listeners.uiPending.length === 0, 'pendingInteractions unsubscribed after dispose');
