@@ -2,6 +2,30 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.2.0] — 2026-09-30
+
+### 修复
+- **`0.1.6-alpha.2` 及以后（含 `0.2.0-rc.2`）宿主上「模型需要你操作」整条通道再次静默失效**：上游把待办交互从 `uiSession.pendingInteractions`（`Map<sessionId, interaction>`）搬进了 `uiSession.sessionStatus`（`Map<sessionId, {running, pendingInteraction, completionUnread}>`），旧 store 在新宿主上根本不存在——插件读不到就静默不提醒（审批卡片出现、模型停下，系统通知/提示音/标题标记全无；而「回复完成」与设置页测试按钮照常，现象与 1.1.5 那次一模一样）。现按宿主代际自动选源：`≥ 0.1.6-alpha.2` 绑定 `sessionStatus`，`0.1.2 .. 0.1.5` 仍用 `pendingInteractions`，`≤ 0.1.1` 仍走控制器快照；`window.__dshNotifyMe.debug()` 新增 `uiSessionSource`，直接显示这条通道绑的是哪个来源。
+- **`0.1.6` 及以后的宿主上认不出「当前会话」**：会话列表快照不再有 `current`（`SessionListState` 只剩 `ids / byId / phase / projectionsBySession`），于是当前会话面（face）订阅从未建立、`onListChanged()` 还把当前会话当成后台会话评估——后果是 1.1.7 的「当前对话不弹通知」规则失效（审批卡片就在屏幕上，Toast 仍会盖上去），标签页标记的归属也随之错位。现在按宿主自己的口径推导：有 `current` 用它，没有就取 `retainedBy.mainView > 0` 的那一行（与内置 `DocumentTitle` / `ui-workspace` / `ui-session` 的判定一致）。
+- **`0.1.6` 及以后点通知切不回对应会话**：`sessions.open(id)` 已被移除，导航改由 `uiWorkspace.openSession(id)` 承担；插件现在两个都试（`open` 优先，旧宿主行为不变），会话已不在列表时依旧不调用。`debug()` 新增 `currentSession` 便于核对。
+
+### 新增
+- `sessionStatus` 适配完整：同一会话里等待被替换成新 key 时旧的标题标记随之释放，等待消失（`pendingInteraction` 变 `null`）时按 key 释放标记，重复通知不重复提醒。
+
+### 变更
+- `peerDependencies` 放宽为 `^0.1.0-rc.6 || ^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || >=0.1.6-alpha.2 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0`：原范围在 `0.2.0-rc.2` 上被 `evaluatePluginCompatibility` 判为不兼容，`dsh plugin add` 会拒绝并回滚安装（`0.3` 线仍被拒）。`dsh.compatibility.dshReleases` 增加 `0.2.0-rc.2: compatible`。
+- 版本号 1.1.8 → 1.2.0（新宿主代际）；`window.__dshNotifyMe.version` 同步。
+- 设置页字典注册改为把 `locale.register()` 返回的 disposer 交给 `ctx.effect`（与官方 `ui-approval` 写法一致），客户端插件 HMR 重载时不会因「同名 namespace 已注册」而丢掉设置页。
+- `uiSession` 绑定的诊断降噪：真实 `0.2.0-rc.2` 页面上每次加载都会出现的那条 `uiSession is provided but not reachable` 警告其实是**启动竞态**（本插件的客户端条目常早于 `ui-session` 条目激活，此时 `ctx.get()` 按 cordis 的严格语义拿不到尚未激活的服务），并非缺陷。现在只有**能拿到服务实例、但它既没有 `sessionStatus` 也没有 `pendingInteractions`** 时才打一条警告（并提示附上 `debug()` 输出）；「还没可见」保持安静，由 1.5s 重试定时器接管，`debug().uiSessionNote` 仍可查。
+
+### 测试
+- `smoke/smoke-test.cjs` 增加第三代宿主用例（`uiSession.sessionStatus`、列表无 `current`、无 `sessions.open`）：审批/提问/方案确认文案与详情、去重、等待消失释放标记、挂载前已存在的等待提醒一次、当前对话静默 + 转后台补发、后台会话前台提醒、主开关、`retainedBy.mainView` 推导当前会话、点通知走 `uiWorkspace.openSession`、会话已消失不打开。
+- `smoke/cordis-host-test.mjs` 增加真 cordis 的 `sessionStatus` 宿主（兄弟插件提供 `sessionStatus` 与 `uiWorkspace`，`sessions` 不带 `open`）：断言订阅绑到 `sessionStatus`、审批只提醒一次且正文带工具名 + 理由、标题标记设置与释放、点通知调用 `uiWorkspace.openSession`。原有 `pendingInteractions` 宿主与无 `uiSession` 的旧宿主用例保留。
+- 自检命令补 `DSH_CORDIS_PATH`：源码 checkout 里没有 profile 依赖时，用它把 `cordis-host-test.mjs` 指向 checkout 内的 `vendor/cordis/lib/index.js`（否则该用例按设计跳过）。
+
+### 已知限制
+- `≥ 0.1.6`（含 `0.2.0-rc.2`）的「回复完成」提醒正文不再附带回复摘要：宿主快照不再提供 `nodes`，摘要取不到；提醒本身照常触发。
+
 ## [1.1.8] — 2026-09-24
 
 ### 新增

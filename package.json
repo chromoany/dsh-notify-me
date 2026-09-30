@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-me",
-  "version": "1.1.8",
+  "version": "1.2.0",
   "description": "DSH 桌面消息提醒插件：模型需要你操作（审批/方案确认/提问的可操作提醒）或回复在后台完成时，系统通知+提示音+标签页标题提醒你；可在设置页开关并切换通知语言。Desktop notification & message alerts for DeepSeek Harness web — toasts, sounds and a tab-title marker when the agent needs your input (approval / plan review / question) or a reply finishes in the background; toggleable from Settings with zh/en notification language.",
   "license": "MIT",
   "type": "module",
@@ -80,12 +80,13 @@
         "0.1.1-rc.2": "compatible",
         "0.1.2-rc.1": "compatible",
         "0.1.5-rc.1": "compatible",
-        "0.1.5-rc.2": "compatible"
+        "0.1.5-rc.2": "compatible",
+        "0.2.0-rc.2": "compatible"
       }
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6 || ^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1"
+    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6 || ^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || >=0.1.6-alpha.2 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-client-locale": {

@@ -17,7 +17,7 @@
 
 ## 本插件的当前状态
 
-- npm：`dsh-notify-me` 已发布，`latest` 为 1.1.3，manifest 带 `dsh.bundle.patch` 与 `dsh.compatibility.dshReleases`。
+- npm：`dsh-notify-me` 已发布，`latest` 为 1.1.8，manifest 带 `dsh.bundle.patch` 与 `dsh.compatibility.dshReleases`；`dsh.compatibility.dshReleases` 已声明到 `0.2.0-rc.2`。
 - imsai-sh / deepseek1024.com：条目 `catalog/plugins/chromoany--dsh-notify-me.json` 已合入 `main`（`added: 2026-09-09`），`Catalog sync` 工作流在每次 main 推送后自动跑。**2026-09-11 扩写条目描述以提升站内可搜性（PR #400，`static-review` 已通过、待合并）**：原描述里没有「消息提醒 / 桌面通知 / 提醒 / message alerts / reminder」，用户搜这些词完全命中不到——机制见下节。
 - awesome-dsh-plugin：条目文件 `data/plugins/chromoany__dsh-notify-me.yml` 在 **PR #4741**（`Submission gate` 绿；唯一红的 `check` 是仓库级构建失败，与本条目无关），**仍未合并**。2026-09-11 核查结论：该站**自 2026-09-09 03:13Z 起站点构建失败、数据停更在 09-08**（registry 顶层 `updated: 2026-09-08`、`count: 3408`、最大 `added: 2026-09-08`），且 **09-09 03:26Z 之后零合并**（`merged:>=2026-09-09T04:00:00Z` 精确等于 0）。反证：09-09 已合并的 #4591 `xtd1145/dsh-deepseek-cost-live`、#4495 `dearbld/dsh-living-memory`、#4503 `dsh-todo-float-ball` 在站点上**同样 404**。故"搜不到"是整条队列停滞，不是本条目被拒。
 

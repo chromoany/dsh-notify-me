@@ -74,7 +74,15 @@ dsh plugin --profile web add dsh-notify-me
 
 重启 `dsh web` 后硬刷新页面（Ctrl+Shift+R）。
 
-**兼容性** — 实测**真正激活**（各自独立 profile 启动：设置里出现「通知提醒」分区，即插件的 `apply` 确实执行）于 `0.1.2-rc.1` 与 `0.1.5-rc.2`；更早的 `0.1.1-rc.2` 亦验证过。逐版本声明见 `package.json` 的 `dsh.compatibility.dshReleases`。注意一个坑：若 `dsh.client.inject` 里列了新版运行时已不再提供的包，客户端条目会停在 `pending (waiting for services: …)` 而永不执行——1.1.3 在 `0.1.2-rc.1` 及以后正是这样失效的。
+**兼容性** — 插件按宿主代际自动选源，逐版本声明见 `package.json` 的 `dsh.compatibility.dshReleases`：
+
+| 宿主代际 | 「需要你」交互来源 | 判断当前会话 | 点通知切会话 |
+| --- | --- | --- | --- |
+| `≤ 0.1.1-rc.2` | 控制器快照的 `pending[]` | 快照 `current` | `sessions.open()` |
+| `0.1.2-alpha.2 .. 0.1.5-rc.3` | `uiSession.pendingInteractions` | 快照 `current` | `sessions.open()` |
+| `≥ 0.1.6-alpha.2`（含 `0.2.0-rc.2`） | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
+
+实测**真正激活**（各自独立 profile 启动：设置里出现「通知提醒」分区，即插件的 `apply` 确实执行）于 `0.1.2-rc.1`、`0.1.5-rc.2` 与 `0.2.0-rc.2`；更早的 `0.1.1-rc.2` 亦验证过。两个坑值得记住：一是 `dsh.client.inject` 里列了新版运行时已不再提供的包，客户端条目会停在 `pending (waiting for services: …)` 而永不执行——1.1.3 在 `0.1.2-rc.1` 及以后正是这样失效的；二是宿主换存储/字段名时**不会报错**，提醒只会静默失效——`0.2.0-rc.2` 上 `pendingInteractions`→`sessionStatus`、`list.current`→`retainedBy.mainView`、`sessions.open()`→`uiWorkspace.openSession()` 都是这一类，所以每次适配都要用 `window.__dshNotifyMe.debug()` 确认真的是 `bound`、以及用的是哪个来源。
 
 **验证** — F12 控制台执行：
 
@@ -106,10 +114,11 @@ window.__dshNotifyMe.resetConfig()                // 恢复默认
 
 ## 工作原理
 
-浏览器半身订阅客户端 `sessions` 服务（与 UI 同一数据源）：
+提醒核心按宿主代际取源（见上表），当前会话一律来自客户端 `sessions` 服务：
 
-- **当前会话** `ConversationSnapshot`：`running` true→false = 回复完成；`pending[]` 新增 `approval` / `plan-review` / `question` = 模型在等你（可行时在提醒里展示提问/审批内容）；
-- **其它已列会话**摘要：出现新 `pendingInteraction`，或 `completed` 边沿（非选中状态下跑完）→ 后台工作提醒。
+- **当前会话** `SessionSnapshot`：`running` true→false = 回复完成；
+- **待办交互**：`uiSession` 的 `sessionStatus`（`≥ 0.1.6`，逐会话 `pendingInteraction`）或 `pendingInteractions`（`0.1.2 .. 0.1.5`）出现新 key = 模型在等你，容器里带上审批工具名 / 理由、提问文本；旧宿主回落到控制器快照的 `pending[]`；
+- **其它已列会话**摘要：`running` true→false（或旧宿主的 `completed` 边沿）= 后台工作提醒。
 
 提醒核心仍然零第三方运行时依赖、完全自包含：通知文字按所选语言（跟随界面 / 中文 / English）即时解析。设置页是**可选**的 React 呈现层——当 DSH web profile 提供 `slots` / `locale` / `react` 时才注册进「设置 → 通知提醒」，缺任一能力时插件自动降级为纯提醒（无设置页），不影响功能。
 
@@ -120,15 +129,20 @@ window.__dshNotifyMe.resetConfig()                // 恢复默认
 - 每次页面加载后第一次出声/弹通知前，需在页面上点击过一次（浏览器自动播放与权限策略）。
 - 未授权通知权限时只有提示音与标题标记。
 - 配置存在浏览器 `localStorage`：换浏览器/设备或清除站点数据后会回到默认值（设置页可一键恢复默认）。
+- `≥ 0.1.6`（含 `0.2.0-rc.2`）的「回复完成」提醒正文只有会话名，不再附带回复摘要——宿主快照已不再提供 `nodes`；提醒本身照常触发。
+- 标题标记由宿主与插件共同写 `document.title`：宿主重算标题时标记可能被覆盖，直到下一次提醒事件重新写成。
 
 ## 开发自检
 
 ```powershell
 node --check lib\client.js
 node --check lib\index.js
-node smoke\smoke-test.cjs     # 离线状态机冒烟测试（含主开关与中英语言用例）
-npm pack --dry-run            # 预览发布包
+node smoke\smoke-test.cjs        # 离线状态机冒烟测试：三代宿主 + 主开关 + 中英语言用例
+node smoke\cordis-host-test.mjs  # 真 cordis 端到端（找不到本机 DSH 时自动跳过）
+npm pack --dry-run               # 预览发布包
 ```
+
+`cordis-host-test.mjs` 会从本机 DSH 安装借 `@deepseek-ai/cordis`；源码 checkout 里没有 profile 依赖时，用 `DSH_CORDIS_PATH=<checkout>/vendor/cordis/lib/index.js` 指定即可。
 
 ## License
 

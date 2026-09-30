@@ -11,8 +11,11 @@
 // This test loads the same bundle into a REAL cordis root, has a sibling plugin
 // provide the services (uiSession included), and asserts the whole chain:
 // service reachable -> watcher bound -> approval in the interaction store ->
-// an attention alert in the page. It skips (exit 0) when no DSH installation
-// is present to borrow cordis from.
+// an attention alert in the page. Three host generations run: the 0.1.2-0.1.5
+// `pendingInteractions` store, the 0.1.6+/0.2 `sessionStatus` snapshot (where
+// sessions.open is gone and navigation goes through uiWorkspace), and the
+// pre-0.1.2 legacy path with no uiSession at all. It skips (exit 0) when no DSH
+// installation is present to borrow cordis from.
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -123,10 +126,12 @@ function bootBundle(opts) {
 }
 
 // The Controller-side stubs (session list + selected-session snapshot).
-function makeController() {
+// withOpen=false models 0.1.6+ hosts, which removed sessions.open(id) and route
+// navigation through uiWorkspace.openSession instead.
+function makeController({ withOpen = true } = {}) {
   const listeners = { list: [], face: [] };
   const opened = []; // sessions the plugin asked the host to select
-  let listState = { ids: [], byId: {}, current: 's1', phase: 'ready' };
+  let listState = { ids: [], byId: {}, current: withOpen ? 's1' : undefined, phase: 'ready' };
   let faceSnap = { sessionId: 's1', running: false, pending: [], nodes: [], partial: null };
   const sessions = {
     list: {
@@ -139,8 +144,8 @@ function makeController() {
         getSnapshot: () => faceSnap,
       },
     }),
-    open: (id) => { opened.push(id); },
   };
+  if (withOpen) sessions.open = (id) => { opened.push(id); };
   return {
     sessions, listeners, opened,
     faceSnap: () => faceSnap,
@@ -185,6 +190,24 @@ async function main() {
     }
   }
 
+  // Host with the status snapshot: DSH >= 0.1.6-alpha.2, including 0.2.0-rc.2.
+  // pendingInteractions does not exist here at all.
+  class FakeUiSessionStatus extends Service {
+    constructor(ctx) {
+      super(ctx, 'uiSession');
+      this.snapshot = new Map();
+      this.listeners = new Set();
+      this.sessionStatus = {
+        getSnapshot: () => this.snapshot,
+        subscribe: (fn) => { this.listeners.add(fn); return () => this.listeners.delete(fn); },
+      };
+    }
+    publish(map) {
+      this.snapshot = map;
+      for (const fn of [...this.listeners]) fn();
+    }
+  }
+
   const localeStub = {
     register() {}, bind: () => (k) => k,
     subscribe: () => () => {}, getSnapshot: () => ({ active: 'zh' }),
@@ -192,22 +215,27 @@ async function main() {
   };
   const slotsStub = { inject() {}, register() {} };
 
-  async function runHost({ withUiSession, withNotification }) {
+  // mode: 'pendingInteractions' (0.1.2-0.1.5) | 'status' (0.1.6+) | 'legacy'.
+  async function runHost({ mode, withNotification }) {
     const b = bootBundle({ withNotification });
-    const controller = makeController();
+    const controller = makeController({ withOpen: mode !== 'status' });
     const root = new Context();
     let uiService = null;
     const probe = {};
 
-    // Sibling entry 1: the host services (what dsh-client-ui-session and the
-    // Controller provide on a real boot).
+    // Sibling entry 1: the host services (what dsh-client-ui-session, the
+    // Controller and ui-workspace provide on a real boot).
     root.plugin({
       name: 'fake-host-services',
       apply(ctx) {
         ctx.provide('sessions', controller.sessions);
         ctx.provide('locale', localeStub);
         ctx.provide('slots', slotsStub);
-        if (withUiSession) uiService = new FakeUiSession(ctx);
+        if (mode === 'pendingInteractions') uiService = new FakeUiSession(ctx);
+        if (mode === 'status') {
+          uiService = new FakeUiSessionStatus(ctx);
+          ctx.provide('uiWorkspace', { openSession: (id) => { controller.opened.push(id); } });
+        }
       },
     });
 
@@ -237,7 +265,7 @@ async function main() {
   // ── host with uiSession (DSH >= 0.1.2) ──────────────────────────────
   console.log('\n— real cordis host WITH uiSession —');
   {
-    const h = await runHost({ withUiSession: true, withNotification: true });
+    const h = await runHost({ mode: 'pendingInteractions', withNotification: true });
     assert(h.probe.property !== 'ok',
       'probe: a plain ctx.uiSession read should throw on this host (got ' + h.probe.property + ')');
     assert(String(h.probe.property).indexOf('without inject') !== -1,
@@ -305,7 +333,7 @@ async function main() {
   // ── legacy host (no uiSession service at all) ───────────────────────
   console.log('\n— real cordis host WITHOUT uiSession (legacy controller path) —');
   {
-    const h = await runHost({ withUiSession: false });
+    const h = await runHost({ mode: 'legacy' });
     assert(h.probe.get === false, 'probe: ctx.get("uiSession") must be undefined on a legacy host');
     const dbg = h.win.__dshNotifyMe.debug();
     assert(dbg.uiSession === 'unbound', 'legacy host must not report a bound interaction store');
@@ -335,6 +363,60 @@ async function main() {
     await tick();
     assert(h.events.length === 0, 'a legacy on-screen wait stays silent while the page is visible');
     console.log('legacy on-screen wait stayed silent');
+  }
+
+  // ── 0.1.6+/0.2 host (uiSession.sessionStatus, no sessions.open) ──────
+  console.log('\n— real cordis host WITH uiSession.sessionStatus (0.1.6+/0.2 shape) —');
+  {
+    const h = await runHost({ mode: 'status', withNotification: true });
+    const dbg = h.win.__dshNotifyMe.debug();
+    assert(dbg.uiSession === 'bound',
+      'plugin must bind sessionStatus (debug: ' + JSON.stringify(dbg) + ')');
+    assert(dbg.uiSessionSource === 'sessionStatus',
+      'debug must report the sessionStatus source, got ' + dbg.uiSessionSource);
+    console.log('watcher bound OK to sessionStatus');
+
+    // The list snapshot of this generation has no `current`: the on-screen
+    // session is the row the main view retains.
+    h.controller.setList({
+      ids: ['s1'], byId: {
+        s1: { running: true, displayTitle: '当前会话', retainedBy: { mainView: 1 } },
+      }, phase: 'ready',
+    });
+    h.controller.notifyList();
+    await tick();
+    assert(h.win.__dshNotifyMe.debug().currentSession === 's1',
+      'current session must come from retainedBy.mainView (got ' + h.win.__dshNotifyMe.debug().currentSession + ')');
+    console.log('current-session derivation OK (retainedBy.mainView)');
+
+    // approval in the status map while the user is away -> one alert + marker
+    h.doc.hidden = true; h.doc.visibilityState = 'hidden';
+    const appr = new FakeApproval('approval:s1', 's1', 'pwsh', 'needs elevated shell');
+    h.uiService.publish(new Map([['s1', { running: true, pendingInteraction: appr, completionUnread: false }]]));
+    await tick();
+    const att = h.events.filter((e) => e.kind === 'attention');
+    assert(att.length === 1, 'sessionStatus approval must raise exactly one attention alert (got ' + att.length + ')');
+    assert(att[0].title.indexOf('审批') !== -1, 'zh approval title, got: ' + att[0].title);
+    assert(att[0].body.indexOf('pwsh') !== -1 && att[0].body.indexOf('needs elevated shell') !== -1,
+      'body carries the tool name and reason, got: ' + att[0].body);
+    assert(h.getTitle().indexOf('需要你') !== -1, 'tab marker set while the approval waits');
+    console.log('sessionStatus approval alert OK:', JSON.stringify(att[0]));
+
+    // the toast carries the session: clicking it must navigate through the
+    // uiWorkspace service (this host has no sessions.open)
+    const toast = h.lastNotification();
+    assert(toast && toast.title.indexOf('审批') !== -1, 'the approval raised a clickable toast');
+    toast.onclick();
+    assert(h.controller.opened.length === 1 && h.controller.opened[0] === 's1',
+      'clicking the toast must run uiWorkspace.openSession for the alerted session, got ' + JSON.stringify(h.controller.opened));
+    console.log('toast click navigated via uiWorkspace.openSession OK');
+
+    // the session stays listed but the interaction is answered -> marker drops
+    h.uiService.publish(new Map([['s1', { running: true, pendingInteraction: null, completionUnread: false }]]));
+    await tick();
+    assert(h.getTitle().indexOf('需要你') === -1,
+      'tab marker cleared once pendingInteraction leaves the status row');
+    console.log('status-row answer released the marker OK');
   }
 
   console.log('\ncordis-host-test passed');

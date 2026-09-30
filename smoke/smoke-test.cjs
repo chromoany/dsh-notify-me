@@ -3,12 +3,17 @@
 // fake host state, asserting the alert machinery fires without throwing and
 // produces the expected title/onEvent changes.
 //
-// Two hosts are exercised, because pending interactions have two owners:
+// Three hosts are exercised, because pending interactions changed owners twice:
 //   * legacy  — DSH <= 0.1.1-rc.2: no `uiSession` service; the controller's
 //               session snapshot carries `pending: [{key,kind,payload}]`.
-//   * current — DSH >= 0.1.2-alpha.2: those snapshots no longer carry
+//   * current — DSH 0.1.2-alpha.2 .. 0.1.5-rc.3: those snapshots no longer carry
 //               `pending`; interactions live in ctx.uiSession.pendingInteractions
 //               (a Map<sessionId, interaction>).
+//   * modern  — DSH >= 0.1.6-alpha.2 (incl. 0.2.0-rc.2): that store is gone,
+//               replaced by ctx.uiSession.sessionStatus
+//               (a Map<sessionId, {running, pendingInteraction, completionUnread}>);
+//               the list snapshot also stops carrying `current`, so the
+//               on-screen session is the row with retainedBy.mainView > 0.
 // The reply-finished channel (running/completed) is host-independent.
 'use strict';
 const fs = require('node:fs');
@@ -103,13 +108,18 @@ function bootBundle(opts) {
 }
 
 // The reminder core needs `sessions` + `effect`; `uiSession` is optional and
-// only present on the current host. Both are built from plain objects so the
+// only present on its host generation. Both are built from plain objects so the
 // test can move the host state one notification at a time.
-function buildHost({ withUiSession }) {
-  const listeners = { list: [], face: [], uiPending: [] };
+//   withUiSession    — 0.1.2 .. 0.1.5 host: uiSession.pendingInteractions
+//   withSessionStatus— 0.1.6+/0.2 host: uiSession.sessionStatus only, and the
+//                      sessions service has no open() (navigation moved to
+//                      uiWorkspace.openSession, offered by withWorkspace)
+function buildHost({ withUiSession, withSessionStatus, withWorkspace }) {
+  const listeners = { list: [], face: [], uiPending: [], status: [] };
   let listState = { ids: [], byId: {}, current: 's1', phase: 'ready' };
   let faceSnap = { sessionId: 's1', running: false, pending: [], nodes: [], partial: null };
   let uiSnapshot = new Map();
+  let statusSnapshot = new Map();
   const cleanups = [];
   const opened = []; // sessions the plugin asked the host to select
 
@@ -124,8 +134,9 @@ function buildHost({ withUiSession }) {
         getSnapshot: () => faceSnap,
       },
     }),
-    open: (id) => { opened.push(id); },
   };
+  // 0.1.6+ removed sessions.open(id); only the pre-0.1.6 generation has it.
+  if (!withSessionStatus) sessionsFake.open = (id) => { opened.push(id); };
 
   const ctx = {
     sessions: sessionsFake,
@@ -139,6 +150,18 @@ function buildHost({ withUiSession }) {
       },
     };
   }
+  if (withSessionStatus) {
+    // 0.2.0-rc.2 shape: sessionStatus only; pendingInteractions is gone.
+    ctx.uiSession = {
+      sessionStatus: {
+        getSnapshot: () => statusSnapshot,
+        subscribe: (fn) => { listeners.status.push(fn); return () => { listeners.status = listeners.status.filter((f) => f !== fn); }; },
+      },
+    };
+  }
+  if (withWorkspace) {
+    ctx.uiWorkspace = { openSession: (id) => { opened.push(id); } };
+  }
 
   return {
     ctx,
@@ -149,10 +172,17 @@ function buildHost({ withUiSession }) {
     setFace: (v) => { faceSnap = v; },
     faceSnap: () => faceSnap,
     setUiPending: (map) => { uiSnapshot = map; },
+    setStatus: (map) => { statusSnapshot = map; },
     notifyList: () => { for (const l of [...listeners.list]) l(); },
     notifyFace: () => { for (const l of [...listeners.face]) l(); },
     notifyUi: () => { for (const l of [...listeners.uiPending]) l(); },
+    notifyStatus: () => { for (const l of [...listeners.status]) l(); },
   };
+}
+
+// One sessionStatus row, shaped like the shipped 0.1.6+/0.2 SessionStatus.
+function statusRow(pendingInteraction, extra) {
+  return Object.assign({ running: true, pendingInteraction: pendingInteraction || null, completionUnread: false }, extra || {});
 }
 
 // Interaction objects shaped like the shipped 0.1.2+ classes.
@@ -520,9 +550,158 @@ async function currentHost() {
   assert(host.listeners.uiPending.length === 0, 'pendingInteractions unsubscribed after dispose');
 }
 
+async function modernHost() {
+  console.log('\n— modern host (0.1.6+/0.2: uiSession.sessionStatus, no list.current/open) —');
+  const b = bootBundle();
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  const { mod, win, doc, events, getTitle } = b;
+  // A 0.2.0-rc.2 list snapshot: no `current`, rows carry retainedBy instead.
+  const cur = { running: true, displayTitle: '当前会话', retainedBy: { mainView: 1 } };
+  const bg = (title) => ({ running: true, displayTitle: title, retainedBy: {} });
+
+  mod.apply(host.ctx);
+  win.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
+  assert(host.listeners.status.length === 1,
+    'sessionStatus subscribed (the 0.1.2-0.1.5 pendingInteractions store is gone on this host)');
+  const bound = win.__dshNotifyMe.debug();
+  assert(bound.uiSession === 'bound', 'watcher bound, got ' + JSON.stringify(bound));
+  assert(bound.uiSessionSource === 'sessionStatus', 'debug reports the sessionStatus source, got ' + bound.uiSessionSource);
+
+  // 1) the on-screen session comes from retainedBy.mainView when `current` is gone
+  host.setList({ ids: ['s1'], byId: { s1: cur }, phase: 'ready' });
+  host.notifyList();
+  assert(win.__dshNotifyMe.debug().currentSession === 's1',
+    'currentSession derived from retainedBy.mainView, got ' + win.__dshNotifyMe.debug().currentSession);
+  host.setFace({ sessionId: 's1', running: true, nodes: [], partial: null });
+  host.notifyFace();
+  assert(host.listeners.face.length === 1, 'face watcher bound to the mainView session');
+
+  // 2) an approval surfaces through sessionStatus.pendingInteraction
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  host.setStatus(new Map([['s1', statusRow(approval('approval:101'))]]));
+  host.notifyStatus();
+  let att = events.filter((e) => e.kind === 'attention');
+  assert(att.length === 1, 'attention fired for a new approval, got ' + att.length);
+  assert(att[0].title === 'DSH · 审批请求', 'approval copy, got ' + att[0].title);
+  assert(att[0].body.indexOf('pwsh') !== -1 && att[0].body.indexOf('needs elevated shell') !== -1,
+    'approval body carries toolName + reason, got ' + att[0].body);
+  assert(getTitle().indexOf('需要你') !== -1, 'title marker set on approval');
+
+  // 3) the same status republished does not re-alert
+  events.length = 0;
+  host.notifyStatus();
+  assert(events.length === 0, 'no duplicate alert for the same interaction key');
+
+  // 4) the wait is answered (status keeps the session, drops the interaction)
+  host.setStatus(new Map([['s1', statusRow(null)]]));
+  host.notifyStatus();
+  assert(getTitle().indexOf('需要你') === -1,
+    'title marker released when pendingInteraction disappears from the status row');
+
+  // 5) a background session's wait is labelled from its list row
+  events.length = 0;
+  host.setList({ ids: ['s2'], byId: { s2: bg('后台任务') }, phase: 'ready' });
+  host.notifyList();
+  host.setStatus(new Map([
+    ['s1', statusRow(null)],
+    ['s2', statusRow(question('question:12', { sessionId: 's2' }))],
+  ]));
+  host.notifyStatus();
+  att = events.filter((e) => e.kind === 'attention');
+  assert(att.length === 1, 'background wait alerted, got ' + att.length);
+  assert(att[0].body.indexOf('后台任务') !== -1, 'background wait carries the session title, got ' + att[0].body);
+  assert(att[0].title === 'DSH · 提问', 'question copy, got ' + att[0].title);
+
+  // 6) a wait inside the on-screen conversation stays silent and is delivered
+  //    on background, using the retainedBy-derived current session
+  doc.hidden = false; doc.visibilityState = 'visible';
+  events.length = 0;
+  host.setList({ ids: ['s1'], byId: { s1: cur }, phase: 'ready' });
+  host.notifyList();
+  host.setStatus(new Map([['s1', statusRow(approval('approval:102'))]]));
+  host.notifyStatus();
+  assert(events.length === 0, 'an on-screen wait stays silent while the page is visible');
+  assert(getTitle().indexOf('需要你') !== -1, 'the silent wait still marks the tab');
+  assert(win.__dshNotifyMe.debug().quietedKeys.indexOf('approval:102') !== -1,
+    'the on-screen wait is queued for the background');
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  b.fireVisibility();
+  const flushed = events.filter((e) => e.kind === 'attention');
+  assert(flushed.length === 1 && flushed[0].title === 'DSH · 审批请求',
+    'the queued wait is delivered once the page is backgrounded, got ' + JSON.stringify(flushed));
+
+  // 7) a background wait still alerts while the page is visible
+  doc.hidden = false; doc.visibilityState = 'visible';
+  events.length = 0;
+  host.setStatus(new Map([
+    ['s1', statusRow(null)],
+    ['s2', statusRow(approval('approval:103', { sessionId: 's2' }))],
+  ]));
+  host.notifyStatus();
+  assert(events.filter((e) => e.kind === 'attention').length === 1,
+    'a background session still alerts while the page is visible');
+
+  // 8) the reply-finished channel on the face snapshot (0.2.0-rc.2 no longer
+  //    carries nodes, so the toast body has no assistant snippet)
+  await sleep(400);
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  events.length = 0;
+  host.setStatus(new Map([['s1', statusRow(null)]]));
+  host.notifyStatus();
+  host.setList({ ids: ['s1'], byId: { s1: cur }, phase: 'ready' });
+  host.notifyList();
+  host.setFace({ sessionId: 's1', running: true, nodes: [] });
+  host.notifyFace();
+  events.length = 0;
+  host.setFace({ sessionId: 's1', running: false, nodes: [] });
+  host.notifyFace();
+  const done = events.filter((e) => e.kind === 'done');
+  assert(done.length === 1, 'reply-finished fires on the current host, got ' + JSON.stringify(done));
+  assert(done[0].body === '当前对话', 'no assistant snippet without snapshot nodes, got ' + JSON.stringify(done[0].body));
+
+  // 9) master switch off silences the interaction channel too
+  win.__dshNotifyMe.setConfig({ enabled: false, language: 'zh' });
+  events.length = 0;
+  host.setStatus(new Map([['s1', statusRow(approval('approval:104'))]]));
+  host.notifyStatus();
+  assert(events.length === 0, 'no alert while master switch is off');
+  win.__dshNotifyMe.setConfig({ enabled: true, sound: false });
+
+  // 10) clicking a toast navigates through uiWorkspace.openSession (this host
+  //     has no sessions.open at all), and a session that left the list is
+  //     never opened
+  const nb = bootBundle({ withNotification: true });
+  const nhost = buildHost({ withSessionStatus: true, withWorkspace: true });
+  nb.doc.hidden = true; nb.doc.visibilityState = 'hidden';
+  nb.mod.apply(nhost.ctx);
+  nhost.setList({ ids: ['s2'], byId: { s2: bg('后台任务') }, phase: 'ready' });
+  nhost.notifyList();
+  nhost.setStatus(new Map([['s2', statusRow(approval('approval:105', { sessionId: 's2' }))]]));
+  nhost.notifyStatus();
+  const toast = nb.lastNotification();
+  assert(toast && toast.title === 'DSH · 审批请求', 'a toast was raised for the background wait');
+  toast.onclick();
+  assert(nhost.opened.length === 1 && nhost.opened[0] === 's2',
+    'clicking the toast ran uiWorkspace.openSession for the alerted session, got ' + JSON.stringify(nhost.opened));
+  nhost.setList({ ids: [], byId: {}, phase: 'ready' });
+  nhost.notifyList();
+  nhost.setStatus(new Map([['s9', statusRow(approval('approval:106', { sessionId: 's9' }))]]));
+  nhost.notifyStatus();
+  const goneToast = nb.lastNotification();
+  assert(goneToast !== toast, 'a second toast was raised for the vanished session');
+  goneToast.onclick();
+  assert(nhost.opened.length === 1, 'a session missing from the list is never opened');
+  for (const c of [...nhost.cleanups]) c();
+
+  for (const c of [...host.cleanups]) c();
+  assert(host.listeners.status.length === 0, 'sessionStatus unsubscribed after dispose');
+  assert(host.listeners.face.length === 0, 'face unsubscribed after dispose');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
+  await modernHost();
   console.log('\nALL SMOKE TESTS PASSED ✔');
   // Exit explicitly: marker-release timers stay armed on purpose (they mirror
   // browser behaviour) and would otherwise hold the loop open.
