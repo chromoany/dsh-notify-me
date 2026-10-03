@@ -1035,10 +1035,85 @@ async function quickActionsHost() {
   }));
 }
 
+// ────────── subagent sessions stay quiet by default (1.4.0) ──────────
+// DSH lists every subagent's child session as an ordinary row (origin:
+// 'subagent', parentId: <parent>), so a watcher that walks the whole list
+// alerts for a step of a conversation the user never started. The mute keys on
+// that origin field alone: a forked session (parentId set, no origin) is still
+// the user's own conversation and keeps alerting.
+async function subagentSessions() {
+  console.log('\n— subagent sessions (origin: "subagent") are muted by default —');
+  const b = bootBundle();
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  const { mod, win, doc, events, getTitle } = b;
+  const cur = { running: false, displayTitle: '当前会话', retainedBy: { mainView: 1 } };
+  const bg = (title, extra) => Object.assign({ running: true, displayTitle: title, retainedBy: {} }, extra || {});
+  const child = (title, extra) => bg(title, Object.assign({ origin: 'subagent', parentId: 's1' }, extra || {}));
+  const fork = (title) => bg(title, { parentId: 's1' });
+
+  mod.apply(host.ctx);
+  win.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
+  assert(win.__dshNotifyMe.config.ignoreSubagent === true, 'ignoreSubagent defaults to true');
+  assert(win.__dshNotifyMe.debug().ignoreSubagent === true, 'debug() reports ignoreSubagent');
+
+  // 1) a subagent finishing raises nothing; a normal background session still does
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  host.setList({ ids: ['s1', 'sub1', 's2'], byId: { s1: cur, sub1: child('子代理：探索'), s2: bg('后台任务') }, phase: 'ready' });
+  host.notifyList();
+  events.length = 0;
+  host.setList({ ids: ['s1', 'sub1', 's2'], byId: { s1: cur, sub1: child('子代理：探索', { running: false }), s2: bg('后台任务', { running: false }) }, phase: 'ready' });
+  host.notifyList();
+  const done = events.filter((e) => e.kind === 'done');
+  assert(done.length === 1, 'only the normal session reports "reply finished", got ' + JSON.stringify(done));
+  assert(done[0].body === '后台任务', 'the surviving alert is the normal session, got ' + JSON.stringify(done[0].body));
+
+  // 2) a subagent's wait never alerts and never marks the tab
+  events.length = 0;
+  host.setList({ ids: ['s1', 'sub1'], byId: { s1: cur, sub1: child('子代理：探索') }, phase: 'ready' });
+  host.notifyList();
+  host.setStatus(new Map([['sub1', statusRow(question('question:301', { sessionId: 'sub1' }))]]));
+  host.notifyStatus();
+  assert(events.filter((e) => e.kind === 'attention').length === 0,
+    'a subagent wait is muted, got ' + JSON.stringify(events));
+  assert(getTitle().indexOf('需要你') === -1, 'a muted subagent wait leaves no title marker');
+
+  // 3) a forked session (parentId, no origin) is still the user's own conversation
+  events.length = 0;
+  host.setList({ ids: ['s1', 'fork1'], byId: { s1: cur, fork1: fork('分支会话') }, phase: 'ready' });
+  host.notifyList();
+  host.setStatus(new Map([['fork1', statusRow(question('question:302', { sessionId: 'fork1' }))]]));
+  host.notifyStatus();
+  const forkAtt = events.filter((e) => e.kind === 'attention');
+  assert(forkAtt.length === 1, 'a forked session still alerts, got ' + JSON.stringify(forkAtt));
+  assert(forkAtt[0].body.indexOf('分支会话') !== -1, 'the fork alert carries its own title, got ' + forkAtt[0].body);
+
+  // 4) turning the switch off restores subagent alerts, live
+  win.__dshNotifyMe.setConfig({ ignoreSubagent: false });
+  events.length = 0;
+  host.setStatus(new Map([['sub1', statusRow(question('question:303', { sessionId: 'sub1' }))]]));
+  host.notifyStatus();
+  assert(events.filter((e) => e.kind === 'attention').length === 1,
+    'un-muting re-enables subagent waits, got ' + JSON.stringify(events));
+  // the done edge is deliberately ignored within 300ms of an attention alert
+  // (the same-tick answering rule), so let that window pass first
+  await sleep(350);
+  events.length = 0;
+  host.setList({ ids: ['s1', 'sub1'], byId: { s1: cur, sub1: child('子代理：探索') }, phase: 'ready' });
+  host.notifyList();
+  host.setList({ ids: ['s1', 'sub1'], byId: { s1: cur, sub1: child('子代理：探索', { running: false }) }, phase: 'ready' });
+  host.notifyList();
+  const unmuted = events.filter((e) => e.kind === 'done');
+  assert(unmuted.length === 1 && unmuted[0].body === '子代理：探索',
+    'un-muting restores the subagent "reply finished" alert, got ' + JSON.stringify(unmuted));
+
+  for (const c of [...host.cleanups]) c();
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
   await modernHost();
+  await subagentSessions();
   await quickActionsHost();
   console.log('\nALL SMOKE TESTS PASSED ✔');
   // Exit explicitly: marker-release timers stay armed on purpose (they mirror

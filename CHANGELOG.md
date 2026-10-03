@@ -2,6 +2,20 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.4.0] — 2026-10-03
+
+### 新增
+- **子代理会话不提醒**（设置页新开关「子代理会话不提醒」，默认开启）：DSH 把每个子代理（subagent）子会话列成独立会话行（`origin: 'subagent'` 加 `parentId`），于是这些子会话的「需要你」与「回复完成」都会照常弹通知——可它们是所属主对话那一轮里的步骤，提醒只是噪音。现在默认整条静音：列表行评估与 `sessionStatus` 等待通道都按行上的 `origin` 跳过，主对话自己的提醒不受影响。
+- 判定只认 `origin`：只有 `parentId`、没有 `origin` 的分支（fork）会话仍是你自己的对话，照常提醒；静音开关读的是实时配置，切换后下一条事件即生效，不需要重载页面。
+- `window.__dshNotifyMe` 配置新增 `ignoreSubagent`（默认 `true`，可用 `setConfig` / `resetConfig` 调整），`debug()` 新增同名字段便于核对。
+
+### 变更
+- 版本号 1.3.1 → 1.4.0；`window.__dshNotifyMe.version` 同步。
+- README（中英）补上设置页新开关、提醒时机说明、控制台配置示例与工作原理里的子代理口径。
+
+### 测试
+- `smoke/smoke-test.cjs` 新增子代理用例：`ignoreSubagent` 默认值与 `debug()` 字段、子代理完成不提醒而普通后台会话照常、子代理等待不提醒也不打标题标记、分支（fork）会话仍提醒、关掉开关后子代理的等待与完成重新提醒。
+
 ## [1.3.1] — 2026-10-03
 
 ### 文档
