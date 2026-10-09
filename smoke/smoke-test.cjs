@@ -1307,6 +1307,21 @@ async function quickActionsHost() {
   host.setStatus(new Map([['s2', statusRow(null)]]));
   host.notifyStatus();
 
+  // 13) non-approval notifications (e.g. done) also route through the worker channel
+  //     when bridge is active, and clicking them steers the window to the session
+  await sleep(350);
+  host.opened.length = 0;
+  host.setStatus(new Map([['s2', { running: false, pendingInteraction: null, completionUnread: true }]]));
+  host.notifyStatus();
+  const doneNote = shown.filter((n) => n.opts.data && n.opts.data.kind === 'done').pop();
+  assert(doneNote, 'done notification raised via worker showNotification');
+  assert(doneNote.opts.data.sessionId === 's2', 'done notification carries the sessionId, got ' + JSON.stringify(doneNote.opts.data));
+  assert(!doneNote.opts.actions, 'done notification carries no action buttons');
+  w.click('', doneNote.opts.data);
+  await sleep(20);
+  assert(host.opened.length === 1 && host.opened[0] === 's2',
+    'clicking done notification routes to alerted session, got ' + JSON.stringify(host.opened));
+
   for (const c of [...host.cleanups]) c();
   console.log('quick-decision bridge OK:', JSON.stringify({
     registered: registered[0],

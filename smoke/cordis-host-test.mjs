@@ -240,7 +240,15 @@ async function main() {
         if (mode === 'pendingInteractions') uiService = new FakeUiSession(ctx);
         if (mode === 'status') {
           uiService = new FakeUiSessionStatus(ctx);
-          ctx.provide('uiWorkspace', { openSession: (id) => { controller.opened.push(id); } });
+          class FakeUiWorkspace extends Service {
+            constructor(c) {
+              super(c, 'uiWorkspace');
+            }
+            openSession(id) {
+              controller.opened.push(id);
+            }
+          }
+          new FakeUiWorkspace(ctx);
         }
       },
     });
@@ -416,6 +424,16 @@ async function main() {
     assert(h.controller.opened.length === 1 && h.controller.opened[0] === 's1',
       'clicking the toast must run uiWorkspace.openSession for the alerted session, got ' + JSON.stringify(h.controller.opened));
     console.log('toast click navigated via uiWorkspace.openSession OK');
+
+    // testAlert toasts also carry the session id and navigate on click
+    h.controller.opened.length = 0;
+    h.win.__dshNotifyMe.test('done');
+    const testToast = h.lastNotification();
+    assert(testToast && testToast.title.indexOf('回复完成') !== -1, 'test done toast produced');
+    testToast.onclick();
+    assert(h.controller.opened.length === 1 && h.controller.opened[0] === 's1',
+      'clicking test toast navigates to the session, got ' + JSON.stringify(h.controller.opened));
+    console.log('test done toast click navigated OK');
 
     // the session stays listed but the interaction is answered -> marker drops
     h.uiService.publish(new Map([['s1', { running: true, pendingInteraction: null, completionUnread: false }]]));

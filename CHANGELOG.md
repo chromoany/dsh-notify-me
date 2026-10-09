@@ -2,6 +2,19 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.5.4] — 2026-10-08
+
+### 修复
+- **点击系统通知弹窗可直接可靠定位到会话页面**：
+  - **修复 Cordis 环境下 `uiWorkspace` 服务懒解析失效问题**：在 DSH 0.1.6+ 与 0.2.0-rc.2 宿主中，会话切换路由由 `uiWorkspace.openSession` 承载，但宿主的 `UiWorkspaceService` 继承自 `Service` 并在根上下文挂载，未显式 inject 的子上下文通过 `ctx.get` 查不到且直接访问属性会抛错；`lookupService` 增加根上下文回溯（`rootCtx.root[name]`），彻底解决 `ws` 为 null 导致点击通知无法切换会话的硬阻断。
+  - **Web 端非审批通知同样接入 Service Worker 调度**：此前带按钮的审批通知走 SW，而「回复完成」「提问」「方案待确认」等普通通知回退至页面原生 `Notification`，在标签页处于后台或通知进入 Windows 通知中心时，页面原生通知的 `onclick` 常因后台冻结或无手势激活而无法执行；现在只要桥激活，所有通知均由 SW 的 `showNotification` 统一弹出并携带会话信息，点击后由 SW 调度置顶并可靠指令切会话。
+  - **点击通知自动关闭遮罩弹窗（如设置页）**：若用户停留在设置弹窗等模态层时点击通知，自动派遣 Escape 事件关闭遮罩层，直接露出所选会话内容。
+  - **测试提醒补全会话关联**：设置页中的测试提醒（「需要你」「回复完成」「审批按钮」）自动关联当前会话 ID，使得点击测试通知弹窗同样可以直接定位到会话。
+  - **清单注入补全**：`package.json` 的 `dsh.client.inject` 补充 `@deepseek-ai/dsh-client-ui-workspace`，确保依赖拓扑完整。
+
+### 变更
+- 版本号 1.5.3 → 1.5.4；`window.__dshNotifyMe.version` 同步。
+
 ## [1.5.3] — 2026-10-04
 
 ### 新增
