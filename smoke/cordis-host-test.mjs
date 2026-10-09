@@ -505,6 +505,16 @@ async function main() {
     await tick();
     assert(h.getTitle().indexOf('✅') === -1, 'opening the session releases the unread mark');
     console.log('completionUnread latch + release OK');
+
+    // Active pause / user stop: actively pausing a running conversation or interrupting it
+    // must NOT raise any alert (neither attention nor done)
+    h.events.length = 0;
+    h.win.__dshNotifyMe.setConfig({ attentionHiddenOnly: false, doneHiddenOnly: false });
+    h.win.__dshNotifyMe.markUserStop('s1');
+    h.uiService.publish(new Map([['s1', { running: false, pendingInteraction: new FakeApproval('approval:paused', 's1', 'pwsh', 'stop'), completionUnread: false }]]));
+    await tick();
+    assert(h.events.length === 0, 'actively paused session must not alert attention or done, got ' + JSON.stringify(h.events));
+    console.log('actively paused session alert suppression OK');
   }
 
   console.log('\ncordis-host-test passed');
