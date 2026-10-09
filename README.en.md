@@ -53,7 +53,8 @@ Open **Settings → Notify me** (refresh the page once after installing):
 
 - **Enable reminders** — master switch; when off, no toasts, no sounds and the tab title is never touched;
 - **Environment** (auto-detect by default) — identifies Web vs Desktop (DSH Desktop, `dsh-app://`) from the page protocol, with a manual override for hosts where detection comes out wrong: on the Desktop a toast click rides the `dsh://` deep link to raise the window and quick-decision buttons are unavailable; on the Web it is `window.focus()` plus the Service Worker bridge. Whenever the override disagrees with detection, the settings page says what detection saw;
-- **System notifications / Sound / Volume** — toast toggle, WebAudio beep toggle and a volume slider;
+- **System notifications / Sound / Volume** — toast toggle, cue toggle and a volume slider;
+- **Alert sound** (picked separately for "needs you" and "reply finished") — built-in cue (default) / custom audio file / system notification sound. "Custom audio file" takes one local audio file in the settings page (1 MiB limit, stored in the browser, with preview and remove); "system notification sound" plays no plugin cue at all — the toast still appears and the operating system supplies the sound, so its timbre follows your system notification settings; in that mode "Preview" sends a test alert instead, because the sound only exists as part of a toast and that is the sound you hear. Any source that has no file, cannot be read, or does not fit falls back to the built-in cue, so an alert never goes silent;
 - **"Needs you" alerts while the page is open** (default on) and **"Reply finished" alerts while the page is open** (default off);
 - **Stay quiet for the conversation on screen** (default on): a wait inside the conversation you are looking at keeps only the tab marker — no toast or sound landing on the approval card. Backgrounding the page puts that alert back at once, unless you already handled it. Waits in other background sessions are unaffected;
 - **Ignore subagent sessions** (default on): background subagent child sessions raise neither "needs you" nor "reply finished" — those are steps of the parent conversation's turn, and the parent's own alert already covers them. The subagent session you have open alerts as usual. Turn it off to alert for every session;
@@ -68,7 +69,7 @@ Open **Settings → Notify me** (refresh the page once after installing):
 ## How it alerts
 
 - **System notification** — a toast through the browser into the Windows action center / macOS Notification Center (clicking it opens the conversation it came from; approval toasts can be decided straight from the buttons)
-- **Sound** — WebAudio beeps (distinct patterns for "needs you" vs "done")
+- **Sound** — WebAudio beeps by default (distinct patterns for "needs you" vs "done"); each kind can instead play a picked audio file, or hand the sound over to the operating system's own notification sound
 - **Tab title marker** — while something is waiting on you, the tab title is prefixed with `🔔 Action needed · …` / `🔔 需要你 · …`; while a background session is **finished but unread**, with `✅ Reply finished · …` / `✅ 回复完成 · …`, gone once you open that session (or it starts running again). Both kinds can be up together, "needs you" first; a host title change is rebased under the markers
 
 This is a **browser-layer** plugin: the DSH page must stay open (minimized or backgrounded is fine — that's exactly the "away" state it watches for).
@@ -123,14 +124,20 @@ window.__dshNotifyMe.setConfig({
   doneHiddenOnly: true,       // false = also alert "reply finished" while visible
   ignoreSubagent: true,       // true = never alert for background subagent sessions (the open one is exempt)
   toast: true,                // system-notification toggle
-  sound: true,                // sound toggle
+  sound: true,                // cue toggle (also governs the "system notification sound" mode)
+  soundDone: "synth",         // "reply finished" cue source: 'synth' built-in | 'custom' picked file | 'system' OS sound
+  soundAttention: "synth",    // "needs you" cue source, same values
   volume: 0.5,                // 0..1
   autoFocus: true,            // clicking a toast opens the conversation it came from
   quickActions: true          // Approve / Reject buttons on approval toasts
 })
-window.__dshNotifyMe.resetConfig()                // restore defaults
+window.__dshNotifyMe.resetConfig()                // restore defaults (also drops any picked audio files)
 window.__dshNotifyMe.decide("approval:3", "allowed-once")  // programmatic decision: "allowed-once" | "rejected"
 ```
+
+> Picked audio files do not live in `dshNotifyMe.config`: each kind gets its own key (`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`, holding `{name, size, data}` with a data URL), because a file inflates by ~1.37x once base64-encoded and would slow down every config read. `resetConfig()` clears both keys along with the config.
+>
+> To see which source is live, check `soundDone` / `soundAttention` and `customSoundDone` / `customSoundAttention` in `window.__dshNotifyMe.debug()`.
 
 ## How it works
 

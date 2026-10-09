@@ -2,6 +2,32 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.6.0] — 2026-10-09
+
+### 新增
+- **设置页可选音效来源**（`soundDone` / `soundAttention`，「需要你」与「回复完成」各自独立）：
+  - `'synth'`（默认）——原有 WebAudio 合成音，行为不变；
+  - `'custom'`——自选一个本地音频文件（上限 1 MiB，可试听、可移除），提醒时播放该文件；
+  - `'system'`——完全不播插件音效，改为把通知以 `silent: false` 发出，交由操作系统播放它自己的通知音（Windows 通知中心／macOS 通知中心），音色跟着系统通知设置走。
+- 设置页新增「音效来源」卡片：两类提醒各一行来源下拉 + 「试听」，选「自定义音频文件」时展开文件选择、已选文件名与体积、「试听」「移除」。
+- `window.__dshNotifyMe.debug()` 新增 `soundDone` / `soundAttention`（当前生效来源）与 `customSoundDone` / `customSoundAttention`（该类别是否已存自选文件）。
+
+### 变更
+- **通知的 `silent` 不再硬编码为 `true`**：改为 `!systemCue(kind)`。默认两种模式仍是 `silent: true`（插件自己出声，避免与平台提示音叠成两声），只有 `'system'` 模式主动让平台出声。主开关 `sound: false` 仍会连系统通知音一起静音——关掉声音就该是安静的。
+- 自选音频存在**独立的 localStorage 键**（`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`，值为 `{name, size, data}`），不塞进 `dshNotifyMe.config`：data URL 会膨胀约 1.37 倍，进配置会拖慢每次 `readConfig()`（每次提醒都会调用）。
+- `resetConfig()` 与设置页「恢复默认设置」现在**一并清掉**这两个音频键，不再只清配置——否则文件会残留占用 origin 配额，而 UI 上已经没有入口能删它。
+- **任何来源取不到声音都回落到内置合成音**（文件缺失、解码/自动播放被拒、超出配额），提醒不会因为音效配置坏掉而变成哑的。
+- 版本号 1.5.3 → 1.6.0；`window.__dshNotifyMe.version` 与 `package.json` 同步。
+- README（中英）同步：设置清单加「音效来源」，控制台配置块补 `soundDone` / `soundAttention` 与两个存储键的说明。
+
+### 修复
+- **「系统通知音」模式下点「试听」不再静默无反应**：该模式本就没有插件可播的音（声音是随通知由系统播放的），而初版实现让试听照样走插件音效通道、在 `'system'` 分支直接返回，按钮看起来就是坏的。现在改为按该类别**发一条测试通知**——你听到的就是它，并在按钮下方写明原因；`sound` 总开关关闭时同样给一句说明而不是静默。
+
+### 测试
+- `smoke/smoke-test.cjs` 新增音效来源用例段（**此前音效路径零覆盖**——harness 的 `AudioContext` 是 `undefined`，所有既有用例都静默走了「无音频」分支）：注入可捕获的 `AudioContext` 后，覆盖内置合成音的两种音型（done `659,988`、attention `880,1174,1568`）、`'system'` 不产生振荡器且通知 `silent === false`、`sound: false` 在 `'system'` 模式下重新静音、`'custom'` 播放所存 data URL 且音量跟随滑块、两类来源互不影响、文件缺失时回落内置音、`resetConfig()` 清空两个音频键。
+- 同一文件新增设置页渲染用例：`bootBundle` 支持注入 `require`（此前固定返回 `{}`，设置页永不注册、无法被测试），用例断言 `settings.section` 注册成功、「音效来源」两张卡片渲染、`custom` 时才出现文件选择行并显示文件名与体积，以及**按下 `'system'` 行的「试听」确实发出一条 `silent === false` 的测试通知**（为此假 React 改为按索引跨渲染保持 hook 状态，能读到点击后的反馈文案）；默认路径（不注入 react）行为不变。
+- `npm test` 两套件均通过；`smoke/cordis-host-test.mjs` 用 `DSH_NODE_MODULES` 指向本机 DSH 安装后**真跑**（此前在多数机器上静默 SKIP），真 cordis 下的 `inject` 语义守卫一并复核通过。
+
 ## [1.5.3] — 2026-10-04
 
 ### 新增

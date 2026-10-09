@@ -108,7 +108,10 @@ function bootBundle(opts) {
   windowStub.__dshNotifyMe = { onEvent: (kind, payload) => events.push({ kind, ...payload }) };
 
   return {
-    mod: captured.reg.factory(() => ({})),
+    // require("react") resolves to {} by default, which is exactly the
+    // no-settings-page environment the reminder core must survive; a case that
+    // wants the Settings page renders it by supplying opts.require instead.
+    mod: captured.reg.factory((name) => ((opts && opts.require) ? opts.require(name) : {})),
     win: windowStub,
     doc: documentStub,
     events,
@@ -1641,6 +1644,286 @@ async function desktopRaiseChannel() {
   console.log('desktop raise channel OK: dsh://open fired on desktop, none in the browser, hostEnv overrides both ways');
 }
 
+// ── alert sound source: built-in cue / picked file / system sound ──────────
+// The cue is the one alert surface with no coverage at all: the harness leaves
+// AudioContext undefined, so every other case silently takes the "no audio
+// available" path. These helpers install a capturing AudioContext and an
+// <audio> stand-in, and the cases drive the cues through api.test(), which
+// bypasses the visibility gates on purpose.
+function makeAudioCapture() {
+  const tones = [];
+  class FakeGain {
+    constructor() {
+      this.gain = {
+        steps: [],
+        setValueAtTime(v) { this.steps.push(v); },
+        exponentialRampToValueAtTime(v) { this.steps.push(v); },
+      };
+    }
+    connect(dest) { return dest; }
+  }
+  class FakeOsc {
+    constructor() { this.type = null; this.frequency = { value: 0 }; this.vol = null; }
+    connect(gain) { if (gain && gain.gain) this.vol = gain.gain.steps[1]; return gain; }
+    start() {}
+    stop() {}
+  }
+  class FakeAudioContext {
+    constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
+    resume() { return Promise.resolve(); }
+    createOscillator() { const o = new FakeOsc(); tones.push(o); return o; }
+    createGain() { return new FakeGain(); }
+  }
+  return { FakeAudioContext, tones, freqs: () => tones.map((o) => o.frequency.value) };
+}
+// The bundle plays a picked file through a bare `Audio`, i.e. the sandbox
+// global rather than window.Audio.
+function makeAudioElementCapture() {
+  const played = [];
+  class FakeAudio {
+    constructor(src) { this.src = src; this.volume = 1; }
+    play() { played.push(this); return Promise.resolve(); }
+  }
+  return { FakeAudio, played };
+}
+
+const PICKED_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
+
+async function soundSources() {
+  console.log('\n— alert sound source: built-in cue / picked file / system sound —');
+  const audio = makeAudioCapture();
+  const el = makeAudioElementCapture();
+  let store = null;
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox, windowStub) {
+      windowStub.AudioContext = audio.FakeAudioContext;
+      sandbox.Audio = el.FakeAudio;
+      store = sandbox.localStorage;
+      store.setItem('dshNotifyMe.sound.done', JSON.stringify({ name: 'Windows Notify System Generic.wav', size: 193940, data: PICKED_WAV }));
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  const { mod, win, lastNotification } = b;
+  mod.apply(host.ctx);
+  const api = win.__dshNotifyMe;
+
+  // 1) default: the built-in cue, and the toast stays silenced so the platform
+  //    does not stack its own chime on top of the beep.
+  assert(api.config.soundDone === 'synth', 'soundDone defaults to synth');
+  assert(api.config.soundAttention === 'synth', 'soundAttention defaults to synth');
+  const dbg = api.debug();
+  assert(dbg.soundDone === 'synth' && dbg.soundAttention === 'synth', 'debug() reports both cue modes');
+  assert(dbg.customSoundDone === true && dbg.customSoundAttention === false, 'debug() reports which kinds have a picked file');
+  api.test('done');
+  assert(audio.freqs().join(',') === '659,988', 'default "done" cue is the built-in pair, got ' + audio.freqs().join(','));
+  assert(lastNotification().config.silent === true, 'default toast is silent (the plugin owns the audio)');
+
+  audio.tones.length = 0;
+  api.test('attention');
+  assert(audio.freqs().join(',') === '880,1174,1568', 'default "attention" cue is the built-in triad, got ' + audio.freqs().join(','));
+
+  // 2) 'system': no plugin cue at all, and the toast is raised un-silenced so
+  //    the operating system plays its own notification sound.
+  audio.tones.length = 0;
+  api.setConfig({ soundDone: 'system' });
+  api.test('done');
+  assert(audio.tones.length === 0, "'system' plays no built-in tone");
+  assert(el.played.length === 0, "'system' plays no picked file");
+  assert(lastNotification().config.silent === false, "'system' un-silences the toast so the OS chimes");
+  assert(api.debug().soundDone === 'system', 'debug() follows the cue mode');
+
+  // The master Sound switch still mutes the system cue: the OS must not chime
+  // for an alert the user turned sound off for.
+  api.setConfig({ sound: false });
+  api.test('done');
+  assert(lastNotification().config.silent === true, 'Sound off re-silences the toast even in system mode');
+  api.setConfig({ sound: true });
+
+  // 3) 'custom': the picked file plays instead of the built-in cue.
+  audio.tones.length = 0;
+  el.played.length = 0;
+  api.setConfig({ soundDone: 'custom' });
+  api.test('done');
+  assert(el.played.length === 1, "custom plays the picked file, got " + el.played.length);
+  assert(el.played[0].src === PICKED_WAV, 'the picked file is the stored data URL');
+  assert(el.played[0].volume === api.config.volume, 'the picked file answers the volume slider');
+  assert(audio.tones.length === 0, 'custom does not also play the built-in tone');
+  assert(lastNotification().config.silent === true, 'custom keeps the toast silent');
+
+  // The two kinds are independent: "attention" is still on its built-in cue.
+  audio.tones.length = 0;
+  api.test('attention');
+  assert(audio.freqs().join(',') === '880,1174,1568', 'the other kind keeps its own source');
+
+  // 4) 'custom' with nothing stored must not go silent — it falls back.
+  store.removeItem('dshNotifyMe.sound.done');
+  audio.tones.length = 0;
+  el.played.length = 0;
+  api.test('done');
+  assert(el.played.length === 0, 'no file left to play');
+  assert(audio.freqs().join(',') === '659,988', 'a missing file falls back to the built-in cue, got ' + audio.freqs().join(','));
+
+  // 5) reset drops the picked audio too: the records live outside the config,
+  //    so clearing the config alone would orphan them in the origin quota.
+  store.setItem('dshNotifyMe.sound.attention', JSON.stringify({ name: 'x.wav', size: 3, data: PICKED_WAV }));
+  assert(api.debug().customSoundAttention === true, 'attention file stored');
+  api.resetConfig();
+  assert(store.getItem('dshNotifyMe.sound.done') === null, 'reset clears the done record');
+  assert(store.getItem('dshNotifyMe.sound.attention') === null, 'reset clears the attention record');
+  assert(api.debug().customSoundAttention === false, 'reset drops the stored-file flags');
+
+  for (const c of [...host.cleanups]) c();
+  console.log('alert sound source OK: synth/system/custom dispatch, fallback, and reset all behave');
+}
+
+// ── settings page: the new rows actually render ───────────────────────────
+// Hook state is kept per index and survives re-renders, the way React keeps it,
+// so a case can press a control and then read the copy the press produced.
+function makeFakeReact() {
+  const hooks = [];
+  let cursor = 0;
+  return {
+    createElement(type, props) {
+      const children = [];
+      for (let i = 2; i < arguments.length; i++) children.push(arguments[i]);
+      return { type, props: props || {}, children };
+    },
+    useState(init) {
+      const i = cursor++;
+      if (!(i in hooks)) hooks[i] = typeof init === 'function' ? init() : init;
+      return [hooks[i], (n) => { hooks[i] = (typeof n === 'function') ? n(hooks[i]) : n; }];
+    },
+    useSyncExternalStore() { return { active: 'zh' }; },
+    // test-only: rewind the hook cursor for the next render pass
+    __beforeRender() { cursor = 0; },
+  };
+}
+function collectText(node, out) {
+  out = out || [];
+  if (node == null || node === false || node === true) return out;
+  if (typeof node === 'string' || typeof node === 'number') { out.push(String(node)); return out; }
+  if (Array.isArray(node)) { for (const n of node) collectText(n, out); return out; }
+  if (node.children) for (const c of node.children) collectText(c, out);
+  return out;
+}
+
+function settingsSoundRows() {
+  console.log('\n— settings page: alert sound source rows —');
+
+  // boot() renders the Settings page once and returns the flattened text of the
+  // tree plus the tree itself, so a case can assert both copy and node shape.
+  // `opts` adds the toast/audio stands-ins a button-driving case needs.
+  function boot(seedConfig, seedSound, opts) {
+    const registered = [];
+    const injected = [];
+    const fakeReact = makeFakeReact();
+    let dict = null;
+    const audio = makeAudioCapture();
+    const b = bootBundle({
+      withNotification: !!(opts && opts.withNotification),
+      require: (name) => (name === 'react' ? fakeReact : {}),
+      extend(sandbox, windowStub) {
+        if (opts && opts.withAudio) {
+          windowStub.AudioContext = audio.FakeAudioContext;
+          sandbox.Audio = makeAudioElementCapture().FakeAudio;
+        }
+        if (seedConfig) sandbox.localStorage.setItem('dshNotifyMe.config', JSON.stringify(seedConfig));
+        if (seedSound) sandbox.localStorage.setItem('dshNotifyMe.sound.done', JSON.stringify(seedSound));
+      },
+    });
+    const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+    host.ctx.locale = {
+      register(ns, d) { dict = d; return () => {}; },
+      bind: () => (k) => (dict && dict.zh[k]) || k,
+      subscribe: () => () => {},
+      getSnapshot: () => ({ active: 'zh' }),
+      getLocale: () => ({ active: 'zh' }),
+    };
+    host.ctx.slots = {
+      inject(slot, fn) { injected.push(slot); fn(); },
+      register(spec, comp) { const r = { spec, comp }; registered.push(r); return r; },
+    };
+    b.mod.apply(host.ctx);
+
+    assert(injected.indexOf('settings.section') !== -1, 'settings.section was injected');
+    const reg = registered.find((r) => r.spec && r.spec.id === 'dsh-notify-me');
+    assert(reg, 'the settings section registered');
+    let tree = null;
+    const render = () => {
+      fakeReact.__beforeRender();
+      const el = reg.comp({});
+      tree = el.type(el.props);
+      return tree;
+    };
+    tree = render();
+    const walk = (node, fn) => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { for (const n of node) walk(n, fn); return; }
+      fn(node);
+      if (node.children) for (const c of node.children) walk(c, fn);
+    };
+    return {
+      text: collectText(tree).join(' | '),
+      tree,
+      audio,
+      lastNotification: b.lastNotification,
+      textNow: () => collectText(tree).join(' | '),
+      // Press the exact control the user presses, then re-render the way React
+      // would, so the feedback the press produced is readable.
+      press: (aria) => {
+        let hit = null;
+        walk(tree, (n) => { if (!hit && n.props && n.props['aria-label'] === aria) hit = n; });
+        assert(hit, 'no rendered control labelled ' + aria);
+        hit.props.onClick();
+        render();
+      },
+      cleanup: () => { for (const c of [...host.cleanups]) c(); },
+    };
+  }
+
+  // 1) defaults: both kinds expose the source selector, no file picker yet.
+  const base = boot();
+  assert(base.text.indexOf('音效来源') !== -1, 'the sound-source header renders');
+  assert(base.text.indexOf('「回复完成」的声音') !== -1, 'the done-kind row renders');
+  assert(base.text.indexOf('「需要你」的声音') !== -1, 'the attention-kind row renders');
+  assert(base.text.indexOf('内置合成音（默认）') !== -1, 'the built-in option renders');
+  assert(base.text.indexOf('自定义音频文件') !== -1, 'the custom option renders');
+  assert(base.text.indexOf('系统通知音（系统播放）') !== -1, 'the system option renders');
+  assert(base.text.indexOf('选择音频文件') === -1, 'no file picker while the source is the built-in cue');
+  assert(base.text.indexOf('插件版本：dsh-notify-me v' + PKG_VERSION) !== -1, 'the version line still renders');
+  assert(base.tree.type === 'div' && base.tree.props.className === 'dnm-wrap', 'root node shape unchanged');
+  base.cleanup();
+
+  // 2) custom with a file stored: the picker row appears and names the file, so
+  //    "which file is this actually playing" is answerable from the page.
+  const custom = boot({ soundDone: 'custom' }, { name: 'Windows Notify System Generic.wav', size: 193940, data: PICKED_WAV });
+  assert(custom.text.indexOf('选择音频文件') !== -1, 'the file picker appears for the custom source');
+  assert(custom.text.indexOf('Windows Notify System Generic.wav') !== -1, 'the stored file is named on the page');
+  assert(custom.text.indexOf(Math.round(193940 / 1024) + ' KB') !== -1, 'the stored file size is shown');
+  custom.cleanup();
+
+  // 3) custom with nothing stored still renders (and says so) rather than
+  //    collapsing the row.
+  const empty = boot({ soundAttention: 'custom' });
+  assert(empty.text.indexOf('选择音频文件') !== -1, 'the picker renders before any file is picked');
+  assert(empty.text.indexOf('尚未选择文件') !== -1, 'the empty state is spelled out');
+  empty.cleanup();
+
+  // 4) pressing the "system" row's preview must not be a silent no-op: there is
+  //    no plugin cue to play in that mode, so the button has to raise a real,
+  //    un-silenced test alert instead (otherwise it reads as broken).
+  const sys = boot({ soundDone: 'system' }, null, { withNotification: true, withAudio: true });
+  sys.press('试听「回复完成」音效');
+  assert(sys.audio.tones.length === 0, 'the system preview plays no built-in tone');
+  assert(sys.lastNotification(), 'the system preview raised a toast');
+  assert(sys.lastNotification().config.silent === false, 'the system preview toast is un-silenced so the OS chimes');
+  assert(sys.textNow().indexOf('已发一条测试提醒') !== -1, 'the system preview says a test alert was sent');
+  sys.cleanup();
+
+  console.log('settings sound rows OK: both kinds expose the source selector, picker only for custom, system preview fires a toast');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
@@ -1649,6 +1932,8 @@ async function desktopRaiseChannel() {
   await completionUnreadChannel();
   await quickActionsHost();
   await desktopRaiseChannel();
+  await soundSources();
+  settingsSoundRows();
   console.log('\nALL SMOKE TESTS PASSED ✔');
   // Exit explicitly: marker-release timers stay armed on purpose (they mirror
   // browser behaviour) and would otherwise hold the loop open.
