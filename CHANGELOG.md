@@ -2,6 +2,18 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.5.4] — 2026-10-15
+
+### 修复
+- **列表变化里「当前会话」只推导一次,消掉 O(行数 × 会话数)**（性能）：`isSubagentSession()` 现在接收调用方已经推导好的当前会话 id。此前它对**每一行**都要重新调 `currentSessionId()`，而 `0.1.6+`（含 `0.2.0-rc.2`）的列表快照已无 `current`，只能 `for (var id in byId)` 扫完整份会话表——一次列表变化因此是「行数 × 会话数」。实测（DSH `0.2.0-rc.2`、**482 个会话**、页面空闲时用 CDP 采 25s 与 38s 两轮 CPU profile）：`currentSessionId()` 自身耗时占 **5.9%~6.5%**，是该页面最热的 JS 函数；修复后同轮 profile 里它退到噪声水平。第二窗口/后台窗口下所有行 `mainView` 为 0 时，旧实现每次都要扫满全表再返回 `null`，这一档同样消失。
+- `evalUiStatus()` / `syncDoneFromStatus()` 两个「每个会话一条」的循环同样改为每次 pass 只推导一次。
+
+### 测试
+- `smoke/smoke-test.cjs` 新增断言「一次列表变化的 `byId` 枚举次数不随行数增长」（40 行与 4 行必须相等，不写死魔数）。上游 `8f836ad` 上该断言报 `7 vs 43`，本版为 `5 vs 5`（先写失败断言、先红后绿）。
+
+### 变更
+- 版本号 1.5.3 → 1.5.4；`window.__dshNotifyMe.version` 同步。
+
 ## [1.5.3] — 2026-10-04
 
 ### 新增

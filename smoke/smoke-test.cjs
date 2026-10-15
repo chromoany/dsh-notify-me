@@ -1641,6 +1641,41 @@ async function desktopRaiseChannel() {
   console.log('desktop raise channel OK: dsh://open fired on desktop, none in the browser, hostEnv overrides both ways');
 }
 
+// ── 一次列表变化里「当前会话」只推导一次 ────────────────────────────
+// 每一行的判定都要知道「哪个会话在屏幕上」,而 currentSessionId() 在 0.1.6+ 的
+// 宿主上要遍历整份 byId(没有 `current` 了)。行内的判定各自再推导一次,一次
+// 列表变化就是 O(行数 × 会话数):实测 0.2.0-rc.2、482 个会话、页面空闲时,
+// 这个函数占 CPU profile 自身耗时的 5.9%~6.5%,是该页面最热的 JS 函数。
+// 断言不靠计时:数 byId 被 for-in 枚举了几次(推导一次 = 枚举一次)。
+function listChangeEnumerations(rows) {
+  const b = bootBundle();
+  const host = buildHost({ withSessionStatus: true });
+  b.mod.apply(host.ctx);
+  const byId = {};
+  for (let i = 1; i < rows; i += 1) byId['s' + i] = { displayTitle: '后台 ' + i, retainedBy: {} };
+  // 主视图那一行放最后:兜底推导循环要走满全表才找得到它(最坏位置)
+  byId['cur'] = { displayTitle: '当前会话', retainedBy: { mainView: 1 } };
+  let enumerations = 0;
+  const counted = new Proxy(byId, {
+    ownKeys(target) { enumerations += 1; return Reflect.ownKeys(target); },
+  });
+  // 0.2.0-rc.2 形状:快照没有 `current`,当前会话由 retainedBy.mainView 推导
+  host.setList({ ids: Object.keys(byId), byId: counted, phase: 'ready' });
+  enumerations = 0;
+  host.notifyList();
+  for (const c of [...host.cleanups]) c();
+  return enumerations;
+}
+
+async function listChangeDerivation() {
+  console.log('\n— list-change work does not grow with the row count —');
+  const small = listChangeEnumerations(4);
+  const large = listChangeEnumerations(40);
+  assert(small === large,
+    'one list change must cost the same for 4 and 40 rows, got ' + small + ' vs ' + large + ' byId enumerations');
+  console.log('list-change derivation OK: byId enumerated ' + small + ' time(s) for 4 rows and ' + large + ' for 40 (constant)');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
@@ -1649,6 +1684,7 @@ async function desktopRaiseChannel() {
   await completionUnreadChannel();
   await quickActionsHost();
   await desktopRaiseChannel();
+  await listChangeDerivation();
   console.log('\nALL SMOKE TESTS PASSED ✔');
   // Exit explicitly: marker-release timers stay armed on purpose (they mirror
   // browser behaviour) and would otherwise hold the loop open.
