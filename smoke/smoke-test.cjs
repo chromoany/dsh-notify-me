@@ -2794,6 +2794,114 @@ async function awayWithoutHiding() {
   console.log('window-focus OK: blur counts as background, refocus silences again');
 }
 
+// Focus answers "is the window in front", not "is anyone there". A window left
+// in front while its owner walks off keeps focus forever, so the idle half of
+// the signal turns "no input for idleMinutes" into away as well.
+async function awayWhileFocusedAndIdle() {
+  console.log('\n— a focused window nobody has touched counts as away —');
+  const b = bootBundle({ withNotification: true });
+  const host = buildHost({ withUiSession: false });
+  host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+  const { mod, win, events } = b;
+  mod.apply(host.ctx);
+  win.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
+  win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, donePolicy: 'background', idleMinutes: 0.0005 });
+  host.setList({ ids: ['bg'], byId: { bg: { running: false, displayTitle: '后台任务', completed: false } }, current: 's1', phase: 'ready' });
+  host.notifyList();
+
+  // Focus stays on the whole time; only the input clock runs out.
+  await sleep(200);
+  assert(win.__dshNotifyMe.debug().away === true, 'a focused page idle past idleMinutes reads as away');
+
+  events.length = 0;
+  host.setList({ ids: ['bg'], byId: { bg: { running: true, displayTitle: '后台任务', completed: false } }, current: 's1', phase: 'ready' });
+  host.notifyList();
+  await sleep(400);
+  host.setList({ ids: ['bg'], byId: { bg: { running: false, displayTitle: '后台任务', completed: true } }, current: 's1', phase: 'ready' });
+  host.notifyList();
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'a finish reaches a user who left a focused window');
+
+  win.__dshNotifyMe.setConfig({ idleMinutes: 0 });
+  assert(win.__dshNotifyMe.debug().away === false, 'idleMinutes 0 restores the focus/visibility-only rule');
+  console.log('idle-away OK: a focused but untouched window counts as background');
+}
+
+// Which conversation finished decides the alert under "smart": the one on
+// screen is already being read, the ones behind it are news.
+async function donePolicyScopes() {
+  console.log('\n— "who finished" decides, not just page visibility —');
+  const b = bootBundle({ withNotification: true });
+  const host = buildHost({ withUiSession: false });
+  host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+  const { mod, win, events } = b;
+  mod.apply(host.ctx);
+  win.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
+  win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0, donePolicy: 'smart' });
+  host.setList({ ids: ['bg'], byId: { bg: { running: false, displayTitle: '后台任务', completed: false } }, current: 's1', phase: 'ready' });
+  host.notifyList();
+  host.notifyFace();
+
+  const finishOther = async () => {
+    host.setList({ ids: ['bg'], byId: { bg: { running: true, displayTitle: '后台任务', completed: false } }, current: 's1', phase: 'ready' });
+    host.notifyList();
+    await sleep(400);
+    host.setList({ ids: ['bg'], byId: { bg: { running: false, displayTitle: '后台任务', completed: true } }, current: 's1', phase: 'ready' });
+    host.notifyList();
+  };
+  const finishCurrent = async () => {
+    host.setFace({ ...host.faceSnap(), running: true });
+    host.notifyFace();
+    await sleep(400);
+    host.setFace({ ...host.faceSnap(), running: false });
+    host.notifyFace();
+  };
+
+  events.length = 0;
+  await finishOther();
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'smart: another conversation finishing while visible still alerts');
+
+  events.length = 0;
+  await finishCurrent();
+  assert(events.filter((e) => e.kind === 'done').length === 0, 'smart: the conversation on screen stays quiet');
+
+  win.__dshNotifyMe.setConfig({ donePolicy: 'background' });
+  events.length = 0;
+  await finishOther();
+  assert(events.filter((e) => e.kind === 'done').length === 0, 'background: a visible page stays quiet for any finish');
+
+  win.__dshNotifyMe.setConfig({ donePolicy: 'always' });
+  events.length = 0;
+  await finishCurrent();
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'always: even the conversation on screen alerts');
+  console.log('done-policy OK: background / smart / always behave as advertised');
+}
+
+// Whether a toast clears itself, and whether that depends on being present.
+async function autoDismissPolicy() {
+  console.log('\n— a toast that clears itself must not erase an unseen alert —');
+  const raised = async (cfg, hidden) => {
+    const b = bootBundle({ withNotification: true });
+    const host = buildHost({ withUiSession: false });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    const { mod, win, doc } = b;
+    mod.apply(host.ctx);
+    win.__dshNotifyMe.setConfig(Object.assign({ sound: false, language: 'zh', enabled: true }, cfg));
+    doc.hidden = hidden;
+    doc.visibilityState = hidden ? 'hidden' : 'visible';
+    win.__dshNotifyMe.test('done');
+    const n = b.lastNotification();
+    assert(n, 'a toast was raised for the dismiss case');
+    await sleep(5200);
+    return n.closed;
+  };
+
+  assert(await raised({ autoDismiss: 'never' }, false) === false, 'never: the toast waits for the user to dismiss it');
+  assert(await raised({ autoDismiss: 'always' }, true) === true, 'always: the toast clears even while away');
+  assert(await raised({ autoDismiss: 'present' }, true) === false, 'present: a toast raised while away is kept');
+  assert(await raised({ autoDismiss: 'present' }, false) === true, 'present: a toast in front still clears itself');
+  console.log('auto-dismiss OK: kept while away, cleared while present, or fixed either way');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
@@ -2812,6 +2920,9 @@ async function awayWithoutHiding() {
   settingsAlertSetup();
   await listChangeDerivation();
   await awayWithoutHiding();
+  await awayWhileFocusedAndIdle();
+  await donePolicyScopes();
+  await autoDismissPolicy();
   console.log('\nALL SMOKE TESTS PASSED ✔');
   // Exit explicitly: marker-release timers stay armed on purpose (they mirror
   // browser behaviour) and would otherwise hold the loop open.
