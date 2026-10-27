@@ -124,7 +124,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 - **「回复完成」什么时候提醒**（默认「仅后台」）：仅后台 / 仅当前对话静默 / 总是提醒，三选一；
 - **通知自动消失**（默认「离开时保留」）：离开时保留 / 总是关闭 / 从不关闭，三选一；
 - **子代理会话不提醒**（默认开）：跳过后台子代理（subagent）会话，你正开着的那个照常提醒；
-- **点击通知回到对应对话**（默认开）：切到对应对话并把窗口带到前台，桌面端走原生抬窗，多个标签页只调起一个。
+- **点击通知回到对应对话**（默认开）：切到对应对话并把窗口带到前台，Windows 桌面走宿主路由原生抬窗、macOS / Linux 走 `dsh://open` 深链，多个标签页只调起一个。
 
 <details>
 <summary>展开各开关的边界条件</summary>
@@ -170,13 +170,13 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 #### 运行环境与诊断
 
-在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——桌面端点通知走宿主路由做原生抬窗（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）、通知上不带快捷裁决按钮；Web 端走 `window.focus()` 与 Service Worker 桥。手动覆盖与自动识别不一致时，设置页会明示检测结果。
+在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——Windows 桌面点通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深链（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）、通知上不带快捷裁决按钮；Web 端走 `window.focus()` 与 Service Worker 桥。手动覆盖与自动识别不一致时，设置页会明示检测结果。
 
 <details>
 <summary>通知语言、桌面端抬窗与恢复默认</summary>
 
 - **通知语言**：跟随界面 / 简体中文 / English——决定通知文字与 `🔔 …` 标题标记使用的语言；
-- **桌面端抬窗**：1.14.0 起由宿主路由做原生激活，最小化、被别的窗口盖住的都实测能抬回来（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；
+- **桌面端抬窗**：Windows 走宿主路由做原生激活、macOS / Linux 走 `dsh://open` 深链；最小化、被别的窗口盖住的窗口在 Windows 与 Linux 上都实测能抬回来（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；
 - **恢复默认设置**：把所有开关与音效设置还原成出厂值（不动外部推送目标和已选的自定义音频文件）。
 
 </details>
@@ -266,7 +266,7 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 
 ## 工作原理
 
-提醒核心监听会话状态与待处理交互；审批裁决由页面侧完成，桌面抬窗走宿主路由加 Win32 原生激活。
+提醒核心监听会话状态与待处理交互；审批裁决由页面侧完成，Windows 桌面抬窗走宿主路由加 Win32 原生激活、macOS / Linux 走 `dsh://open` 深链。
 
 <details>
 <summary>展开事件来源与降级说明</summary>
@@ -297,18 +297,18 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 
 ### 桌面端怎么抬窗的
 
-DSH Desktop 是一层 Electron 壳，页面跑在 `dsh-app://app` 下：DOM 的 `window.focus()` 只动浏览器窗口对象、碰不到原生窗口，壳的 `will-navigate` 又把页面里发 `dsh:` 的常规出口堵上了。现在走插件自己的宿主路由——页面 POST `/__dsh-notify-me/focus-window`，宿主起 `powershell.exe` 跑 `lib/focus-window.ps1`，由它枚举原生窗口、自适应激活（1.5.2 到 1.13.0 那条 `dsh://open` 深链在 `0.2.1-rc.2` 上复测 3/3 无效，1.14.0 起整条删掉）。
+DSH Desktop 是一层 Electron 壳，页面跑在 `dsh-app://app` 下：DOM 的 `window.focus()` 只动浏览器窗口对象、碰不到原生窗口，壳的 `will-navigate` 又把页面里发 `dsh:` 的常规出口堵上了。插件按平台走两条通道：Windows 走插件自己的宿主路由——页面 POST `/__dsh-notify-me/focus-window`，宿主起 `powershell.exe` 跑 `lib/focus-window.ps1`，由它枚举原生窗口、自适应激活；macOS / Linux 走壳自己的 `dsh://open` 深链——页面在点击手势里插一个隐藏 iframe 导航 `dsh://open`（子框架导航不经过壳的顶层 `will-navigate` 拦截），交给系统协议注册，壳的 `second-instance` / `open-url` 处理器据此 restore + show + focus 主窗口。Windows 上这条深链在 `0.2.1-rc.2` 复测 3/3 无效，1.14.0 起改走宿主路由；Linux（Plasma 6.8 / Wayland）已实测能把最小化或后台的窗口抬回前台，macOS 未实测。
 
 <details>
 <summary>展开路由、激活顺序、实测数据与安全闸门</summary>
 
-壳把 `dsh-app://app` 下除静态资源以外的所有路径原样转发给宿主 HTTP server（带 origin 校验、注入宿主 cookie），所以上面那个 POST 是同源请求，没有 CORS 问题；宿主半（`lib/index.js`）本来就跑在 Electron 主进程的子进程里，`process.ppid` 就是主窗口所属的浏览器进程。点通知时：页面 POST → 宿主起一次 `powershell.exe` 跑 `lib/focus-window.ps1 -ProcessId <ppid>` → 脚本枚举该 pid 下可见、无 owner、非 toolwindow 的顶层窗口（优先类名 `Chrome_WidgetWin_1`，再按 `GetWindowRect` 面积取最大）→ 自适应激活 → 比对 `GetForegroundWindow()` 打印 `FOCUSED=1|0` → 宿主回 `200` / `202`。
+Windows 的宿主路由：壳把 `dsh-app://app` 下除静态资源以外的所有路径原样转发给宿主 HTTP server（带 origin 校验、注入宿主 cookie），所以上面那个 POST 是同源请求，没有 CORS 问题；宿主半（`lib/index.js`）本来就跑在 Electron 主进程的子进程里，`process.ppid` 就是主窗口所属的浏览器进程。点通知时：页面 POST → 宿主起一次 `powershell.exe` 跑 `lib/focus-window.ps1 -ProcessId <ppid>` → 脚本枚举该 pid 下可见、无 owner、非 toolwindow 的顶层窗口（优先类名 `Chrome_WidgetWin_1`，再按 `GetWindowRect` 面积取最大）→ 自适应激活 → 比对 `GetForegroundWindow()` 打印 `FOCUSED=1|0` → 宿主回 `200` / `202`。
 
-激活顺序是实的：已经在前台就什么都不做（最常见的情况，零闪烁）；最小化了先 `SW_RESTORE`；然后合成一次 ALT 按键（`keybd_event` 按下抬起）给本线程前台权限，再 `SetForegroundWindow`；这一串都不行才退到 `SW_MINIMIZE` + `SW_RESTORE` 兜底。单独调 `SetForegroundWindow` 会被前台锁直接拒，按调用算、跟 `ForegroundLockTimeout` 无关；这也重新解释了 1.5.2 那套深链「时灵时不灵」——能抬起来的那些次，多半是系统在通知被点击时自己激活了应用。
+Windows 的激活顺序是实的：已经在前台就什么都不做（最常见的情况，零闪烁）；最小化了先 `SW_RESTORE`；然后合成一次 ALT 按键（`keybd_event` 按下抬起）给本线程前台权限，再 `SetForegroundWindow`；这一串都不行才退到 `SW_MINIMIZE` + `SW_RESTORE` 兜底。单独调 `SetForegroundWindow` 会被前台锁直接拒，按调用算、跟 `ForegroundLockTimeout` 无关；这也重新解释了 1.5.2 那套深链「时灵时不灵」——能抬起来的那些次，多半是系统在通知被点击时自己激活了应用。
 
 实测（`powershell.exe` 5.1，同一轮跑完）：窗口在前台 ×3、最小化 + 记事本在前台 ×3、可见但被盖住 ×3，全部 `FOCUSED=1` 且前台窗口比对一致，最小化那几个的 `IsIconic` 都从 `true` 变回 `false`；记事本最大化完全遮挡、最小化 + 完全遮挡、`-ProcessId 0` 自动探测同样成功。脚本内部耗时最坏 434 ms，进程启动到退出最坏 782 ms，都在 8 秒上限内；`pwsh` 7.6 对照一轮行为一致，只是 `Add-Type` 编译慢约 100 ms（脚本刻意不用 7 的语法）。不存在的 pid、存在但没有可见窗口的 pid 都稳定 `FOCUSED=0` 并 `exit 0`。
 
-安全上只开一条 exact 路由。词表之外的请求一律拒：非 GET / HEAD / POST 回 `405`（包括预检的 `OPTIONS`，且从不回任何 CORS 头），非桌面宿主（Web 版、macOS / Linux、纯 Node）回 `501`，缺 `x-dsh-notify-me-focus: focus` 头回 `403`。
+安全上只开一条 exact 路由。词表之外的请求一律拒：非 GET / HEAD / POST 回 `405`（包括预检的 `OPTIONS`，且从不回任何 CORS 头），非 Windows 宿主（Web 版、macOS / Linux、纯 Node）回 `501`（macOS / Linux 走深链，不经过这条路由），缺 `x-dsh-notify-me-focus: focus` 头回 `403`。
 
 那个头只是「这是页面发来的」标记，不是防线——DNS rebinding 的恶意页对目标地址而言是同源的，能带任意自定义头、也不触发预检。真正的闸门是三层：对端地址必须是 loopback；`Host` 必须是 loopback 名（`127.0.0.1` / `localhost` / `[::1]`，可带端口），因为壳转发时 `host` 已被删掉、由 fetch 按 loopback URL 重填，而 rebinding 的页面 Host 仍是攻击者域名；带了 `Origin` 就必须和 `Host` 同源。任一条不符回 `403`，`reason` 分别是 `bad-remote` / `bad-host` / `cross-origin`。`GET` 只回 `{ok, route, enabled, desktop, platform}`，装完可以先用浏览器打开确认路由在不在。400 毫秒内的重复调用合并成一次，脚本超过 8 秒没回话就 kill 掉按失败处理。
 
@@ -330,6 +330,7 @@ DSH Desktop 是一层 Electron 壳，页面跑在 `dsh-app://app` 下：DOM 的 
 - 快捷裁决按钮要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 这类局域网地址不行；**桌面端（`dsh-app://`）已实测无法注册 Service Worker**（宿主未开放 `allowServiceWorkers` 特权），审批通知退回无按钮样式。宿主不渲染通知按钮时，`debug()` 的 `bridge` 字段会说明原因，其余功能不受影响。
 - Windows 的系统通知标签上限 64 字符，而 Chromium 交给平台的是 `n#<origin>#<tag>` 整串——桌面页面 `dsh-app://app` 一项就占去 16 个。插件按当前 `location.origin` 算剩余预算，超长时保留可读前缀、尾部换成短哈希，所以 `debug()` 里看到的标签可能被截短；平台仍然拒发时，原文记在 `debug().lastToastReject`，设置页的测试按钮也会如实报出来，不再「提示已发送但什么都没弹」。
 - 桌面端（Windows）点通知后窗口仍可能抬不起来：目标窗口属于更高完整性级别（提权 / UAC）、在另一个虚拟桌面、前台被别的进程反复抢回去，或窗口被 `SW_HIDE` 隐藏到托盘时，宿主脚本回 `FOCUSED=0`、路由回 `202`，对话照常切（详见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）。
+- 桌面端（macOS / Linux）点通知依赖 `dsh://open` 深链：系统未注册 `x-scheme-handler/dsh`、或壳没有 `second-instance` / `open-url` 处理时抬不起来；Linux 上已实测正常，macOS 未实测。
 - macOS：提醒、提示音、标题标记、点通知跳转都没有平台假设，照常工作；但 DSH Desktop（Electron）的系统通知要求应用已签名，未签名的通知直接发不出去，官方 macOS 版是否满足这一前提未实测；审批按钮在 macOS 桌面宿主上的渲染同样未实测（Windows 桌面端已实测不渲染）。
 
 **提醒内容与时机**
