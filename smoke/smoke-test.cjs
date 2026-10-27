@@ -1553,21 +1553,27 @@ async function subagentSessions() {
   for (const c of [...host.cleanups]) c();
 }
 
-// ────────── desktop shell window raise (1.14.0) ──────────
+// ────────── desktop shell window raise (1.14.0, non-Windows since 1.14.4) ──────────
 // The packaged desktop page (dsh-app://app) cannot raise its own window: DOM
 // window.focus() never touches the native window, Chromium only activates a
 // window the OS already treats as foreground, and the shell exposes no focus
-// IPC. The plugin's host half therefore registers a focus route on the host web
-// server; the click below POSTs to it, and that process does the Win32
-// activation. A relative URL works because the shell forwards every non-static
-// dsh-app://app path to the host with the host cookie attached, so this is a
-// plain same-origin fetch.
+// IPC. Two channels exist, chosen by platform:
 //
-// The dsh://open deep link this case used to assert on (1.5.2 to 1.13.0) is
-// gone: it launched a second instance that exited in ~130 ms without ever
-// touching the window's IsIconic state, so it raised nothing and only made the
-// click look wired.
+//   Windows  — the host half registers a focus route on the host web server;
+//              the click POSTs to it and that process does the Win32
+//              activation. A relative URL works because the shell forwards
+//              every non-static dsh-app://app path to the host with the host
+//              cookie attached, so this is a plain same-origin fetch.
+//   others   — the hidden-frame navigation to dsh://open (the 1.5.2..1.13.0
+//              path) reaches the system protocol registration, whose
+//              single-instance owner restores and focuses the window.
+//
+// The deep link was removed in 1.14.0 because on Windows it launched a second
+// instance that exited in ~130 ms without touching IsIconic. That failure is
+// Windows-specific; the cases below pin both branches with an explicit UA.
 const FOCUS_ROUTE = '/__dsh-notify-me/focus-window';
+const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-desktop/0.2.1 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36';
+const LINUX_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-desktop/0.2.1 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36';
 
 // Records every fetch and answers with a stand-in response. `behavior` returns
 // the response for a call (or throws) so a case can refuse or kill the route.
@@ -1587,13 +1593,14 @@ function focusFetchSpy(behavior) {
 
 // One raise case end to end: boot the bundle on the given origin, deliver an
 // attention toast, click it, and hand back what the click did.
-async function raiseCase({ location, fetchSpy, config }) {
+async function raiseCase({ location, fetchSpy, config, userAgent }) {
   const iframes = [];
   const focusHits = { n: 0 };
   const b = bootBundle({
     withNotification: true,
     extend(sandbox) {
       sandbox.location = location;
+      sandbox.navigator = { ...(sandbox.navigator || {}), userAgent: userAgent || WINDOWS_UA };
       sandbox.document.body = {
         appendChild(node) { iframes.push(node); return node; },
         removeChild() {},
@@ -1636,9 +1643,9 @@ async function desktopRaiseChannel() {
   const desktopOrigin = { origin: 'dsh-app://app', protocol: 'dsh-app:' };
   const webOrigin = { origin: 'http://127.0.0.1:3080', protocol: 'http:' };
 
-  // Desktop: the click reaches the host route, which owns the activation.
+  // Windows desktop: the click reaches the host route, which owns the activation.
   const desktopSpy = focusFetchSpy();
-  const desk = await raiseCase({ location: desktopOrigin, fetchSpy: desktopSpy });
+  const desk = await raiseCase({ location: desktopOrigin, fetchSpy: desktopSpy, userAgent: WINDOWS_UA });
   assert(desk.debug.desktop === true, 'debug() reports the desktop shell');
   assert(desk.debug.raiseChannel === 'host-route',
     'debug() reports the host-route raise channel, got ' + desk.debug.raiseChannel);
@@ -1653,6 +1660,27 @@ async function desktopRaiseChannel() {
   assert(desk.debug.raiseLast === 'focused', 'debug() records the focused verdict, got ' + desk.debug.raiseLast);
   assert(desk.opened.length === 1 && desk.opened[0] === 's2',
     'the click still switches the alerted conversation, got ' + JSON.stringify(desk.opened));
+
+  // Linux/macOS desktop: the Windows host route is not available, so the shell's
+  // own dsh://open handler is the only channel that restores the window.
+  const linuxSpy = focusFetchSpy(() => ({
+    ok: false,
+    status: 501,
+    json: () => Promise.resolve({ ok: false, reason: 'unsupported-host' }),
+  }));
+  const linux = await raiseCase({ location: desktopOrigin, fetchSpy: linuxSpy, userAgent: LINUX_UA });
+  assert(linux.debug.desktop === true, 'a Linux desktop page is still the desktop shell');
+  assert(linux.debug.raiseChannel === 'dsh-deeplink',
+    'Linux uses the deep-link raise channel, got ' + linux.debug.raiseChannel);
+  assert(linux.iframes.length === 1, 'the Linux raise inserts exactly one frame, got ' + linux.iframes.length);
+  assert(linux.iframes[0].src === 'dsh://open',
+    'the Linux frame navigates to dsh://open, got ' + linux.iframes[0].src);
+  assert(linux.focusHits === 1, 'window.focus() is still called first on Linux, got ' + linux.focusHits);
+  assert(linuxSpy.calls.length === 0,
+    'the Linux deep link never posts to the Windows host route, got ' + linuxSpy.calls.length);
+  assert(linux.debug.raiseLast === 'deeplink', 'debug() records the deep-link verdict, got ' + linux.debug.raiseLast);
+  assert(linux.opened.length === 1 && linux.opened[0] === 's2',
+    'the Linux click still switches the alerted conversation, got ' + JSON.stringify(linux.opened));
 
   // Browser tab: no host route, window.focus() is all that exists.
   const webSpy = focusFetchSpy();
@@ -1673,7 +1701,7 @@ async function desktopRaiseChannel() {
   assert(forcedWebSpy.calls.length === 0, 'forced web never posts to the focus route');
 
   const forcedDeskSpy = focusFetchSpy();
-  const forcedDesk = await raiseCase({ location: webOrigin, fetchSpy: forcedDeskSpy, config: { hostEnv: 'desktop' } });
+  const forcedDesk = await raiseCase({ location: webOrigin, fetchSpy: forcedDeskSpy, config: { hostEnv: 'desktop' }, userAgent: WINDOWS_UA });
   assert(forcedDesk.debug.desktop === true, 'forcing desktop overrides web detection');
   assert(forcedDesk.debug.raiseChannel === 'host-route', 'forced desktop uses the host route');
   assert(forcedDeskSpy.calls.length === 1 && forcedDeskSpy.calls[0].url === FOCUS_ROUTE,
@@ -1686,18 +1714,19 @@ async function desktopRaiseChannel() {
     status: 501,
     json: () => Promise.resolve({ ok: false, reason: 'unsupported-host' }),
   }));
-  const refused = await raiseCase({ location: desktopOrigin, fetchSpy: refusedSpy });
+  const refused = await raiseCase({ location: desktopOrigin, fetchSpy: refusedSpy, userAgent: WINDOWS_UA });
   assert(refused.debug.raiseLast === 'http-501', 'a refusing host is recorded as http-501, got ' + refused.debug.raiseLast);
   assert(refused.opened.length === 1 && refused.opened[0] === 's2', 'a refused raise still switches the conversation');
 
   // A dead route (host half not mounted, shell offline) must not break it either.
   const deadSpy = focusFetchSpy(() => { throw new TypeError('Failed to fetch'); });
-  const dead = await raiseCase({ location: desktopOrigin, fetchSpy: deadSpy });
+  const dead = await raiseCase({ location: desktopOrigin, fetchSpy: deadSpy, userAgent: WINDOWS_UA });
   assert(dead.debug.raiseLast === 'error', 'an unreachable route is recorded as error, got ' + dead.debug.raiseLast);
   assert(dead.opened.length === 1 && dead.opened[0] === 's2', 'an unreachable route still switches the conversation');
 
-  console.log('desktop raise channel OK: the desktop toast click POSTs ' + FOCUS_ROUTE
-    + ', a browser only calls window.focus(), hostEnv overrides both ways, and refusals or dead routes are non-fatal');
+  console.log('desktop raise channel OK: Windows POSTs ' + FOCUS_ROUTE
+    + ', other desktops navigate dsh://open, a browser only calls window.focus(), '
+    + 'hostEnv overrides both ways, and refusals or dead routes are non-fatal');
 }
 
 // ── alert sound source: built-in cue / picked file / system sound ──────────
