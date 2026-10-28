@@ -484,6 +484,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/Donald-Yip"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Donald-Yip.png" width="40" height="40" alt="@Donald-Yip"></a> | [#18](https://github.com/chromoany/dsh-notify-me/issues/18)：Windows 通知 tag 超过 64 字符上限、审批测试通知被平台静默拒收的报告 |
 | <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20)：当前会话的通知正文用占位符、未取会话标题的报告 |
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上 `dsh://open` 抬窗失效的报障与补丁，1.14.4 起 macOS / Linux 恢复深链抬窗 |
+| <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25)：页面关闭后由宿主兜底推送、同源中继两个可选模块（默认关），含测试与文档 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 
