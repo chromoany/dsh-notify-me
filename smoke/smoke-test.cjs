@@ -2922,6 +2922,24 @@ async function hostBridgeLease() {
   const hbUnmute = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
   assert(JSON.stringify(hbUnmute.muted) === '[]', 'unmuting clears the list on the next beat, got ' + JSON.stringify(hbUnmute.muted));
 
+  // 2c) the beat has to stay under the host's 16 KiB body cap: a stored list of
+  //     200 ids x ~200 chars is ~40 KB, so the page trims by bytes and sends the
+  //     head of the list. Sessions past the cut stay silenced locally, they are
+  //     just not covered by the host-side fallback.
+  const fat = [];
+  for (let i = 0; i < 200; i += 1) fat.push(String(i).padStart(3, '0') + '-x'.repeat(97));
+  yes.api.setConfig({ mutedSessions: fat });
+  await flush();
+  const hbFat = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
+  assert(hbFat.muted.length > 0 && hbFat.muted.length < fat.length,
+    'an oversized mute list is trimmed on the wire, got ' + hbFat.muted.length);
+  assert(JSON.stringify(hbFat.muted) === JSON.stringify(fat.slice(0, hbFat.muted.length)),
+    'the trimmed list is a prefix of the stored one');
+  assert(Buffer.byteLength(JSON.stringify(hbFat)) < 16 * 1024,
+    'the beat body stays under the host body cap, got ' + Buffer.byteLength(JSON.stringify(hbFat)) + ' bytes');
+  yes.api.setConfig({ mutedSessions: [] });
+  await flush();
+
   // 3) a bare 404 is the stock install, not a fault: the host-bridge route only
   //    exists while hostFallback or relay is on, so the webserver answers 404
   //    with an empty body. Reading res.json() on that used to look like a
