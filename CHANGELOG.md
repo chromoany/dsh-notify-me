@@ -2,6 +2,15 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.16.1] — 2026-10-28
+
+文案修正，无行为变化。
+
+### 文档
+
+- 设置页「会话静音」卡的说明原写「被静音的会话在标题前显示划掉的铃铛」，但那个槽位在会话有运行状态时被状态点占用——正在跑的后台任务看不到标记。说明里补上这一点，并指出此时看行尾铃铛的按下状态（中英同步）。`README.md` / `README.en.md` 的正文本来就写了这个限制，只有设置页漏了。
+- 同一段里「列表上限 500 条」改成 200 条：上一版把 `MUTED_MAX` 降到 200（心跳 body 的 16 KiB 上限），README 两处漏改（`README.md:158`、`README.en.md:158`）。
+
 ## [1.16.0] — 2026-10-28
 
 回应 [#23](https://github.com/chromoany/dsh-notify-me/issues/23)：可以按对话静音，只影响那一行。

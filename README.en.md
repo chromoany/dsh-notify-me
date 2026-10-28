@@ -155,7 +155,7 @@ The settings page has a "Muted sessions" card under "When to alert" with the cur
 <summary>Edge cases</summary>
 
 - The mark lives in the host's `sidebar.session.row.leading` slot, and the host puts its status dots there while a session is running, so the mark is not rendered then — a running background job shows no crossed bell until it stops. The mute itself is unaffected.
-- Muting keys on the session id: renaming or moving the directory changes nothing, and a deleted session is harmless in the list (capped at 500 ids; "Unmute all" clears it).
+- Muting keys on the session id: renaming or moving the directory changes nothing, and a deleted session is harmless in the list (capped at 200 ids; "Unmute all" clears it).
 - Muting does not change the "reply finished" policy or "current conversation stays quiet"; when both apply, the mute wins.
 
 </details>
