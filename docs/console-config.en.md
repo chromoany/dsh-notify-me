@@ -14,7 +14,7 @@ window.__dshNotifyMe.setConfig({
   currentHiddenOnly: true,    // true = waits in the conversation on screen keep only the title marker (replayed once away)
   donePolicy: "background",   // "reply finished" policy: 'background' only when away | 'smart' quiet only for the open one | 'always' always alert
   idleMinutes: 3,             // minutes without keyboard/mouse input before "away" counts (0 = turn the idle rule off)
-  autoDismiss: "present",     // toast auto-dismiss: 'present' keep while away | 'always' always close | 'never' never close
+  autoDismiss: "present",     // toast auto-dismiss (the timer only; leftovers are withdrawn once you are back): 'present' keep while away | 'always' always close | 'never' never close
   ignoreSubagent: true,       // true = no alerts for background subagent sessions (the open one still alerts)
   mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell, survives reloads)
   sound: true,                // sound switch (also governs the "system notification sound" mode)

@@ -130,6 +130,11 @@ function bootBundle(opts) {
     setWindowFocus: (focused) => {
       for (const fn of [...(listeners[focused ? 'focus' : 'blur'] || [])]) fn();
     },
+    // The first real input after an idle stretch, as the plugin's activity
+    // listeners see it (the idle half of "away" has no event of its own).
+    fireActivity: (type = 'keydown') => {
+      for (const fn of [...(listeners[type] || [])]) fn({ type });
+    },
     hasFocusListener: () => (listeners.focus || []).length > 0 && (listeners.blur || []).length > 0,
   };
 }
@@ -3634,6 +3639,158 @@ async function autoDismissPolicy() {
   console.log('auto-dismiss OK: kept while away, cleared while present, or fixed either way');
 }
 
+// Walking away must not cost an alert, but coming back must not leave the alert
+// sitting in front of the conversation it is about either. Whichever route the
+// user took back (taskbar, Alt-Tab, the notification itself, a restored window)
+// ends in one of three events — window focus, the page turning visible again, or
+// the first input after an idle stretch — and all three withdraw what was kept.
+// Closing is visual only: the request behind an approval toast stays answerable.
+async function withdrawnOnReturn() {
+  console.log('\n— coming back to the page withdraws the toasts kept while away —');
+
+  // 1) Plain (constructor) toast + the visibility route.
+  {
+    const b = bootBundle({ withNotification: true });
+    const host = buildHost({ withUiSession: false });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0, autoDismiss: 'present' });
+    b.doc.hidden = true;
+    b.doc.visibilityState = 'hidden';
+    b.win.__dshNotifyMe.test('done');
+    const n = b.lastNotification();
+    assert(n, 'a toast was raised while the page was away');
+    b.fireVisibility(); // still away: leaving must never withdraw anything
+    assert(n.closed === false, 'a toast raised while away survives a visibility change that stays hidden');
+    b.doc.hidden = false;
+    b.doc.visibilityState = 'visible';
+    b.fireVisibility();
+    assert(n.closed === true, 'the page turning visible again withdraws the toast it kept');
+    const dbg = b.win.__dshNotifyMe.debug();
+    assert(dbg.toastsLive === 0, 'no live toast handle is left behind, got ' + dbg.toastsLive);
+    assert(dbg.toastsWithdrawn >= 1, 'debug() counts the withdrawal, got ' + dbg.toastsWithdrawn);
+    assert(typeof dbg.lastToastWithdrawAt === 'string', 'debug() timestamps the withdrawal');
+  }
+
+  // 2) Plain toast + the window-focus route (taskbar click / Alt-Tab).
+  {
+    const b = bootBundle({ withNotification: true });
+    const host = buildHost({ withUiSession: false });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0 });
+    b.setWindowFocus(false);
+    b.win.__dshNotifyMe.test('done');
+    const n = b.lastNotification();
+    assert(n && n.closed === false, 'a toast raised in an unfocused window is kept');
+    b.setWindowFocus(true);
+    assert(n.closed === true, 'regaining window focus withdraws it');
+  }
+
+  // 3) Plain toast + the idle route: focus never moved, only the input clock
+  //    ran out, so the first real input afterwards is the return.
+  {
+    const b = bootBundle({ withNotification: true });
+    const host = buildHost({ withUiSession: false });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0.0005 });
+    b.win.__dshNotifyMe.test('done');
+    const n = b.lastNotification();
+    assert(n && n.closed === false, 'the toast is up before the idle clock runs out');
+    await sleep(120); // idleMinutes 0.0005 = 30 ms
+    assert(b.win.__dshNotifyMe.debug().away === true, 'the idle clock has run out, got away=' + b.win.__dshNotifyMe.debug().away);
+    assert(n.closed === false, 'nothing is withdrawn merely because the idle clock ran out');
+    b.fireActivity('keydown');
+    assert(n.closed === true, 'the first input after an idle stretch withdraws it too');
+  }
+
+  // 4) Button toast (Service Worker path): withdrawn on return, and the request
+  //    it stood for is still answerable afterwards.
+  {
+    const registered = [];
+    const liveNotes = [];
+    const serviceWorkerStub = {
+      register(url) {
+        registered.push(url);
+        return Promise.resolve({
+          active: {},
+          showNotification(title, opts) {
+            const note = { title, opts, closed: false, close() { this.closed = true; } };
+            liveNotes.push(note);
+          },
+          getNotifications(filter) {
+            return liveNotes.filter((note) => !note.closed && (!filter || !filter.tag || note.opts.tag === filter.tag));
+          },
+        });
+      },
+      addEventListener() {},
+    };
+    const b = bootBundle({
+      withNotification: true,
+      extend(sandbox, windowStub) {
+        sandbox.navigator = { serviceWorker: serviceWorkerStub };
+        sandbox.queueMicrotask = queueMicrotask;
+        windowStub.__DSH_BOOT__ = {
+          entries: [{ id: 'dsh-notify-me', url: '/plugins/??dsh-notify-me/client.js&rev=ddd' }],
+        };
+      },
+    });
+    const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    const answers = [];
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0, quickActions: true });
+    await sleep(20); // register() resolves on a promise tick
+    assert(registered.length === 1, 'the button path registered its worker, got ' + registered.length);
+    assert(b.win.__dshNotifyMe.debug().bridge === 'active', 'bridge reports active, got ' + b.win.__dshNotifyMe.debug().bridge);
+    b.doc.hidden = true;
+    b.doc.visibilityState = 'hidden';
+    host.setStatus(new Map([['s1', statusRow(answerableApproval('approval:900', null, answers))]]));
+    host.notifyStatus();
+    const note = liveNotes[liveNotes.length - 1];
+    assert(note && note.opts.data && note.opts.data.key === 'approval:900', 'the approval toast is up');
+    assert(note.closed === false, 'the approval toast is up while the page is away');
+    b.doc.hidden = false;
+    b.doc.visibilityState = 'visible';
+    b.fireVisibility();
+    assert(note.closed === true, 'coming back withdraws the button toast through the worker list');
+    assert(b.win.__dshNotifyMe.debug().actionKeys.length === 1,
+      'withdrawing the toast keeps the approval answerable, got ' + JSON.stringify(b.win.__dshNotifyMe.debug().actionKeys));
+    assert(b.win.__dshNotifyMe.decide('approval:900', 'allowed-once') === true,
+      'the withdrawn toast still has a live record to decide');
+    assert(answers.length === 1 && answers[0] === 'allowed-once',
+      'the approval ran answer("allowed-once") after the toast was withdrawn, got ' + JSON.stringify(answers));
+  }
+
+  // 5) The setting has no say here: "never close" only silences the timer, and
+  //    input in a page the user is sitting in front of must withdraw nothing.
+  {
+    const b = bootBundle({ withNotification: true });
+    const host = buildHost({ withUiSession: false });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0, autoDismiss: 'never' });
+    b.win.__dshNotifyMe.test('done');
+    const present = b.lastNotification();
+    assert(present && present.closed === false, 'a toast is up while the page is in front');
+    b.fireActivity('pointerdown');
+    assert(present.closed === false, 'input in the page withdraws nothing while the user is present');
+    b.doc.hidden = true;
+    b.doc.visibilityState = 'hidden';
+    b.win.__dshNotifyMe.test('done');
+    const kept = b.lastNotification();
+    assert(kept && kept !== present && kept.closed === false, 'a toast raised while away is kept, "never close" or not');
+    b.doc.hidden = false;
+    b.doc.visibilityState = 'visible';
+    b.fireVisibility();
+    assert(kept.closed === true, 'coming back withdraws the leftover even under "never close"');
+    assert(present.closed === true, 'and the one still up from before the trip, got closed=' + present.closed);
+  }
+
+  console.log('return-withdraw OK: focus, visibility and post-idle input all clear the leftovers, request intact');
+}
+
 function corruptStoredConfig() {
   console.log('\n— a stored config that is valid JSON but not an object falls back —');
   // JSON.parse returns these happily; before the guard they made the default
@@ -4023,6 +4180,7 @@ function mutedSessionsUi() {
   await idleFlushesQuieted();
   await donePolicyScopes();
   await autoDismissPolicy();
+  await withdrawnOnReturn();
   await mutedSessionsHonoured();
   mutedSessionsUi();
   console.log('\nALL SMOKE TESTS PASSED ✔');

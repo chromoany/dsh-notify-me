@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-me",
-  "version": "1.16.1",
+  "version": "1.17.0",
   "description": "离开 DSH 页面也能收到提醒：需要你操作 / 后台回复完成时发系统通知、标题标记与提示音，支持审批快捷裁决与外部推送，Web 版与桌面版均可用。",
   "license": "MIT",
   "type": "module",

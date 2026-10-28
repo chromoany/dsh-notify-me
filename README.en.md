@@ -26,7 +26,7 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 
 - **When input is needed:** approval, plan review, and questions get a notification, a sound, and a title marker.
 - **When a background reply finishes:** come back for the result; clicking the notification returns to that conversation. Pick "background only", "quiet for the open one", or "always".
-- **When you walk off but the window stays in front:** over 3 minutes without input counts as away, and the alert still fires as usual; the toast that arrived does not clear itself before you come back.
+- **When you walk off but the window stays in front:** over 3 minutes without input counts as away, and the alert still fires as usual; the toast that arrived does not clear itself before you come back, and is withdrawn the moment you are back at the page (taskbar, Alt-Tab or the toast itself).
 - **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, or your own webhook.
 - **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see "After the page closes" under [Advanced](#advanced)).
 
@@ -124,7 +124,7 @@ Open **Settings → Notify me**. The page lays out three blocks — how you get 
 - **Also alert "needs you" while the window is in front** (on by default): off means you only hear it once the window goes to the background;
 - **Stay quiet for the conversation on screen** (on by default): a wait in the conversation you are looking at keeps only the tab marker, and is delivered once you leave;
 - **When "reply finished" alerts** (default "background only"): background only / quiet for the open one / always — pick one;
-- **Dismiss the toast automatically** (default "keep while away"): keep while away / always close / never close — pick one;
+- **Dismiss the toast automatically** (default "keep while away"): keep while away / always close / never close — pick one; the choice only covers the closing on the timer, and leftover toasts are withdrawn once you are back at the page;
 - **Ignore subagent sessions** (on by default): skips background subagent sessions, while the one you have open still alerts;
 - **Click a toast to open that conversation** (on by default): switches to that conversation and brings the window forward — on Windows through the host route, on macOS / Linux through the `dsh://open` deep link — and with several tabs only one is raised.
 
@@ -134,7 +134,7 @@ Open **Settings → Notify me**. The page lays out three blocks — how you get 
 - **What counts as background**: switching to another app, being covered by another window, or minimizing all count; a window left in front with 3 minutes of no keyboard or mouse input counts too, and `idleMinutes: 0` falls back to looking only at the window.
 - **When "stay quiet for the conversation on screen" is replayed**: as usual once the window goes to the background or the idle timer fires; if you already handled it, it is dropped.
 - **The three "reply finished" choices**: "background only" = alert when you are not watching the page; "quiet for the open one" = the one on screen stays silent while other conversations still alert, useful with several open; "always" = never suppress. An old profile's "also alert 'reply finished' while in front" switch migrates to this setting automatically.
-- **"Keep while away"**: while you are at the page a plain toast closes itself after a few seconds; one that arrived while you were away stays in the notification centre until you come back. A toast with Approve / Reject carries no auto-dismiss timer — it stays until you click a button, answer the request in the page, or a newer request replaces it; a desktop approval toast, which cannot render buttons, closes after 12 s and is likewise not withdrawn while you are away.
+- **"Keep while away"**: while you are at the page a plain toast closes itself after a few seconds; one that arrived while you were away stays in the notification centre until you come back. It is withdrawn the moment you are back (taskbar, Alt-Tab, the toast itself, or restoring a minimized window), and none of the three options affect that — so a toast you never opened in the notification centre is not left in your way. A toast with Approve / Reject carries no auto-dismiss timer — it stays until you click a button, answer the request in the page, or a newer request replaces it; a desktop approval toast, which cannot render buttons, closes after 12 s and is likewise not withdrawn while you are away. Both are withdrawn when you come back to the page.
 - **Fallback for a toast click**: on Desktop a window that will not raise leaves only the conversation switch, with the reason in `debug().raiseLast`; turn this switch off and a click does nothing.
 
 </details>
@@ -343,7 +343,7 @@ Notifications with Approve / Reject buttons can only be raised by a Service Work
 <details>
 <summary>Button-toast bookkeeping and window raising</summary>
 
-Each button toast is booked against its interaction key, and one toast claims only one wait; once the request has been answered in the page, or replaced by a newer request, clicking the leftover buttons decides nothing and just closes it quietly. Button toasts carry no auto-dismiss timer — they stay until you click or answer; plain toasts close after 5 s, and a desktop approval toast without buttons after 12 s. With "never close" selected neither kind closes itself. If you miss the click, the approval in the conversation is still waiting for you.
+Each button toast is booked against its interaction key, and one toast claims only one wait; once the request has been answered in the page, or replaced by a newer request, clicking the leftover buttons decides nothing and just closes it quietly. Button toasts carry no auto-dismiss timer — they stay until you click or answer; plain toasts close after 5 s, and a desktop approval toast without buttons after 12 s. With "never close" selected neither kind closes on the timer; all three options cover that timer only, so anything still up is withdrawn once you are back at the page. If you miss the click, the approval in the conversation is still waiting for you.
 
 The "raise a window and switch its conversation" part of a body click is scheduled on the worker half as well: `client.focus()` raises exactly one window (a visible one first) and routes the conversation switch to that window alone, so several DSH tabs never fight over focus or all switch at once.
 
@@ -412,7 +412,7 @@ npm test                         # smoke-test (state machine) + host-route-test 
 npm pack --dry-run               # preview the published tarball
 ```
 
-`smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + toast tag length handling + the page's host-bridge probe / heartbeat / release and the shape of `debug().hostBridge`. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
+`smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + withdrawing leftover toasts on return + toast tag length handling + the page's host-bridge probe / heartbeat / release and the shape of `debug().hostBridge`. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
 
 The three new suites also ship their own fake `ctx`, need no local DSH and touch no network: `smoke/page-bridge-test.mjs` runs the page-bridge route — status shape, heartbeat and release, missing intent header `403`, cross-origin `403`, bad JSON `400`, oversized `413`, the `allowedOrigins`-derived `Host` (a simulated tunnel) being let through, and path collisions; `smoke/host-fallback-test.mjs` runs the host fallback — approval dedupe, `turn/end` throttling, subagent skip, no push on a fresh lease, a push after the lease expires, an immediate push after `alive:false`, language following the heartbeat, credentials re-read after a 401, and the health probe; `smoke/relay-route-test.mjs` runs the relay — the `GET` probe, `405`, cross-origin `403`, `413`, `400`, `503`, the `200` / `502` mapping and "retry exactly once on a 401".
 
