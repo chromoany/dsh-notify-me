@@ -139,6 +139,27 @@ Open **Settings → Notify me**. The page lays out three blocks — how you get 
 
 </details>
 
+### Muting certain conversations
+
+For the "this one runs automated work in the background — I do not need to hear about it tonight" case: silence one row and nothing else.
+
+- **Mute**: hover a session in the sidebar, a bell appears on the right; click it to mute that conversation (the button reads "mute alerts for this session"), click again to resume.
+- **Mark**: a muted conversation shows a crossed bell before its title (announced as "alerts muted for this session").
+- **Scope**: "needs you", "reply finished", sound, the tab-title mark and external forwarding are all silenced for that conversation; every other conversation is untouched. The test buttons under "Try it" still fire — they exist to check the channel on the spot.
+- **Persistence**: the list lives in local storage, so it survives reloads and restarts; a hand-edited list is pruned instead of breaking the page.
+- **After the tab closes**: the list travels with the heartbeat, so the host-side fallback honours it too — otherwise closing the page would start the very alerts you turned off.
+
+The settings page has a "Muted sessions" card under "When to alert" with the current count and an "Unmute all" button.
+
+<details>
+<summary>Edge cases</summary>
+
+- The mark lives in the host's `sidebar.session.row.leading` slot, and the host puts its status dots there while a session is running, so the mark is not rendered then — a running background job shows no crossed bell until it stops. The mute itself is unaffected.
+- Muting keys on the session id: renaming or moving the directory changes nothing, and a deleted session is harmless in the list (capped at 500 ids; "Unmute all" clears it).
+- Muting does not change the "reply finished" policy or "current conversation stays quiet"; when both apply, the mute wins.
+
+</details>
+
 ### Try it
 
 Three buttons send one "needs you", one "reply finished" and one "approval buttons" test alert with the current settings, right away, and deliberately **not** limited by the switches under "when to alert"; the line underneath states which channel can carry approval buttons right now.
@@ -332,6 +353,7 @@ window.__dshNotifyMe.setConfig({
   idleMinutes: 3,             // minutes without keyboard/mouse input before "away" counts (0 = turn the idle rule off)
   autoDismiss: "present",     // toast auto-dismiss: 'present' keep while away | 'always' always close | 'never' never close
   ignoreSubagent: true,       // true = no alerts for background subagent sessions (the open one still alerts)
+  mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell, survives reloads)
   sound: true,                // sound switch (also governs the "system notification sound" mode)
   soundDone: "synth",         // "reply finished" sound source: 'synth' built-in | 'custom' picked file | 'system' OS notification sound
   soundAttention: "synth",    // "needs you" sound source, same values
@@ -439,6 +461,7 @@ The cases where it will not raise are the same ones listed under [Known limitati
 - On `>= 0.1.6` (including `0.2.0-rc.2`, `0.2.1-rc.2`) the "reply finished" alert body carries only the session name and no reply snippet any more — host snapshots no longer provide `nodes`; the alert itself still fires as usual.
 - The title marker is written into `document.title` alongside the host: when the host recomputes the title the marker can be overwritten until the next alert event writes it again.
 - "Stay quiet for the conversation on screen" is judged by whether the window is in front: covered by another app, switched to another app, or minimized all count as background; back in front or with fresh keyboard / mouse input it goes quiet again.
+- The per-conversation mute mark lives in the host's `sidebar.session.row.leading` slot, and the host puts its status dots there while a session is running, so the mark is not rendered then — a running background job shows no crossed bell until it stops; the mute itself still applies.
 
 **External push**
 

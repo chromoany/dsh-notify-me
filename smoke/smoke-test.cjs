@@ -2134,6 +2134,10 @@ function makeFakeReact() {
       return [hooks[i], (n) => { hooks[i] = (typeof n === 'function') ? n(hooks[i]) : n; }];
     },
     useSyncExternalStore() { return { active: 'zh' }; },
+    // There is no commit phase here: run the effect body once and drop the
+    // disposer. Good enough for the page's render-only assertions; the real
+    // effect semantics are covered by the browser, not this fixture.
+    useEffect(fn) { if (typeof fn === 'function') fn(); },
     // test-only: rewind the hook cursor for the next render pass
     __beforeRender() { cursor = 0; },
   };
@@ -2217,6 +2221,9 @@ function settingsBoot(seedConfig, seedSound, opts) {
     get tree() { return tree; },
     audio,
     lastNotification: b.lastNotification,
+    injectedNow: () => injected.slice(),
+    registeredNow: () => registered.slice(),
+    beforeRender: () => fakeReact.__beforeRender(),
     textNow: () => collectText(tree).join(' | '),
     // Re-render on demand — some feedback (a test button's send verdict) lands
     // asynchronously, after the press() that triggered it.
@@ -2866,11 +2873,14 @@ async function hostBridgeLease() {
   const lang0 = yes.api.debug().language;
   assert(hb0.alive === true, 'the beat says alive, got ' + b0[0].body);
   assert(hb0.language === lang0, 'the beat language follows effectiveLang(), got ' + hb0.language + ' vs ' + lang0);
-  // Exactly two fields, pinned by key: the host's fallback pushes only while
-  // this page is away, so the page's own forward switches must not ride along
-  // (a field the host does not read still reads like it applies to the host).
-  assert(Object.keys(hb0).sort().join(',') === 'alive,language',
-    'the beat body is exactly {alive, language}, got ' + Object.keys(hb0).sort().join(','));
+  // The host's fallback pushes only while this page is away, so the page's own
+  // forward switches must not ride along (a field the host does not read still
+  // reads like it applies to the host). The muted-session list is the one piece
+  // the host genuinely needs, because it speaks for silenced sessions.
+  assert(Object.keys(hb0).sort().join(',') === 'alive,language,muted',
+    'the beat body is exactly {alive, language, muted}, got ' + Object.keys(hb0).sort().join(','));
+  assert(Array.isArray(hb0.muted) && hb0.muted.length === 0,
+    'nothing is muted by default, got ' + JSON.stringify(hb0.muted));
   const d0 = yes.api.debug();
   assert(d0.hostBridge.state === 'active', 'debug() reports an active lease, got ' + d0.hostBridge.state);
   assert(d0.hostBridge.leaseMs === 60000, 'debug() reports the lease the host granted, got ' + d0.hostBridge.leaseMs);
@@ -2894,8 +2904,23 @@ async function hostBridgeLease() {
   assert(aliveBeats(yes.calls).length === 3, 'the beat keeps its pace after the first, got ' + aliveBeats(yes.calls).length);
   assert(hb1.language === 'en', 'a pinned language reaches the host on the next beat, got ' + hb1.language);
   // Flipping every external-forward setting must not add or remove a field.
-  assert(Object.keys(hb1).sort().join(',') === 'alive,language',
-    'the beat body stays {alive, language} after the forward toggles change, got ' + Object.keys(hb1).sort().join(','));
+  assert(Object.keys(hb1).sort().join(',') === 'alive,language,muted',
+    'the beat body stays {alive, language, muted} after the forward toggles change, got ' + Object.keys(hb1).sort().join(','));
+
+  // 2b) muting a session reaches the host on the next beat without waiting for
+  //     the interval: the host filters its alerts on the last list it heard, so a
+  //     mute followed by closing the tab must not leave a window (issue #23).
+  yes.api.setConfig({ mutedSessions: ['sess-muted-1', '  sess-muted-2  ', 'sess-muted-1', 42, ''] });
+  await flush();
+  const hbMute = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
+  assert(aliveBeats(yes.calls).length === 4,
+    'a mute change beats at once instead of waiting for the interval, got ' + aliveBeats(yes.calls).length);
+  assert(JSON.stringify(hbMute.muted) === JSON.stringify(['sess-muted-1', 'sess-muted-2']),
+    'the beat carries the pruned mute list, got ' + JSON.stringify(hbMute.muted));
+  yes.api.setConfig({ mutedSessions: [] });
+  await flush();
+  const hbUnmute = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
+  assert(JSON.stringify(hbUnmute.muted) === '[]', 'unmuting clears the list on the next beat, got ' + JSON.stringify(hbUnmute.muted));
 
   // 3) a bare 404 is the stock install, not a fault: the host-bridge route only
   //    exists while hostFallback or relay is on, so the webserver answers 404
@@ -3091,7 +3116,7 @@ async function hostBridgeLease() {
   for (const c of [...relayOnly.host.cleanups]) c();
   for (const c of [...denied.host.cleanups]) c();
   for (const c of [...deniedBare.host.cleanups]) c();
-  console.log('host bridge lease OK: probe-gated heartbeat, leaseMs/3 pace, {alive,language}-only body, keepalive release, hidden-page deferral, 404/501/204 = unavailable vs 5xx/403/non-JSON = error with a named reason, relay survives a disabled fallback, bfcache restore re-probes');
+  console.log('host bridge lease OK: probe-gated heartbeat, leaseMs/3 pace, {alive,language,muted} body, keepalive release, hidden-page deferral, 404/501/204 = unavailable vs 5xx/403/non-JSON = error with a named reason, relay survives a disabled fallback, bfcache restore re-probes');
 }
 
 // ── 设置页：宿主侧兜底 / 同源中继状态行 ─────────────────────────────
@@ -3766,6 +3791,189 @@ async function approvalTestToastSurvivesMark() {
   s.cleanup();
 }
 
+// ── per-session mute (issue #23) ───────────────────────────────────────────
+// Muting is a per-conversation decision: it has to silence that session's
+// alerts — toast, sound, forwarded copy and the host fallback — while leaving
+// every other conversation alone, survive a reload, and never take the page
+// down when the stored list is full of junk.
+async function mutedSessionsHonoured() {
+  console.log('\n— per-session mute: one conversation, not the page —');
+
+  const calls = [];
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox) {
+      sandbox.fetch = (url, init) => {
+        calls.push({ url, init });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), text: () => Promise.resolve('') });
+      };
+    },
+  });
+  const host = buildHost({ withUiSession: false });
+  host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+  const { mod, win, events } = b;
+  mod.apply(host.ctx);
+  win.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
+  win.__dshNotifyMe.setConfig({
+    sound: false, language: 'zh', enabled: true, idleMinutes: 0, donePolicy: 'always',
+    externalEnabled: true, externalDone: true, externalAttention: true,
+    externalTargets: [{ id: 'hook', type: 'custom', url: 'https://example.test/hook', enabled: true }],
+    mutedSessions: [],
+  });
+  const rows = (running, completed) => ({
+    ids: ['bg', 'bg2'],
+    byId: {
+      bg: { running: running === 'bg', displayTitle: '后台任务', completed: completed === 'bg' },
+      bg2: { running: running === 'bg2', displayTitle: '另一个后台任务', completed: completed === 'bg2' },
+    },
+    current: 's1',
+    phase: 'ready',
+  });
+  host.setList(rows(null, null));
+  host.notifyList();
+  host.notifyFace();
+  const finish = async (id) => {
+    host.setList(rows(id, null));
+    host.notifyList();
+    await sleep(400);
+    host.setList(rows(null, id));
+    host.notifyList();
+    await sleep(400);
+  };
+
+  // 1) baseline: a background finish alerts and is forwarded.
+  events.length = 0;
+  calls.length = 0;
+  await finish('bg');
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'the unmuted baseline still alerts');
+  assert(calls.length === 1, 'the unmuted baseline is forwarded once, got ' + calls.length);
+
+  // 2) muted: no toast, no forwarded copy.
+  win.__dshNotifyMe.setConfig({ mutedSessions: ['bg'] });
+  events.length = 0;
+  calls.length = 0;
+  await finish('bg');
+  assert(events.length === 0, 'a muted session raises no alert, got ' + JSON.stringify(events.map((e) => e.kind)));
+  assert(calls.length === 0, 'a muted session is not forwarded either, got ' + calls.length);
+
+  // 3) muting one row must not touch its neighbours.
+  events.length = 0;
+  await finish('bg2');
+  assert(events.filter((e) => e.kind === 'done').length === 1,
+    'an unmuted neighbour still alerts while another session is muted, got ' + JSON.stringify(events.map((e) => e.kind)));
+
+  // 4) unmuting resumes from the next edge.
+  win.__dshNotifyMe.setConfig({ mutedSessions: [] });
+  events.length = 0;
+  await finish('bg');
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'unmuting brings the alerts back');
+
+  // 5) the list survives a reload, and junk in it is pruned instead of trusted.
+  const persisted = bootBundle({
+    withNotification: true,
+    extend(sandbox) {
+      sandbox.localStorage.setItem('dshNotifyMe.config', JSON.stringify({ mutedSessions: ['bg'] }));
+    },
+  });
+  const pHost = buildHost({ withUiSession: false });
+  persisted.mod.apply(pHost.ctx);
+  pHost.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+  persisted.win.__dshNotifyMe.setConfig({ sound: false, language: 'zh', enabled: true, idleMinutes: 0, donePolicy: 'always' });
+  pHost.setList(rows(null, null));
+  pHost.notifyList();
+  pHost.notifyFace();
+  persisted.events.length = 0;
+  pHost.setList(rows('bg', null));
+  pHost.notifyList();
+  await sleep(400);
+  pHost.setList(rows(null, 'bg'));
+  pHost.notifyList();
+  await sleep(400);
+  assert(persisted.events.length === 0, 'a mute stored yesterday still holds today');
+  assert(JSON.stringify(persisted.win.__dshNotifyMe.config.mutedSessions) === '["bg"]',
+    'the stored list is what the page reports back, got ' + JSON.stringify(persisted.win.__dshNotifyMe.config.mutedSessions));
+
+  const junk = bootBundle({
+    withNotification: false,
+    extend(sandbox) {
+      sandbox.localStorage.setItem('dshNotifyMe.config', JSON.stringify({
+        mutedSessions: ['a', 'a', '', '   ', 42, null, { id: 'x' }, '  b  ', 'c'.repeat(300)],
+      }));
+    },
+  });
+  const jHost = buildHost({ withUiSession: false });
+  junk.mod.apply(jHost.ctx);
+  assert(JSON.stringify(junk.win.__dshNotifyMe.config.mutedSessions) === '["a","b"]',
+    'a hand-edited list is pruned to short non-empty deduped strings, got ' +
+      JSON.stringify(junk.win.__dshNotifyMe.config.mutedSessions));
+  console.log('per-session mute OK: silences its own row, spares the rest, survives a reload, drops junk');
+}
+
+// The row UI: a bell in the row's hover actions and a mark before the title,
+// both reading the same list, plus the settings card that can clear it.
+function mutedSessionsUi() {
+  console.log('\n— per-session mute: sidebar row + settings card —');
+  const sb = settingsBoot({ mutedSessions: [] });
+  const zh = sb.dictNow().zh;
+  const en = sb.dictNow().en;
+  for (const key of ['secMute', 'muteHint', 'muteNone', 'muteMuted', 'muteClear', 'muteSession', 'unmuteSession', 'muteMark']) {
+    assert(zh[key] && en[key], 'both languages define ' + key);
+  }
+  // Both slots are injected — each on its own, so a host with only one still works.
+  assert(sb.injectedNow().indexOf('sidebar.workspaces.session.row.action') !== -1,
+    'the row hover-action slot is injected');
+  assert(sb.injectedNow().indexOf('sidebar.session.row.leading') !== -1,
+    'the row leading slot is injected');
+  const btnReg = sb.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute');
+  const markReg = sb.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute-mark');
+  assert(btnReg && markReg, 'both row entries registered');
+  assert(btnReg.spec.name === 'sidebar.workspaces.session.row.action', 'the bell registers into the action slot');
+  assert(markReg.spec.name === 'sidebar.session.row.leading', 'the mark registers into the leading slot');
+
+  const renderSlot = (reg, sessionId) => {
+    sb.beforeRender();
+    const el = reg.comp({ sessionId });
+    return el.type(el.props);
+  };
+  // Unmuted: the bell offers to mute, the mark renders nothing.
+  const bell = renderSlot(btnReg, 's-silent');
+  assert(bell.type === 'button', 'the bell is a real button');
+  assert(bell.props['aria-label'] === zh.muteSession, 'an unmuted row offers 静音, got ' + bell.props['aria-label']);
+  assert(bell.props['aria-pressed'] === 'false', 'the bell reports its pressed state');
+  assert(bell.props.title === zh.muteSession, 'the bell has a hover title');
+  assert(renderSlot(markReg, 's-silent') === null, 'an unmuted row shows no mark');
+
+  // Press it: the list gains the id, the bell flips, the mark appears, and the
+  // click must not reach the row (that would open the session).
+  let bubbled = false;
+  bell.props.onClick({ preventDefault() {}, stopPropagation() { bubbled = true; } });
+  assert(bubbled, 'the bell stops the click from opening the row');
+  assert(JSON.stringify(sb.configNow().mutedSessions) === '["s-silent"]',
+    'pressing the bell mutes that session, got ' + JSON.stringify(sb.configNow().mutedSessions));
+  const bell2 = renderSlot(btnReg, 's-silent');
+  assert(bell2.props['aria-label'] === zh.unmuteSession, 'a muted row offers 取消静音, got ' + bell2.props['aria-label']);
+  assert(bell2.props['aria-pressed'] === 'true', 'the muted bell reports pressed');
+  const mark = renderSlot(markReg, 's-silent');
+  assert(mark && mark.props['aria-label'] === zh.muteMark, 'a muted row carries the mark');
+  assert(renderSlot(markReg, 's-other') === null, 'the mark belongs to its own row only');
+
+  // The settings card counts it and can clear the whole list. This uses its own
+  // page instance: the fixture shares one hook table between every component it
+  // renders, so mixing a slot render into the page's render pass would hand the
+  // page the slot's hook values (real React keeps them apart).
+  const page = settingsBoot({ mutedSessions: ['s-silent'] });
+  assert(page.text.indexOf(zh.secMute) !== -1, 'the muted-sessions card renders');
+  assert(page.text.indexOf(zh.muteMuted + '1') !== -1, 'the card counts the muted session, got ' + page.text);
+  const clearBtn = page.find((n) => n.type === 'button' && Array.isArray(n.children) && n.children.indexOf(zh.muteClear) !== -1);
+  assert(clearBtn, 'the clear-all button renders');
+  clearBtn.props.onClick();
+  assert(page.configNow().mutedSessions.length === 0, 'the clear button empties the list');
+  assert(page.renderNow().indexOf(zh.muteNone) !== -1, 'the empty state comes back after clearing');
+  page.cleanup();
+  sb.cleanup();
+  console.log('mute UI OK: bell toggles one row, mark follows it, card clears the list');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
@@ -3797,6 +4005,8 @@ async function approvalTestToastSurvivesMark() {
   await idleFlushesQuieted();
   await donePolicyScopes();
   await autoDismissPolicy();
+  await mutedSessionsHonoured();
+  mutedSessionsUi();
   console.log('\nALL SMOKE TESTS PASSED ✔');
   // Exit explicitly: marker-release timers stay armed on purpose (they mirror
   // browser behaviour) and would otherwise hold the loop open.

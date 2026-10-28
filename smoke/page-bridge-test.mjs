@@ -148,13 +148,14 @@ try {
     'the status reports nothing about the page push switches (got ' + JSON.stringify(status.body.page) + ')');
 
   // 3) The heartbeat, and the lease it renews.
-  // A heartbeat carries exactly two things: whether a page is open, and the
-  // language it is showing. The page's own push switches stay out of it — the
+  // A heartbeat carries three things: whether a page is open, the language it is
+  // showing, and the sessions the user muted (the host's fallback has to stay
+  // quiet for those too). The page's own push switches stay out of it — the
   // host's rule is "push while no page is open", full stop.
   const beat = await call(bridge, {
     method: 'POST',
     headers: { 'x-dsh-notify-me-page': 'bridge' },
-    body: JSON.stringify({ alive: true, language: 'en' }),
+    body: JSON.stringify({ alive: true, language: 'en', muted: ['sess-a', 'sess-b'] }),
   });
   assert(beat.status === 200 && beat.body && beat.body.ok === true,
     'a heartbeat with the intent header answers 200 (got ' + beat.status + ' ' + JSON.stringify(beat.body) + ')');
@@ -165,6 +166,23 @@ try {
   assert(typeof afterBeat.body.page.ageMs === 'number' && afterBeat.body.page.ageMs < 2000,
     'the age is the time since that heartbeat (got ' + afterBeat.body.page.ageMs + ')');
   assert(afterBeat.body.language === 'en', 'the reported language follows the heartbeat (got ' + afterBeat.body.language + ')');
+
+  // A junk mute list is ignored, not forwarded and not fatal: the page is only
+  // ever one version ahead of the host, and a bad field must not take the beat.
+  const junkMute = await call(bridge, {
+    method: 'POST',
+    headers: { 'x-dsh-notify-me-page': 'bridge' },
+    body: JSON.stringify({ alive: true, muted: 'nope' }),
+  });
+  assert(junkMute.status === 200 && junkMute.body.ok === true,
+    'a non-array mute list is ignored (got ' + junkMute.status + ' ' + JSON.stringify(junkMute.body) + ')');
+  const manyMute = await call(bridge, {
+    method: 'POST',
+    headers: { 'x-dsh-notify-me-page': 'bridge' },
+    body: JSON.stringify({ alive: true, muted: new Array(900).fill('sess-x') }),
+  });
+  assert(manyMute.status === 200 && manyMute.body.ok === true,
+    'an oversized mute list is still accepted (got ' + manyMute.status + ' ' + JSON.stringify(manyMute.body) + ')');
 
   // Lease expiry is what hands delivery back to the host.
   await sleep(450);

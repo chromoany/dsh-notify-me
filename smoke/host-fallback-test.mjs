@@ -507,7 +507,31 @@ try {
     globalThis.fetch = realFetch;
   }
 
-  console.log('host fallback OK: lease gate, dedupe, throttle, subagent skip, language, page-parity copy, retry, probe');
+  // 15) A session muted in the sidebar stays quiet here too — otherwise the
+  // fallback fires exactly the alert the user switched off. The heartbeat
+  // carries the list; unmuting resumes from the next edge, and neighbours are
+  // untouched.
+  {
+    const calls = captureFetch();
+    const hostHalf = bootHost(baseConfig());
+    await hostHalf.beat(JSON.stringify({ alive: false, muted: ['sess-alpha'] }));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 9, reason: { kind: 'completed' } } });
+    hostHalf.emit(ALPHA, { type: 'approval/asked', data: { id: 'ap-muted', toolName: 'shell' } });
+    await sleep(80);
+    assert(calls.length === 0, 'a muted session delivers nothing (got ' + calls.length + ')');
+
+    hostHalf.emit(session('sess-gamma'), { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'a neighbour that was never muted');
+
+    await hostHalf.beat(JSON.stringify({ alive: false, muted: [] }));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 10, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 2, 'an unmuted turn alert');
+    assert(JSON.parse(calls[calls.length - 1].body).body === 'atlas',
+      'the resumed alert is the usual session name, got ' + calls[calls.length - 1].body);
+    globalThis.fetch = realFetch;
+  }
+
+  console.log('host fallback OK: lease gate, dedupe, throttle, subagent skip, mute, language, page-parity copy, retry, probe');
 } finally {
   globalThis.fetch = realFetch;
   fs.rmSync(tempDir, { recursive: true, force: true });
