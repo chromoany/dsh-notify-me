@@ -312,80 +312,11 @@ This is primarily a **browser-layer** plugin: local toasts, sound and the title 
 
 ## Compatibility
 
-Per-release adaptation records live in [package.json](package.json) under `dsh.compatibility.dshReleases`; hosts from `0.2.1-rc.2` on gate installation on `peerDependencies` and `engines` only and no longer read that field, so it is a human-readable record, not a gate.
-
-Every release was tested to **actually activate**: `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.4` and `0.2.2-alpha.2` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js&rev=…` serves a build containing the new code, and the "Notify me" section appears in Settings). Plugin entries stay compatible from `0.1.1-rc.2` through `0.2.2-alpha.2`, and stepping back to an older host needs no config change; the `1.9.0` settings redesign added no new host API, and the bell in the settings page header is the plugin's own SVG (`docs/brand/`).
-
-<details>
-<summary>Host-generation shape differences and two known traps</summary>
-
-The plugin picks its interaction source per host generation; the table below marks the boundaries of each shape, not a gate:
-
-| Host generation | "Needs you" interaction source | Current session | Toast-click navigation |
-| --- | --- | --- | --- |
-| `<= 0.1.2-alpha.1` | controller snapshot `pending[]` | snapshot `current` | `sessions.open()` |
-| `0.1.2-alpha.2 .. 0.1.6-alpha.1` | `uiSession.pendingInteractions` | snapshot `current` | `sessions.open()` |
-| `>= 0.1.6-alpha.2` (incl. `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.2-alpha.2`) | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
-
-The ranges are illustrative: the plugin picks its source by store shape (whenever `sessionStatus` exists it takes the new path), and the version numbers only mark where each shape appeared. The `peerDependencies` range shapes npm's peer warning — `0.2.1-rc.2` and `0.2.2-alpha.2` both fall inside `>=0.2.0-rc.1 <0.3.0-0`, so no exemption is needed.
-
-`0.2.1-rc.3`, `0.2.1-rc.4` and `0.2.2-alpha.2` each got an isolated run: an isolated `DSH_HOME` with the plugin installed, then `dsh web --no-open` (71 boot entries on `rc.3` / `rc.4`, 72 on `0.2.2-alpha.2`), the `dsh-notify-me` entry in the `application` batch, and all three inject targets (`client-ui-session`, `client-locale`, `client-ui-conversation`) present; `/plugins/??dsh-notify-me/client.js` served the 1.16.1 build (248,023 B); loaded into a real page through headless Edge over CDP, `apply` ran normally and `debug()` reported `uiSession: bound`, `uiSessionSource: sessionStatus`, `raiseChannel: window-focus`, and opening Settings from the account menu and clicking "Notify me" rendered the whole settings view. All three ship host client bundles that differ from `0.2.1-rc.2` (`dsh-client-ui-workspace`, `dsh-client-ui-conversation`, `dsh-client-locale`, …), yet every one of the four session-row slots the plugin uses, plus `uiSession.sessionStatus`, `retainedBy.mainView` and `uiWorkspace.openSession()`, is still there; `0.2.2-alpha.2` adds a `sidebar.session.row.trailing` slot the plugin does not use. Host-side shapes still match `0.2.0-rc.2`; no code change was needed.
-
-Two traps are worth remembering: a package listed in `dsh.client.inject` that a newer runtime no longer ships parks the client entry at `pending (waiting for services: …)` forever — which is exactly how 1.1.3 broke on `0.1.2-rc.1` and later; and when the host swaps a store or a field name nothing throws, alerts just go **silent** — `pendingInteractions`→`sessionStatus`, `list.current`→`retainedBy.mainView` and `sessions.open()`→`uiWorkspace.openSession()` were all this kind. So every adaptation has to confirm with `window.__dshNotifyMe.debug()` that it really reports `bound`.
-
-</details>
+Every release from `0.1.1-rc.2` through `0.2.2-alpha.2` was tested to actually activate (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). Per-release records, the host-generation shape differences and the two traps that fail silently are in **[docs/compatibility.en.md](docs/compatibility.en.md)**.
 
 ## Advanced console configuration
 
-The Settings page is the first entry point; to script or bulk-edit preferences, or to reset them, the config lives in `localStorage` (`dshNotifyMe.config`) and can be adjusted live from the console:
-
-<details>
-<summary>Console API and storage reference</summary>
-
-```js
-window.__dshNotifyMe.config                       // view current config
-window.__dshNotifyMe.setConfig({
-  enabled: true,           // false = disable all reminders (master switch)
-  language: "auto",        // 'auto' follow the UI | 'zh' Simplified Chinese | 'en' English
-  attentionHiddenOnly: false, // true = don't alert "needs you" while the page is visible
-  currentHiddenOnly: true,    // true = waits in the conversation on screen keep only the title marker (replayed once away)
-  donePolicy: "background",   // "reply finished" policy: 'background' only when away | 'smart' quiet only for the open one | 'always' always alert
-  idleMinutes: 3,             // minutes without keyboard/mouse input before "away" counts (0 = turn the idle rule off)
-  autoDismiss: "present",     // toast auto-dismiss: 'present' keep while away | 'always' always close | 'never' never close
-  ignoreSubagent: true,       // true = no alerts for background subagent sessions (the open one still alerts)
-  mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell, survives reloads)
-  sound: true,                // sound switch (also governs the "system notification sound" mode)
-  soundDone: "synth",         // "reply finished" sound source: 'synth' built-in | 'custom' picked file | 'system' OS notification sound
-  soundAttention: "synth",    // "needs you" sound source, same values
-  volume: 0.5,                // volume 0..1
-  autoFocus: true,            // a toast click returns to the conversation that raised it
-  quickActions: true,         // Approve / Reject buttons on approval toasts
-  hostEnv: "auto",            // runtime: 'auto' detect | 'desktop' force the app | 'web' force the browser
-  externalEnabled: false,     // external forwarding master switch (default off: no endpoint, nothing is sent)
-  externalAttention: true,    // forward "needs you" (exactly the same trigger rules as local alerts)
-  externalDone: true,         // forward "reply finished"
-  externalRetryDelays: [2000, 6000], // backoff for retryable failures (ms, with jitter; [] = send once)
-  externalTargets: []         // push targets, see the field notes below
-})
-// Target shape: {id, type, url, secret?, token?, uid?, template?, enabled?}
-// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'custom'
-// token/uid only for wxpusher (its URL is fixed to the official endpoint); secret signs Feishu bodies
-// and custom HMAC headers; template is optional ({{title}} {{body}} {{event}} {{time}} {{session}});
-// enabled:false disables that one target
-window.__dshNotifyMe.resetConfig()                // restore defaults (also drops any picked audio files)
-window.__dshNotifyMe.decide("approval:3", "allowed-once")  // programmatic decision: "allowed-once" | "rejected"
-window.__dshNotifyMe.testExternal()               // explicit outbound test to valid targets; resolves {sent, unverified, failed, statuses}
-```
-
-> **External-test switch boundary:** the settings page's "Send test notification" needs the "Enable reminders" and "External notifications" master switches on, but ignores the two per-kind forwarding switches. The console `testExternal()` call is an explicit test: with valid configured targets it sends to them even when those master switches are off; with no valid targets it sends nothing. Ordinary `test("done")` / `test("attention")` / `test("approval")` calls only test local alerts and never forward externally.
-
-> Picked audio files do not live in `dshNotifyMe.config`: each kind gets its own key (`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`, holding a `{name, size, data}` data URL), because one file inflates by ~1.37× once turned into a data URL and would slow down every config read. `resetConfig()` clears both keys along with the config.
->
-> To confirm which source is actually in effect, check `soundDone` / `soundAttention` and `customSoundDone` / `customSoundAttention` in `window.__dshNotifyMe.debug()`.
->
-> `debug().hostBridge` is the read-only snapshot of host coordination: `state` (`idle` the probe has not answered yet; `active` the host has a fallback and this page is holding the lease with its heartbeat; `unavailable` the host is there but offers no fallback, which is what a stock install looks like — an unregistered 404 route counts here too and is not a fault; `error` the host answered nothing usable, or the gate refused this page outright), `leaseMs` (the lease the host granted, in milliseconds), `relayEnabled` and `relayPath` (the relay route, when the host enabled one), `relayUpstreamHost` / `relayUpstreamPath` (the gateway endpoint the fold matches), `lastReason` (why the last probe failed — `bad-host` / `cross-origin` / `http-403` — and `null` when it was not a fault), and `lastProbeAt` / `lastBeaconAt` (the last probe and the last heartbeat, as ISO strings or `null`). A gate refusal reads as `error` rather than as "off", because it is a configuration the user can fix: add this page's origin to the top-level `allowedOrigins` of the `- id: notify-me` entry in the profile.
-
-</details>
+The Settings page is the first entry point. To script or bulk-edit preferences, reset them, or look up the external-target fields, see **[docs/console-config.en.md](docs/console-config.en.md)** — the full config keys, `decide()` / `testExternal()`, the external-test switch boundary, and how to read custom sounds and `debug().hostBridge`.
 
 ## How it works
 
@@ -394,7 +325,7 @@ The reminder core watches session state and pending interactions; approval decis
 <details>
 <summary>Event sources and graceful degradation</summary>
 
-The reminder core picks its interaction source per host generation (see the table above); the current session always comes from the client `sessions` service:
+The reminder core picks its interaction source per host generation (see the table in [docs/compatibility.en.md](docs/compatibility.en.md)); the current session always comes from the client `sessions` service:
 
 - **The current session's** `SessionSnapshot`: a `running: true → false` edge means a reply finished;
 - **pending interactions**: a new key in `uiSession`'s `sessionStatus` (`>= 0.1.6`, per-session `pendingInteraction`) or in `pendingInteractions` (`0.1.2 .. 0.1.5`) means the agent is waiting on you — the container carries the approval tool name / reason or the question text; older hosts fall back to the controller snapshot's `pending[]`;

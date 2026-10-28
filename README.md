@@ -312,79 +312,11 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 ## 兼容性
 
-逐版本适配记录见 [package.json](package.json) 的 `dsh.compatibility.dshReleases`；宿主（`0.2.1-rc.2` 及之后）的安装门控只读 `peerDependencies` 与 `engines`，**不再读取这个字段**，所以它只是一份给人看的记录，不构成门禁。
-
-已逐版实测**真正激活**于 `0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.1`、`0.1.5-rc.2`、`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.4` 与 `0.2.2-alpha.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js&rev=…` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.1.1-rc.2` 到 `0.2.2-alpha.2` 的插件条目照旧兼容，换回旧宿主也不需要改配置；`1.9.0` 的界面重排没有引入新的宿主 API，设置页页眉的铃铛是插件自己画的 SVG（`docs/brand/`）。
-
-<details>
-<summary>展开宿主代际的形状差异与两个已知坑</summary>
-
-插件按宿主代际自动选源；下表是各形状的边界，不是门禁：
-
-| 宿主代际 | 「需要你」交互来源 | 判断当前会话 | 点通知切会话 |
-| --- | --- | --- | --- |
-| `≤ 0.1.2-alpha.1` | 控制器快照的 `pending[]` | 快照 `current` | `sessions.open()` |
-| `0.1.2-alpha.2 .. 0.1.6-alpha.1` | `uiSession.pendingInteractions` | 快照 `current` | `sessions.open()` |
-| `≥ 0.1.6-alpha.2`（含 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.2-alpha.2`） | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
-
-区间仅作示意：插件按 store 形状自动选源（`sessionStatus` 存在即走新路），版本号只是各形状的出现边界。`peerDependencies` 范围决定 npm 的 peer 提示——`0.2.1-rc.2` 与 `0.2.2-alpha.2` 都落在 `>=0.2.0-rc.1 <0.3.0-0` 里，不需要豁免。
-
-`0.2.1-rc.3`、`0.2.1-rc.4` 与 `0.2.2-alpha.2` 各跑了一轮隔离验证：隔离 `DSH_HOME` 装好插件再起 `dsh web --no-open`（`rc.3` / `rc.4` 71 个启动条目，`0.2.2-alpha.2` 72 个），插件条目 `dsh-notify-me` 都在 `application` 批，三个注入目标（`client-ui-session`、`client-locale`、`client-ui-conversation`）都在；`/plugins/??dsh-notify-me/client.js` 返回 1.16.1 的构建（248,023 B）；无头 Edge 经 CDP 载入真实页面后 `apply` 正常执行，`debug()` 报 `uiSession: bound`、`uiSessionSource: sessionStatus`、`raiseChannel: window-focus`，从账号菜单进设置点开「通知提醒」能渲染出整块设置视图。三版的宿主客户端 bundle 相对 `0.2.1-rc.2` 都有改动（`dsh-client-ui-workspace`、`dsh-client-ui-conversation`、`dsh-client-locale` 等），但本插件用到的四个会话行槽位、`uiSession.sessionStatus`、`retainedBy.mainView`、`uiWorkspace.openSession()` 一个没少；`0.2.2-alpha.2` 另加了 `sidebar.session.row.trailing`，与本插件无关。宿主侧形状仍与 `0.2.0-rc.2` 一致，不需要改代码。
-
-两个坑值得记住：一是 `dsh.client.inject` 里列了新版运行时已不再提供的包，客户端条目会停在 `pending (waiting for services: …)` 而永不执行——1.1.3 在 `0.1.2-rc.1` 及以后正是这样失效的；二是宿主换存储或字段名时**不会报错**，提醒只会静默失效——`pendingInteractions`→`sessionStatus`、`list.current`→`retainedBy.mainView`、`sessions.open()`→`uiWorkspace.openSession()` 都是这一类，所以每次适配都要用 `window.__dshNotifyMe.debug()` 确认真的是 `bound`。
-
-</details>
+已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-alpha.2` 上真正激活（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
 
 ## 控制台高级配置
 
-设置页是第一入口；想脚本化/批量改或恢复默认时，偏好存 `localStorage`（`dshNotifyMe.config`），可用控制台实时调整：
-
-<details>
-<summary>展开控制台 API 与存储说明</summary>
-
-```js
-window.__dshNotifyMe.config                       // 查看
-window.__dshNotifyMe.setConfig({
-  enabled: true,           // false = 关闭所有提醒（主开关）
-  language: "auto",        // 'auto' 跟随界面 | 'zh' 简体中文 | 'en' English
-  attentionHiddenOnly: false, // true = 页面可见时「需要你」不提醒
-  currentHiddenOnly: true,    // true = 当前对话的等待只留标题标记（人离开后补发）
-  donePolicy: "background",   // 「回复完成」策略：'background' 仅后台 | 'smart' 仅当前对话静默 | 'always' 总是提醒
-  idleMinutes: 3,             // 超过多少分钟没有键鼠输入算「离开」（0 = 关掉闲置判定）
-  autoDismiss: "present",     // 通知自动消失：'present' 离开时保留 | 'always' 总是关闭 | 'never' 从不关闭
-  ignoreSubagent: true,       // true = 后台子代理（subagent）会话不提醒（当前打开的照常）
-  mutedSessions: [],          // 按对话静音的会话 id 列表（侧边栏铃铛写入，重载后仍在）
-  sound: true,                // 提示音开关（含「系统通知音」模式）
-  soundDone: "synth",         // 「完成」音效来源：'synth' 内置 | 'custom' 自定义文件 | 'system' 系统通知音
-  soundAttention: "synth",    // 「需要你」音效来源，取值同上
-  volume: 0.5,                // 音量 0~1
-  autoFocus: true,            // 点通知回到提醒所属的对话
-  quickActions: true,         // 审批通知上的「同意 / 拒绝」按钮
-  hostEnv: "auto",            // 运行环境：'auto' 自动识别 | 'desktop' 强制桌面端 | 'web' 强制 Web
-  externalEnabled: false,     // 外部通知转发主开关（默认关：不填端点就什么都不发）
-  externalAttention: true,    // 转发「需要你」（触发规则跟本地提醒完全一致）
-  externalDone: true,         // 转发「回复完成」
-  externalRetryDelays: [2000, 6000], // 可重试失败的退避间隔（毫秒，带抖动；[] = 只发一次）
-  externalTargets: []         // 推送目标，见下方字段说明
-})
-// 目标的形状：{id, type, url, secret?, token?, uid?, template?, enabled?}
-// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'custom'
-// token/uid 只用于 wxpusher（url 固定为官方端点）；secret 用于飞书签名与自定义 HMAC 签名；
-// template 可选，占位符 {{title}} {{body}} {{event}} {{time}} {{session}}；enabled:false 单独停用该目标
-window.__dshNotifyMe.resetConfig()                // 恢复默认（同时清掉已选的自定义音效文件）
-window.__dshNotifyMe.decide("approval:3", "allowed-once")  // 程序化裁决："allowed-once" | "rejected"
-window.__dshNotifyMe.testExternal()               // 显式外发测试：向有效目标发送，返回 {sent, unverified, failed, statuses}
-```
-
-> **外部通知测试的开关边界**：设置页「发送测试通知」要求「启用提醒」与「外部通知」主开关开启，但忽略两类提醒的转发开关。控制台 `testExternal()` 是显式测试调用：只要配置了有效目标，即使上述主开关关闭，也会向这些目标发送测试消息；没有有效目标则不发送。普通的 `test("done")` / `test("attention")` / `test("approval")` 只测试本地提醒，不外发。
-
-> 自定义音效文件不在 `dshNotifyMe.config` 里，而是按类别各存一个键（`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`，内容是 `{name, size, data}` 的 data URL）——一个文件转成 data URL 会膨胀约 1.37 倍，塞进配置会拖慢每次读取。`resetConfig()` 会连这两个键一起清掉。
->
-> 想确认当前生效的来源，看 `window.__dshNotifyMe.debug()` 的 `soundDone` / `soundAttention` 与 `customSoundDone` / `customSoundAttention`。
->
-> `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`relayUpstreamHost` / `relayUpstreamPath`（中继上游网关的主机名与路径，即会被折叠的那个端点）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
-
-</details>
+设置页是第一入口。想脚本化批量改、恢复默认，或查外部通知目标的字段，见 **[docs/console-config.md](docs/console-config.md)**——完整的配置键、`decide()` / `testExternal()` 接口、外部通知测试的开关边界，以及自定义音效和 `debug().hostBridge` 的读法都在那里。
 
 ## 工作原理
 
@@ -393,7 +325,7 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 <details>
 <summary>展开事件来源与降级说明</summary>
 
-提醒核心按宿主代际取源（见上表），当前会话一律来自客户端 `sessions` 服务：
+提醒核心按宿主代际取源（对照表见 [docs/compatibility.md](docs/compatibility.md)），当前会话一律来自客户端 `sessions` 服务：
 
 - **当前会话** `SessionSnapshot`：`running` true→false = 回复完成；
 - **待办交互**：`uiSession` 的 `sessionStatus`（`≥ 0.1.6`，逐会话 `pendingInteraction`）或 `pendingInteractions`（`0.1.2 .. 0.1.5`）出现新 key = 模型在等你，容器里带上审批工具名 / 理由、提问文本；旧宿主回落到控制器快照的 `pending[]`；
