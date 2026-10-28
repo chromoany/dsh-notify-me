@@ -15,7 +15,7 @@
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#安装)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
-[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.1--rc.2-6366f1.svg?style=flat-square)](#兼容性)
+[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--alpha.2-6366f1.svg?style=flat-square)](#兼容性)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 </div>
@@ -41,7 +41,7 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 <details>
 <summary>展开设置界面预览</summary>
 
-![通知提醒设置页：页眉、提醒方式、什么时候提醒、试一试与折叠的高级设置](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/settings-zh.png)
+![通知提醒设置页：页眉、提醒方式、什么时候提醒、会话静音、试一试与折叠的高级设置](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/settings-zh.png)
 
 只截插件自己的面板（真实组件，与宿主同款深色主题），不带 DSH 左侧导航栏；每行说明在鼠标停在标题文字上时才出现，所以这里只看到标题。
 
@@ -312,9 +312,9 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 ## 兼容性
 
-逐版本适配记录见 [package.json](package.json) 的 `dsh.compatibility.dshReleases`；当前宿主（`0.2.1-rc.2`）的安装门控只读 `peerDependencies` 与 `engines`，**不再读取这个字段**，所以它只是一份给人看的记录，不构成门禁。
+逐版本适配记录见 [package.json](package.json) 的 `dsh.compatibility.dshReleases`；宿主（`0.2.1-rc.2` 及之后）的安装门控只读 `peerDependencies` 与 `engines`，**不再读取这个字段**，所以它只是一份给人看的记录，不构成门禁。
 
-已逐版实测**真正激活**于 `0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.1`、`0.1.5-rc.2`、`0.2.0-rc.2` 与 `0.2.1-rc.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js&rev=…` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.1.1-rc.2` 到 `0.2.1-rc.2` 的插件条目照旧兼容，换回旧宿主也不需要改配置；`1.9.0` 的界面重排没有引入新的宿主 API，设置页页眉的铃铛是插件自己画的 SVG（`docs/brand/`）。
+已逐版实测**真正激活**于 `0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.1`、`0.1.5-rc.2`、`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.4` 与 `0.2.2-alpha.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js&rev=…` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.1.1-rc.2` 到 `0.2.2-alpha.2` 的插件条目照旧兼容，换回旧宿主也不需要改配置；`1.9.0` 的界面重排没有引入新的宿主 API，设置页页眉的铃铛是插件自己画的 SVG（`docs/brand/`）。
 
 <details>
 <summary>展开宿主代际的形状差异与两个已知坑</summary>
@@ -325,11 +325,11 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 | --- | --- | --- | --- |
 | `≤ 0.1.2-alpha.1` | 控制器快照的 `pending[]` | 快照 `current` | `sessions.open()` |
 | `0.1.2-alpha.2 .. 0.1.6-alpha.1` | `uiSession.pendingInteractions` | 快照 `current` | `sessions.open()` |
-| `≥ 0.1.6-alpha.2`（含 `0.2.0-rc.2`、`0.2.1-rc.2`） | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
+| `≥ 0.1.6-alpha.2`（含 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.2-alpha.2`） | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
 
-区间仅作示意：插件按 store 形状自动选源（`sessionStatus` 存在即走新路），版本号只是各形状的出现边界。`peerDependencies` 范围决定 npm 的 peer 提示——`0.2.1-rc.2` 已落在 `>=0.2.0-rc.1 <0.3.0-0` 里，不需要豁免。
+区间仅作示意：插件按 store 形状自动选源（`sessionStatus` 存在即走新路），版本号只是各形状的出现边界。`peerDependencies` 范围决定 npm 的 peer 提示——`0.2.1-rc.2` 与 `0.2.2-alpha.2` 都落在 `>=0.2.0-rc.1 <0.3.0-0` 里，不需要豁免。
 
-`0.2.1-rc.2` 另跑了一轮隔离验证：隔离 `DSH_HOME` 起 `dsh web`（70 个启动条目），插件条目排第 59、`application` 批，三个注入目标都在且都排在它前面；`client.js` 返回 1.7.0 源码构建（140,153 B）；无头 Chromium 载入后 `apply` 正常执行，`debug()` 报 `uiSession: bound`、`uiSessionSource: sessionStatus`、`bridge: active`。宿主侧形状与 `0.2.0-rc.2` 一致，不需要改代码。
+`0.2.1-rc.3`、`0.2.1-rc.4` 与 `0.2.2-alpha.2` 各跑了一轮隔离验证：隔离 `DSH_HOME` 装好插件再起 `dsh web --no-open`（`rc.3` / `rc.4` 71 个启动条目，`0.2.2-alpha.2` 72 个），插件条目 `dsh-notify-me` 都在 `application` 批，三个注入目标（`client-ui-session`、`client-locale`、`client-ui-conversation`）都在；`/plugins/??dsh-notify-me/client.js` 返回 1.16.1 的构建（248,023 B）；无头 Edge 经 CDP 载入真实页面后 `apply` 正常执行，`debug()` 报 `uiSession: bound`、`uiSessionSource: sessionStatus`、`raiseChannel: window-focus`，从账号菜单进设置点开「通知提醒」能渲染出整块设置视图。三版的宿主客户端 bundle 相对 `0.2.1-rc.2` 都有改动（`dsh-client-ui-workspace`、`dsh-client-ui-conversation`、`dsh-client-locale` 等），但本插件用到的四个会话行槽位、`uiSession.sessionStatus`、`retainedBy.mainView`、`uiWorkspace.openSession()` 一个没少；`0.2.2-alpha.2` 另加了 `sidebar.session.row.trailing`，与本插件无关。宿主侧形状仍与 `0.2.0-rc.2` 一致，不需要改代码。
 
 两个坑值得记住：一是 `dsh.client.inject` 里列了新版运行时已不再提供的包，客户端条目会停在 `pending (waiting for services: …)` 而永不执行——1.1.3 在 `0.1.2-rc.1` 及以后正是这样失效的；二是宿主换存储或字段名时**不会报错**，提醒只会静默失效——`pendingInteractions`→`sessionStatus`、`list.current`→`retainedBy.mainView`、`sessions.open()`→`uiWorkspace.openSession()` 都是这一类，所以每次适配都要用 `window.__dshNotifyMe.debug()` 确认真的是 `bound`。
 
@@ -508,6 +508,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20)：当前会话的通知正文用占位符、未取会话标题的报告 |
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上 `dsh://open` 抬窗失效的报障与补丁，1.14.4 起 macOS / Linux 恢复深链抬窗 |
 | <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25)：页面关闭后由宿主兜底推送、同源中继两个可选模块（默认关），含测试与文档 |
+| <a href="https://github.com/ekexium"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ekexium.png" width="40" height="40" alt="@ekexium"></a> | [#23](https://github.com/chromoany/dsh-notify-me/issues/23)：按对话静音的诉求（每会话一个开关、跨重启持久化、会话行上带标记），1.16.0 起支持 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 

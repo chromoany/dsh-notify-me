@@ -10,6 +10,9 @@ All notable changes to **dsh-notify-me** are documented here.
 
 - 设置页「会话静音」卡的说明原写「被静音的会话在标题前显示划掉的铃铛」，但那个槽位在会话有运行状态时被状态点占用——正在跑的后台任务看不到标记。说明里补上这一点，并指出此时看行尾铃铛的按下状态（中英同步）。`README.md` / `README.en.md` 的正文本来就写了这个限制，只有设置页漏了。
 - 同一段里「列表上限 500 条」改成 200 条：上一版把 `MUTED_MAX` 降到 200（心跳 body 的 16 KiB 上限），README 两处漏改（`README.md:158`、`README.en.md:158`）。
+- README 中英：兼容性写清实测范围——徽章与「已逐版实测真正激活」名单从 `0.2.1-rc.2` 更新到 `0.2.2-alpha.2`，补上 `0.2.1-rc.3` / `0.2.1-rc.4` / `0.2.2-alpha.2` 三版隔离实测（启动条目 71 / 71 / 72、`client.js` 返回 1.16.1 构建 248,023 B、`apply` 执行且 `debug()` 报 `bound`、设置页渲染出整块「通知提醒」）与「四个会话行槽位一个没少」的结论；`dsh.compatibility.dshReleases` 同步补 rc.3 / rc.4。
+- 设置页截图重拍：旧图是 1.14.1 时代拍的（页脚版本号与「会话静音」卡片都不对），改在 `0.2.2-alpha.2` 的隔离实例里过 CDP 截取，两张 alt 文本补「会话静音 / muted sessions」。
+- README 中英：致谢名单新增 [@ekexium](https://github.com/ekexium)（[#23](https://github.com/chromoany/dsh-notify-me/issues/23) 的按对话静音诉求：每会话开关、跨重启持久化、会话行上带标记），头像按既有规格裁成 48×48 圆形。
 
 ## [1.16.0] — 2026-10-28
 
@@ -70,6 +73,7 @@ All notable changes to **dsh-notify-me** are documented here.
 
 - README 中英：顶部特性与运行前提改成准确口径（本地通知仍要页面在；开启宿主兜底后外部推送由宿主接着发）；「高级设置」新增「页面关闭后：宿主侧兜底与同源中继」小节（可粘贴的 profile 覆盖示例、逐键默认值、0600 凭据文件、租约去重语义、健康探针、中继的三条 CORS 事实与 `200` / `502` / `503` / `400` / `405` / `413` 口径、`allowedOrigins` 与隧道 / 反代的 `Host` 闸门）；中继 `POST` 补意图头与 3xx 不跟随的说明，折叠条件补「主机名 + 路径都要一致、带签名密钥不折叠、同源不折叠」，节流口径补「只管 `completed`」，`host-bridge` 回包补 `upstreamHost` / `upstreamPath`，`debug()` 补 `relayUpstreamHost` / `relayUpstreamPath`；提醒渠道表补两行；已知限制补运行前提与仍然成立的边界（宿主进程需在运行、代理环境要配 `no_proxy`）；开发自检补三个 smoke 套件。
 - SECURITY 中英：数据处理范围补宿主兜底与同源中继（同样的会话名 / 审批文本由宿主发往你自己的网关、凭据只在宿主 0600 文件、中继路径等同口令、闸门新增 `allowedOrigins` 派生 `Host` 一档）；把「路径只对能过闸门的调用方可见、随机性挡猜路径而闸门挡不速之客」与折叠的同源性判据写进威胁模型，受理范围补中继能力路径被绕过与租约协调缺陷。
+- README 中英：致谢名单新增 [@LIEGU0317](https://github.com/LIEGU0317)（[#24](https://github.com/chromoany/dsh-notify-me/issues/24) 的报障与需求、[#25](https://github.com/chromoany/dsh-notify-me/pull/25) 的两个可选模块实现、测试与文档），头像按既有规格裁成 48×48 圆形。
 
 ## [1.14.7] — 2026-10-27
 
