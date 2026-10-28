@@ -34,7 +34,7 @@ When `lib/focus-window.ps1` changes, also run the raise script manually; it has 
 
 ## Credits
 
-External PRs are rewritten and landed by the maintainer: the original commit is not reused, no `Co-authored-by` trailer is added, and the contributor is credited in the README table. Commit identity is handled by the maintainer at landing time, so no adjustment is needed in the PR.
+External PRs are rewritten and landed by the maintainer: the original commit is not reused, no `Co-authored-by` trailer is added, and the contributor is credited in the README table. Credits live in the README alone: `CHANGELOG` and release notes record behaviour and docs changes only, never a credit list. Commit identity is handled by the maintainer at landing time, so no adjustment is needed in the PR.
 
 ## Security
 
