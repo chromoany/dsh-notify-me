@@ -28,8 +28,9 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 - **后台回复完成时**：及时回来查看结果，点击通知可回到对应对话；提醒时机可选「仅后台 / 仅当前对话静默 / 总是提醒」。
 - **人走开但窗口没走**：窗口留在最前台、人却离开座位，超过 3 分钟没有输入也算离开，该提醒的照常提醒；收到的那条通知不会在你回来之前自己消失。
 - **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher 或自己的 Webhook。
+- **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[高级设置](#高级设置)里的「页面关闭后：宿主侧兜底与同源中继」）。
 
-> 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮依赖 Service Worker，只有 Web 端有，桌面端的通知不带按钮，点通知回到对话里裁决。
+> 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮依赖 Service Worker，只有 Web 端有，桌面端的通知不带按钮，点通知回到对话里裁决。开启宿主侧兜底后，页面关闭仍能收到外部推送——本地通知与审批按钮仍要页面在。
 
 ## 效果预览
 
@@ -81,7 +82,7 @@ Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。桌面�
 window.__dshNotifyMe.test("done")        // 「完成」示例
 window.__dshNotifyMe.test("attention")   // 「需要你」示例
 window.__dshNotifyMe.test("approval")    // 桥可用时带「同意 / 拒绝」按钮；否则只发普通通知（桌面端即如此）
-window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored
+window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge
 ```
 
 没有测试通知时，先检查：通知权限是否被拒绝（在页面上点一下 → 选「允许」；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
@@ -170,6 +171,98 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 </details>
 
+#### 页面关闭后：宿主侧兜底与同源中继
+
+这两块能力住在宿主进程里（`lib/host-fallback.js`、`lib/relay.js`，都是包内的可选模块），默认关：没有配置时宿主只注册抬窗那一条路由，升级前后行为一致。它们的配置写在 profile 的 patch 层，不在设置页里——它们让宿主替页面干活，不是浏览器偏好；设置页只如实显示探测到的状态。
+
+<details>
+<summary>宿主侧兜底：页面关闭后由宿主接着推</summary>
+
+页面不在时页面半体不运行，提醒就断在这里。宿主侧兜底订阅宿主的会话事件流（`session/event`），在页面关闭后自己把同样两条提醒发到你配置的网关。
+
+profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`config` 是整块替换、不是深合并**：patch 里写同一个 `id` 就把整个 `config` 赋过去，所以示例把三块都写全——漏写的键会回落到插件内的默认值（与随包 YAML 是同一份），但被一起冲掉的 `gateway.target` 不会自己回来。
+
+```yaml
+- id: notify-me
+  config:
+    allowedOrigins: []            # 顶层：页面入口白名单，留空 = 只接受回环 / 绑定地址（三条宿主入口共用）
+    gateway:
+      target: ''                  # 例：https://cue.example/notify/<key>
+      credentialsFile: ''         # 0600 JSON，见下
+      headers: {}                 # 额外请求头，可选
+    hostFallback:
+      enabled: true
+      target: ''                  # 留空 = 用 gateway.target
+      credentialsFile: ''         # 留空 = 用 gateway.credentialsFile
+      events: ['turn/end', 'approval/asked']
+      includeSubagents: false
+      turnEndThrottleMs: 15000
+      titlePrefix: 'DSH'
+      language: 'auto'            # auto | zh | en
+      pageLeaseMs: 60000          # 0 = 不与页面协调（页面开着也会重复）
+      healthPath: '/__dsh-notify-me/host-fallback'
+    relay:
+      enabled: false
+      path: ''
+      target: ''
+      credentialsFile: ''
+```
+
+逐键说明（括号内是默认值）：
+
+- `enabled`（`false`）：关着时宿主不订阅任何事件，也不注册健康探针；
+- `target` / `credentialsFile`（空）：留空回落到 `gateway.*`；两处都空等于没地方可推，模块干脆不挂载，只在宿主日志里留一行 warning——比每次投递都失败好查；
+- `events`（`['turn/end', 'approval/asked']`）：要推的事件，只列一种就只有那一种；
+- `includeSubagents`（`false`）：`origin === 'subagent'` 的会话默认跳过，理由与页面侧一致——它们是主对话一轮里的步骤；
+- `turnEndThrottleMs`（`15000`）：同一会话的「回复完成」在这个窗口内只推一条；窗口只在真发出去时才消耗，被租约挡掉的那次不算；
+- **文案与页面通知逐字一致**：标题是 `<前缀> · 回复完成` / `<前缀> · 审批请求`，正文「回复完成」只有会话名、「审批请求」是 `会话名：工具名 · 原因`——不含任何用户消息正文（用户消息里常带注入的 `<system-reminder>`、记忆上下文与时间戳，复制进通知就没法读了）；非正常收尾（`aborted` / `error` / `max-tokens`…）会在正文尾部附一个短后缀，如 `（error）`；
+- `titlePrefix`（`DSH`）：标题是 `<前缀> · 审批请求` / `<前缀> · 回复完成`（与页面通知同一套标签）；
+- `language`（`auto`）：`auto` 用页面最近一次心跳报的语言，没有心跳才回落到中文；`zh` / `en` 强制；
+- `pageLeaseMs`（`60000`）：页面在线租约，见下面「去重」；
+- `healthPath`（`/__dsh-notify-me/host-fallback`）：只读健康探针的路径。
+
+**凭据文件**：宿主用户可读的 0600 JSON，内容是 `{"user": "...", "password": "..."}`（按 HTTP Basic 发）或 `{"authorization": "Bearer ..."}`（原样发；裸 token 会自动补上 `Bearer `）。它不能写进 patch 层——那一层世界可读、还会进 profile 目录。不填这个键时请求不带认证头：很多 webhook 端点本来就不要认证，把「没配凭据」当成错误会让每个提醒都失败；只有「配了路径却读不出来」才算凭据不可用。网关回 401 / 403 时宿主丢掉缓存的凭据、重读文件、只重试一次，所以轮换密码不需要重启宿主。
+
+**去重靠一条页面在线租约**：页面加载后 `GET /__dsh-notify-me/host-bridge` 探测一次（之后每 60 秒复探，页面隐藏时不探、回到可见补探一次），只有回包 `hostFallback.enabled === true` 才开始心跳——body 只有 `{alive, language}`，间隔取 `leaseMs/3`、夹在 5–20 秒；`pagehide` 时发一条 `{alive:false}`（带 `keepalive`）立刻释放。宿主侧租约新鲜就不补推（页面自己在推），租约过期或收到 `alive:false` 才接手，最多等 `pageLeaseMs` 这么久。心跳只带语言，不带页面的推送开关：规则是「没有页面持有租约时宿主接手」，而页面的可见性与闲置判定宿主看不见，只照做一半会得到谁也算不清的规则。语言带过来是为了英文页面不收中文宿主提醒，`language: 'auto'` 时生效。`pageLeaseMs: 0` 关掉协调，宿主永远推——页面开着时会收到两份，只在调试时用。
+
+**两个路由的契约**：页面探测的那条 `GET /__dsh-notify-me/host-bridge` 回 `{ok, version, features, hostFallback:{enabled, leaseMs}, relay:{enabled, path}, language, page:{alive, ageMs}}`；它只在 `hostFallback.enabled` 或 `relay.enabled` 为真时注册，默认安装下是 404，页面按「未启用」处理而不是当故障。心跳 `POST` 要求意图头 `x-dsh-notify-me-page: bridge`（缺了回 `403`），坏 JSON 回 `400`，body 超 16 KiB 回 `413`，成功回 `200 {ok, leaseUntil}`。
+
+**健康探针**：`GET <healthPath>` 回 `{ok, version, enabled, events, includeSubagents, pageAlive, lastDelivery: {at, ok, status} | null}`，非 GET / HEAD 回 `405`。它和其它宿主入口共用同一道闸门：对端必须是本机（回环或监听器自己绑定的那个地址），`Host` 必须是回环名 / 绑定地址 / `allowedOrigins` 派生的公网域名，不符回 `403` 并带 `reason`（`bad-remote` / `bad-host` / `cross-origin`）。探针不收凭据、不转发，用它在终端确认「这个宿主进程到底有没有在推、上一次投递是什么结果」。
+
+**走隧道或反代时必须配 `allowedOrigins`**：那种部署下发往宿主的 `Host` 是公网域名而不是回环地址，而 `allowedOrigins` 既是 `Origin` 白名单，也是可接受的 `Host` 来源。不写它，页面的心跳会被闸门判 `bad-host`（设置页那行显示「宿主未响应」，下方直接提示去顶层 `allowedOrigins` 补本页来源），宿主于是把开着页面的提醒也补推一遍——正是租约要避免的那种重复。
+
+</details>
+
+<details>
+<summary>同源中继：让页面够到要认证的网关</summary>
+
+页面用自己的 `fetch` 往外部目标推，碰上要 Basic 认证的网关就是死路，三条 CORS 事实各堵一次：
+
+1. 把凭据写进 URL（`https://user:pass@host/…`）：`fetch` 直接抛错，请求根本没发出去；
+2. 加 `Authorization` 头：请求变成预检，而 Apprise 这类网关不回任何 `Access-Control-Allow-*`，预检失败；
+3. 退到 `no-cors`：带不了自定义头，等于没有认证。
+
+于是页面只能报「已送出不可确认」。同源中继把这一段搬到宿主：页面 POST 到与自己同源的路由，宿主补上凭据再打网关，然后把网关的真实状态回给页面。
+
+启用需要 `relay.enabled: true`、`relay.path`（必须是绝对路径）、`relay.target`（留空回落到 `gateway.target`）和 `relay.credentialsFile`（留空回落到 `gateway.credentialsFile`）。路径本身就是能力——知道它就能让宿主替你发一条通知，价值等同口令，所以建议带一段随机 token：`/__dsh-notify-me/relay/<32 hex token>`。
+
+用法：**设置 → 通知提醒 → 高级设置 → 外部推送** 里多出两行只读状态，「同源中继」一行显示 `已启用 · 地址：<origin><relay.path>`；把那个绝对地址填进同页「自定义 Webhook」目标的地址即可，页面不必知道凭据。
+
+不想改地址也行：**「自定义 Webhook」目标里如果填的是中继上游网关本身的地址，发送时会自动折叠到中继路由**。这类地址在浏览器里注定失败（上面三条 CORS 事实各堵一次，其中 `no-cors` 兜底还会被 Apprise 当成跨站请求直接 `403 Cross-site request rejected`），旧版把它记成 `unverified`——设置页显示「上次已送出（不可确认）」、测试按钮报「已送出不可确认」，**而手机一声不响**。折叠之后请求走同源、凭据由宿主补，回执就是网关的真实状态。折叠只发生在目标类型为「自定义」且 URL 的主机名等于 `relay.upstreamHost` 时；别的主机一律原样直发（中继只把东西送到它自己的网关），设置页会在会被折叠的目标下写一行说明。
+
+走隧道 / 反代时中继要和桥接路由过同一道 `Host` 闸门：把页面的公网来源写进顶层 `allowedOrigins`，否则探针与 `POST` 都会被判 `bad-host`。
+
+回包口径（页面据此把「已送出不可确认」变成可核对的状态）：
+
+- `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`：只读探针，不转发、不带凭据，但**和其它宿主入口走同一道闸门**——路径本身就是能力，不设闸门的探针会把「猜对了」告诉猜的人；拿它确认「这个进程挂的是不是我配的那条路径」；
+- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（页面载荷里的 `tag` 不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；
+- `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字符）＝转发成功；上游非 2xx 回 `502`，同为这一形状；
+- `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝，`reason` 同上）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常）。
+
+凭据只在宿主：页面拿不到它，它也不会回显在响应或日志里。`POST` 走与其它宿主入口同一道闸门，所以跨站页面或 DNS rebinding 的伪造来源即使猜到路径也会被拒。
+
+</details>
+
 #### 运行环境与诊断
 
 在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——Windows 桌面点通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深链（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）、通知上不带快捷裁决按钮；Web 端走 `window.focus()` 与 Service Worker 桥。手动覆盖与自动识别不一致时，设置页会明示检测结果。
@@ -191,8 +284,10 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 | 提示音 | 默认 WebAudio 合成音，「需要你」与「完成」音型不同；可换自定义音频，或交给系统通知音 |
 | 标签页标题 | `🔔 需要你 · …` / `✅ 回复完成 · …`（随通知语言切换），打开对应会话即消失；两种标记可同时出现 |
 | 外部推送（可选，默认关） | 把同一条提醒转发到 Discord / Bark / Gotify / 飞书 / Server酱 / WxPusher / 自定义 Webhook |
+| 宿主侧兜底（可选，默认关） | 页面关闭后由宿主进程继续把「需要你操作」「回复完成」推到你的网关；要 profile 配置与 0600 凭据文件 |
+| 同源中继（可选，默认关） | 页面 POST 到宿主同源路由，由宿主补凭据转发给要认证的网关，并回传网关真实状态码 |
 
-本插件是**浏览器层**实现：DSH 页面需保持打开（最小化/后台即可——那正是它监听的「离开」状态）。
+本插件以**浏览器层**为主：本地通知、提示音、标题标记仍只在页面开着时工作（最小化 / 后台即可——那正是它监听的「离开」状态）；开启宿主侧兜底后，外部推送在页面关闭后由宿主进程接着发。
 
 ## 兼容性
 
@@ -264,6 +359,8 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 > 自定义音效文件不在 `dshNotifyMe.config` 里，而是按类别各存一个键（`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`，内容是 `{name, size, data}` 的 data URL）——一个文件转成 data URL 会膨胀约 1.37 倍，塞进配置会拖慢每次读取。`resetConfig()` 会连这两个键一起清掉。
 >
 > 想确认当前生效的来源，看 `window.__dshNotifyMe.debug()` 的 `soundDone` / `soundAttention` 与 `customSoundDone` / `customSoundAttention`。
+>
+> `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
 
 </details>
 
@@ -323,7 +420,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 **运行前提**
 
-- 页面必须开着才会提醒（后台标签 / 最小化可以，关标签页即失效——浏览器层方案固有限制）。
+- 默认只在页面开着时提醒（后台标签 / 最小化可以，关标签页即失效——浏览器层方案固有限制）。开启宿主侧兜底后，页面关闭仍能收到**外部推送**：它要 profile 里 `hostFallback.enabled: true`、`gateway.target`（或 `hostFallback.target`）与一个 0600 凭据文件，而且宿主进程自己在跑。
 - 通知经由浏览器弹出，需允许浏览器通知权限；每次页面加载后第一次出声 / 弹通知前要先在页面上点过一下；未授权时只剩提示音与标题标记。
 - 系统通知横幅只画在主屏：Windows 没有设置项、Chromium 没有 API 能把它指到别的显示器（多屏时副屏收不到）。要跨屏只能靠外部推送转到手机（1.12.0 起页面里不再画审批卡片）。
 - 配置存在浏览器 `localStorage`：换浏览器 / 设备或清除站点数据后回到默认值（设置页可一键恢复默认）。
@@ -345,6 +442,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 **外部推送**
 
 - 受浏览器跨域（CORS）限制：端点不放行时自动降级为「送出但不可确认」（no-cors），如实标为「已送出不可确认」；Discord、飞书、Server酱、WxPusher 放行跨域，可直接确认送达。钉钉不放行任何 CORS 头、又只收 `application/json`，页面发不出去，所以没有做成目标类型（自建中转 + 自定义目标才行）。临时失败（网络中断、5xx、429）按退避重试，重试仍失败进失败记录，其余错误立即停、不重试；转发在本地提醒决定要发之后才触发，所以被静音的提醒也不会外发。
+- 同源中继补上的只是「页面够不到要认证的网关」这一类：页面 POST 到同源路由，宿主补凭据并回传网关的真实状态码。仍然成立的边界有几条——中继与宿主侧兜底都要求宿主进程在运行（`dsh web` 或桌面端主进程），它们不是独立守护进程，宿主退出就都停；宿主跑在代理环境里时网关域名要进 `no_proxy`，否则投递会绕到代理出去；兜底只补外部推送，本地系统通知、提示音、标题标记与审批按钮仍要页面在；`pageLeaseMs: 0` 是调试开关，页面开着也会收到两份；中继路由路径等同于口令，别让它出现在公开记录里。
 
 **设置页图标补丁**
 
@@ -355,11 +453,13 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 ```sh
 node --check lib/client.js
 node --check lib/index.js
-npm test                         # smoke-test（状态机）+ host-route-test（宿主半路由）+ cordis-host-test
+npm test                         # smoke-test（状态机）+ host-route-test（宿主半路由）+ page-bridge-test + host-fallback-test + relay-route-test + cordis-host-test
 npm pack --dry-run               # 预览发布包
 ```
 
-`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 通知标签长度收口。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
+`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
+
+新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」。
 
 改到 `lib/focus-window.ps1` 时（仅 Windows），另需手动跑一次：
 

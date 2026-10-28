@@ -2,6 +2,38 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.15.0] — 2026-10-28
+
+收编 [#25](https://github.com/chromoany/dsh-notify-me/pull/25)（回应 [#24](https://github.com/chromoany/dsh-notify-me/issues/24)）；两项宿主侧能力默认关，未配置时行为与上一版一致。
+
+### 修复
+
+- **指向网关的直连目标自动改走同源中继**（本轮报障的直接原因）：页面的「自定义」目标如果填的正是宿主中继的上游网关地址，浏览器永远拿不到可读回执——Basic 认证让请求变成预检，而网关回预检时没有 `Access-Control-Allow-*`；转 opaque `no-cors` 兜底又成了**跨站** POST，Apprise 直接回 `403 Cross-site request rejected`。旧版把这种结局记成 `unverified`，设置页于是显示「上次已送出（不可确认）」、测试按钮报「已送出不可确认 1 · 失败 0」，**而消息根本没投出去**。现在这类目标在发送时折叠到同源中继路由（相对路径 → 同源、无预检、无跨站拒绝；凭据由宿主补上，回执是网关真实状态），状态变成「上次成功」。折叠只发生在 `type: custom` 且 URL 的 host 与中继上游一致时：别的主机（Discord / Bark / 别的自建中转）一律原样直发，因为中继只会把东西送到它自己的网关。
+- **「未确认」不再读起来像成功**：`unverified` 的文案改为「上次已发出（未确认送达）」（英文 `last delivery unconfirmable`），并把原因一并写进健康记录（`opaque` → 跨域端点读不到回执，是否送达无法确认；`via-relay` → 经同源中继）。旧版只给失败写原因，所以页面在真正失败时也只说「已送出」，用户没有任何线索可查。测试按钮的计数同步改成「未确认送达」。
+
+### 新增
+
+- **`host-bridge` 公布中继的上游 host**（`relay.upstreamHost`，只发布主机名，不含凭据与路径 token）：页面靠它判断某个直连目标是不是「中继自己的网关」。`debug().hostBridge` 同步暴露 `relayUpstreamHost`；设置页会在会被折叠的目标下显示一行说明，免得用户以为那个地址在浏览器里本来就能用。
+
+- **页面关闭后的宿主侧兜底**（`lib/host-fallback.js`，默认关）：订阅宿主的 `session/event`，页面不在时继续把「审批请求」「回复完成」发往配置的网关——**文案与页面通知逐字一致**（标题 `<前缀> · 审批请求` / `<前缀> · 回复完成`；正文「回复完成」只有会话名、审批是 `会话名：工具名 · 原因`），不含任何用户消息正文，因此不会把注入的 `<system-reminder>` / 记忆上下文 / 时间戳带进通知。审批按 id 去重（每会话缓存上限 500）、`turn/end` 每会话按 `turnEndThrottleMs`（默认 15000 ms）节流、子代理会话默认跳过、`language: 'auto'` 时跟随页面心跳报告的语言；`turn/end` 的 `reason` 按对象 `{kind}` 读取，`completed` 之外的收尾会把 kind 附在正文；`session/disposed` 用独立事件清缓存（它不是会话日志项）。
+- **同源中继**（`lib/relay.js`，默认关）：`<relay.path>` 上 `GET` / `HEAD` 是只读探针，`POST` 把页面载荷映射为网关的 `{title, body, type:'info'}`（不透传 `tag`——Apprise 把未匹配的 tag 当 424）、由宿主补上凭据与 `gateway.headers` 转发，回 `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 上限 500 字符）；上游非 2xx 回 `502`，凭据文件配了但读不出来回 `503`，上游异常回 `502 {reason:'upstream-error'}`。启用需要绝对路径与可达的 `relay.target`，否则不注册路由，只在日志里留一行 warning。
+- **页面在线租约**（`lib/page-bridge.js` 的 `createPresence`）：页面 `GET` 探测 `/__dsh-notify-me/host-bridge`，只在 `hostFallback.enabled` 为真时心跳（间隔 `leaseMs/3`，夹在 5–20 秒），`pagehide` 发 `{alive:false}` 立刻释放；租约默认 60000 ms，`pageLeaseMs: 0` 关闭协调（页面开着也会重复，仅调试用）。心跳 body 只承载 `{alive, language}`：语言让宿主文案跟着页面走，页面自己的推送开关与可见性判定不进宿主（规则是「没有页面持有租约时宿主接手」，只照做一半会得到谁也算不清的规则）。
+- **共享请求闸门泛化**（`lib/page-bridge.js` 的 `gateRequest`）：从抬窗路由迁出并新增「由 `allowedOrigins` 派生的公网 `Host`」一档，供隧道 / 反代下的页面入口使用；不传 `allowedOrigins` 的抬窗路由行为与旧版一致。宿主兜底与中继的宿主入口不再各自实现一份闸门。
+- **凭据读取器**（宿主内）：0600 JSON 支持 `{user, password}`（HTTP Basic）与 `{authorization}`（原样发送；裸 token 补 `Bearer `）；未配置凭据文件时请求不带认证头（多数 webhook 端点本就不需要认证），只有「配了路径但读不出来」才算凭据不可用；缓存只在宿主进程内，网关回 401 / 403 时丢缓存重读文件、只重试一次，所以轮换密码不需要重启宿主。
+- 设置页「高级设置 → 外部推送」新增两行只读状态：「宿主侧兜底」（已启用 · 页面关闭后仍会推送 / 未启用 / 宿主未响应）与「同源中继」（已启用 + 可复制的 `location.origin` + `relay.path`）。`debug()` 新增 `hostBridge: {state, leaseMs, relayEnabled, relayPath, lastReason, lastProbeAt, lastBeaconAt}`（`lastReason` 只在上一次探测失败时带值，如 `bad-host` / `cross-origin` / `http-403`）。中英文案同时补齐（`TXT.zh` / `TXT.en` 与 `UI_zh` / `UI_en`）。
+
+### 测试
+
+- 新增 `smoke/page-bridge-test.mjs`（状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`、`allowedOrigins` 派生 `Host` 放行、路径冲突）、`smoke/host-fallback-test.mjs`（审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 重读凭据、健康探针）、`smoke/relay-route-test.mjs`（`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射、401 只重试一次）。
+- `smoke/smoke-test.cjs` 补页面侧用例：探测回「已启用」时发出心跳且语言正确、404 时不心跳、`pagehide` 发 `alive:false` 并停心跳、`debug().hostBridge` 字段形状（含 `relayUpstreamHost`）。
+- `smoke/smoke-test.cjs` 补中继折叠用例：指向中继上游网关的 `custom` 目标被改写到中继路径、状态为 `sent`、载荷仍带标题与正文且不是 opaque 请求；别的主机的目标不被改写；中继关闭时目标直发并落到 `unverified` + `reason:'opaque'`（变异测试确认这些断言会失败）。
+- `npm test` 串上三个新套件（顺序：smoke-test → host-route → page-bridge → host-fallback → relay-route → cordis-host）；三个新套件自带假 `ctx`，不依赖本机 DSH、不联网。`package.json` 的 `files` 增加三个新模块。
+
+### 文档
+
+- README 中英：顶部特性与运行前提改成准确口径（本地通知仍要页面在；开启宿主兜底后外部推送由宿主接着发）；「高级设置」新增「页面关闭后：宿主侧兜底与同源中继」小节（可粘贴的 profile 覆盖示例、逐键默认值、0600 凭据文件、租约去重语义、健康探针、中继的三条 CORS 事实与 `200` / `502` / `503` / `400` / `405` / `413` 口径、`allowedOrigins` 与隧道 / 反代的 `Host` 闸门）；提醒渠道表补两行；已知限制补运行前提与仍然成立的边界（宿主进程需在运行、代理环境要配 `no_proxy`）；开发自检补三个 smoke 套件；`debug()` 与「控制台高级配置」补 `hostBridge`。
+- SECURITY 中英：数据处理范围补宿主兜底与同源中继（同样的会话名 / 审批文本由宿主发往你自己的网关、凭据只在宿主 0600 文件、中继路径等同口令、闸门新增 `allowedOrigins` 派生 `Host` 一档），受理范围补中继能力路径被绕过与租约协调缺陷。
+
 ## [1.14.7] — 2026-10-27
 
 ### 修复

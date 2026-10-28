@@ -2,6 +2,80 @@
 # plugin package. The entry is a normal cordis loader entry (id + package
 # name); the browser half is picked up by dsh-client-modules through the
 # package's dsh.client declaration, exactly like the shipped ui-* packages.
+#
+# Two optional host-side modules hang off the same entry, both OFF by default:
+#
+#   hostFallback  pushes "needs you" / "reply finished" from the host's session
+#                 feed, so alerts arrive with no page open.
+#   relay         a same-origin route that lets the page reach an authenticated
+#                 notification gateway the browser cannot talk to.
+#
+# HOW TO OVERRIDE
+# A profile patch row that names the same id REPLACES the entry's `config`
+# wholesale — the loader assigns the field, it does not deep-merge. So a
+# minimal override only has to name what it changes, but it must not expect the
+# values below to survive: the plugin's own defaults (lib/index.js normalizeConfig)
+# fill every key the override leaves out, using the same values written here.
+# Example, in ~/.dsh/profiles/<profile>/cordis.patch.yml:
+#
+#   - id: notify-me
+#     config:
+#       hostFallback:
+#         enabled: true
+#
+# That alone is enough: the gateway target below is empty and JS defaults keep
+# everything else off, but `hostFallback.target` still has to name the gateway.
+#
+# CREDENTIALS
+# `credentialsFile` is a JSON file readable by the host user only (chmod 600)
+# holding either {"user": "...", "password": "..."} (sent as HTTP Basic) or
+# {"authorization": "Bearer ..."} (sent verbatim; a bare token gets "Bearer ").
+# It never goes into this file: the patch layer is world-readable and ends up in
+# the profile directory, so a password here would be a plaintext secret on disk.
+# A rotated password needs no restart — a 401/403 re-reads the file once.
+# Leave it empty when the gateway needs no authentication (a plain webhook):
+# deliveries then go out without an Authorization header, and an empty path is
+# never reported as a credential problem.
+#
+# `allowedOrigins` (top level, one key for all three routes) is the
+# deployment's public origin list. It does two things: it is the Origin
+# allow-list, and its host names are the public `Host` values the shared
+# request gate accepts — behind a tunnel or reverse proxy the Host header is
+# the public domain, not the loopback address the listener binds. It lives at
+# the top level and not under relay or hostFallback because every gated route
+# (the page bridge, the relay, the health probe) consults the same list, and a
+# deployment that enables only one of the modules still has to be reachable
+# through that public name.
 - insert:
     - id: notify-me
       name: 'dsh-notify-me'
+      config:
+        # Public origin(s) of this deployment, e.g. ['https://dsh.example.com'];
+        # empty means loopback / bind-address requests only.
+        allowedOrigins: []
+        # Notification gateway, shared by the relay and the host fallback; each
+        # module may override target/credentialsFile below.
+        gateway:
+          target: ''            # e.g. https://cue.example/notify/<key>
+          credentialsFile: ''   # mode-0600 JSON, see CREDENTIALS above
+          headers: {}           # extra request headers, optional
+        # Patch 1: fallback push while no page is open.
+        hostFallback:
+          enabled: false
+          target: ''            # empty = use gateway.target
+          credentialsFile: ''   # empty = use gateway.credentialsFile
+          events: ['turn/end', 'approval/asked']
+          includeSubagents: false
+          turnEndThrottleMs: 15000
+          titlePrefix: 'DSH'
+          language: 'auto'      # auto | zh | en
+          pageLeaseMs: 60000    # 0 = no coordination with the page (duplicates while it is open)
+          healthPath: '/__dsh-notify-me/host-fallback'
+        # Patch 2: same-origin relay (page -> host -> gateway, host adds the
+        # authentication). Keep a random token in the path: the path is the
+        # capability, so it is worth as much as a password.
+        relay:
+          enabled: false
+          path: ''              # exact route, e.g. /__dsh-notify-me/relay/<32 hex token>
+          target: ''
+          credentialsFile: ''

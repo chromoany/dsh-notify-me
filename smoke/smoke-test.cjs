@@ -119,6 +119,12 @@ function bootBundle(opts) {
     lastNotification: () => lastNotification,
     // Drive a real visibilitychange the way the browser would.
     fireVisibility: () => { for (const fn of [...docListeners.visibilitychange]) fn(); },
+    // The pagehide / pageshow listeners (the lease's release and its
+    // back/forward-cache restore), handed out so a case can drive both.
+    pagehideListeners: () => [...(listeners.pagehide || [])],
+    firePageShow: (persisted) => {
+      for (const fn of [...(listeners.pageshow || [])]) fn({ type: 'pageshow', persisted: !!persisted });
+    },
     // Drive a real window focus/blur: a desktop window can sit behind another
     // app while document.visibilityState still reads "visible".
     setWindowFocus: (focused) => {
@@ -1572,16 +1578,21 @@ async function subagentSessions() {
 // instance that exited in ~130 ms without touching IsIconic. That failure is
 // Windows-specific; the cases below pin both branches with an explicit UA.
 const FOCUS_ROUTE = '/__dsh-notify-me/focus-window';
+// The page-bridge route this page probes at boot and heartbeats while the host
+// says it has a host-side fallback for closed pages (design §4.1).
+const HOST_BRIDGE_ROUTE = '/__dsh-notify-me/host-bridge';
 const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-desktop/0.2.1 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36';
 const LINUX_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-desktop/0.2.1 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36';
 const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) dsh-desktop/0.2.1 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36';
 
 // Records every fetch and answers with a stand-in response. `behavior` returns
 // the response for a call (or throws) so a case can refuse or kill the route.
+// Only POSTs are recorded: the page also GETs its own host-bridge probe at
+// boot, which is a different route and would inflate the raise counts.
 function focusFetchSpy(behavior) {
   const calls = [];
   const fn = (url, opts) => {
-    calls.push({ url: String(url), opts: opts || {} });
+    if (!opts || opts.method !== 'GET') calls.push({ url: String(url), opts: opts || {} });
     const answer = behavior || (() => ({
       ok: true,
       status: 200,
@@ -2204,6 +2215,9 @@ function settingsBoot(seedConfig, seedSound, opts) {
     // re-renders)
     find: (pred) => { let hit = null; walk(tree, (n) => { if (!hit && pred(n)) hit = n; }); return hit; },
     findAll: (pred) => { const out = []; walk(tree, (n) => { if (pred(n)) out.push(n); }); return out; },
+    // The dictionaries the page registered, so a case can assert both languages
+    // define the copy it renders (CONTRIBUTING: never ship one side only).
+    dictNow: () => dict,
     configNow: () => b.win.__dshNotifyMe.config,
     debugNow: () => b.win.__dshNotifyMe.debug(),
     apiNow: () => b.win.__dshNotifyMe,
@@ -2306,6 +2320,34 @@ async function externalWebhooks() {
   const flush = () => new Promise((r) => setImmediate(r));
 
   // A fetch stand-in recording every call; `behavior` answers (or throws).
+  // The page GETs its host-bridge probe route at boot; that belongs to the
+  // hostBridgeLease case, so the assertions below count everything else (Bark's
+  // delivery fallback is a GET too, and stays in).
+  const isProbe = (c) => c.opts.method === 'GET' && c.url === HOST_BRIDGE_ROUTE;
+  // A live probe-blind view. The cases reset the log with `.length = 0`, so the
+  // view stays array-shaped: records are re-filtered from the underlying spy on
+  // every read, and a reset skips everything recorded so far (the log only
+  // grows).
+  function hookCalls(list) {
+    var out = [];
+    var dropped = 0;
+    var rebuild = function () {
+      out.length = 0;
+      for (var i = dropped; i < list.length; i++) if (!isProbe(list[i])) out.push(list[i]);
+    };
+    return new Proxy(out, {
+      get: function (t, key) {
+        if (key === 'length') { rebuild(); return out.length; }
+        if (typeof key === 'string' && /^\d+$/.test(key)) { rebuild(); return out[Number(key)]; }
+        return t[key];
+      },
+      set: function (t, key, value) {
+        if (key === 'length') { dropped = list.length; out.length = 0; return true; }
+        t[key] = value;
+        return true;
+      }
+    });
+  }
   function fetchSpy(behavior) {
     const calls = [];
     const fn = (url, opts) => {
@@ -2329,7 +2371,9 @@ async function externalWebhooks() {
     });
     const host = buildHost({ withSessionStatus: true });
     b.mod.apply(host.ctx);
-    return { b, host, calls: spy.calls, win: b.win };
+    // `allCalls` is the raw log (a case needs to see the probe itself);
+    // `calls` is the probe-blind view the webhook assertions count.
+    return { b, host, allCalls: spy.calls, calls: hookCalls(spy.calls), win: b.win };
   }
 
   // 1) defaults: off, no targets, and the debug block tells the same story.
@@ -2370,6 +2414,73 @@ async function externalWebhooks() {
     'first attempts are CORS JSON POSTs');
   const d1 = armed.win.__dshNotifyMe.debug().external;
   assert(d1.sent === 2 && d1.targets === 2 && d1.activeTargets === 2, 'debug tallies the sends');
+
+  // 3b) a custom target naming the relay's own upstream gateway is folded onto
+  //     the same-origin relay route. Straight at that gateway the browser has
+  //     no reachable verdict at all (Basic auth -> a preflight the gateway
+  //     answers without Access-Control-Allow-*; the opaque fallback -> a
+  //     cross-site POST the gateway refuses), which is how a lost alert used to
+  //     read as "sent, unconfirmed" while the phone stayed silent.
+  const GATEWAY = 'https://gateway.example';
+  const RELAY = '/__notify-relay/testtoken';
+  const relayProbe = (rec) => rec.opts.method === 'GET' && rec.url === HOST_BRIDGE_ROUTE;
+  const bridgeAnswer = (relay) => ({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ ok: true, hostFallback: { enabled: false, leaseMs: 60000 }, relay: relay }),
+  });
+  const RELAY_ON = { enabled: true, path: RELAY, upstreamHost: 'gateway.example' };
+  const RELAY_OFF = { enabled: false, path: null, upstreamHost: null };
+  const folded = bootWeb((rec) => {
+    if (relayProbe(rec)) return bridgeAnswer(RELAY_ON);
+    return { ok: true, status: 200, text: () => Promise.resolve('{"ok":true,"upstreamStatus":200}') };
+  }, { externalEnabled: true, externalTargets: [{ id: 't1', type: 'custom', url: GATEWAY + '/notify/KEY' }] });
+  await flush();
+  folded.calls.length = 0;
+  const rFold = await folded.win.__dshNotifyMe.testExternal();
+  assert(rFold.sent === 1 && rFold.unverified === 0 && rFold.failed === 0,
+    'a folded gateway target reports a real sent, got ' + JSON.stringify(rFold));
+  assert(folded.calls.length === 1, 'one POST for the folded target, got ' + folded.calls.length);
+  assert(folded.calls[0].url === RELAY,
+    'the folded target is posted to the same-origin relay path, got ' + folded.calls[0].url);
+  assert(folded.calls[0].opts.mode !== 'no-cors', 'the folded request is not an opaque one');
+  const foldBody = JSON.parse(folded.calls[0].body);
+  assert(foldBody.source === 'dsh-notify-me' && foldBody.title === '外部通知测试' && typeof foldBody.body === 'string',
+    'the folded payload keeps the custom shape and the copy, got ' + JSON.stringify(foldBody));
+  const foldHealth = folded.win.__dshNotifyMe.debug().external.health.t1;
+  assert(foldHealth && foldHealth.status === 'sent',
+    'the folded delivery is recorded as sent, got ' + JSON.stringify(foldHealth));
+
+  // 3c) a target on another host is never folded: the relay forwards to its own
+  //     gateway and nowhere else, so folding would deliver to the wrong place.
+  const elsewhere = bootWeb((rec) => {
+    if (relayProbe(rec)) return bridgeAnswer(RELAY_ON);
+    return { ok: true, status: 204 };
+  }, { externalEnabled: true, externalTargets: [{ id: 't1', type: 'custom', url: 'https://other.example/x' }] });
+  await flush();
+  elsewhere.calls.length = 0;
+  await elsewhere.win.__dshNotifyMe.testExternal();
+  assert(elsewhere.calls.length === 1 && elsewhere.calls[0].url === 'https://other.example/x',
+    'a target on another host keeps its own address, got ' + JSON.stringify(elsewhere.calls.map((c) => c.url)));
+
+  // 3d) without an enabled relay there is nothing to fold onto: the target is
+  //     posted as configured, and the opaque fallback is reported as unverified
+  //     *with its reason* — the settings row has to say which of the two it was.
+  const opaque = bootWeb((rec) => {
+    if (relayProbe(rec)) return bridgeAnswer(RELAY_OFF);
+    if (rec.opts.mode === 'no-cors') return { ok: false, status: 0 };
+    throw new TypeError('Failed to fetch');
+  }, { externalEnabled: true, externalTargets: [{ id: 't1', type: 'custom', url: 'https://cross.example/x' }] });
+  await flush();
+  opaque.calls.length = 0;
+  const rOpaque = await opaque.win.__dshNotifyMe.testExternal();
+  assert(rOpaque.unverified === 1 && rOpaque.sent === 0,
+    'a refused CORS exchange lands on unverified, got ' + JSON.stringify(rOpaque));
+  assert(opaque.calls[opaque.calls.length - 1].url === 'https://cross.example/x',
+    'an unfolded target is posted to its own address, got ' + opaque.calls[opaque.calls.length - 1].url);
+  const opaqueHealth = opaque.win.__dshNotifyMe.debug().external.health.t1;
+  assert(opaqueHealth && opaqueHealth.status === 'unverified' && opaqueHealth.reason === 'opaque',
+    'the unverified verdict carries its reason, got ' + JSON.stringify(opaqueHealth));
 
   // 4) real alerts mirror through fire(); the per-kind toggles gate only them.
   armed.calls.length = 0;
@@ -2468,7 +2579,10 @@ async function externalWebhooks() {
 
   // 6c) a network blip is retried and the retry can win.
   let flaky = 0;
-  const retryOk = bootWeb(() => {
+  const retryOk = bootWeb((rec) => {
+    // The boot probe is answered without touching the counter, so the first
+    // webhook attempt is the one that fails.
+    if (rec.url === HOST_BRIDGE_ROUTE) return { ok: true, status: 200, json: () => Promise.resolve({}) };
     flaky++;
     // Both modes of the first attempt fail; the second attempt is readable.
     if (flaky <= 2) throw new TypeError('Failed to fetch');
@@ -2526,7 +2640,7 @@ async function externalWebhooks() {
   }, { externalEnabled: true, externalTargets: [{ id: 't1', type: 'bark', url: 'https://api.day.app/KEY' }] });
   const r4 = await bark.win.__dshNotifyMe.testExternal();
   assert(r4.unverified === 1, 'bark falls back to the GET shape, got ' + JSON.stringify(r4));
-  const barkGet = bark.calls.filter((c) => c.opts.method === 'GET').pop();
+  const barkGet = bark.allCalls.filter((c) => c.opts.method === 'GET' && c.url.indexOf(HOST_BRIDGE_ROUTE) !== 0).pop();
   assert(barkGet && barkGet.url.indexOf('https://api.day.app/KEY/') === 0 && barkGet.url.split('/').length > 4,
     'the GET carries title/body in the path, got ' + (barkGet && barkGet.url));
 
@@ -2617,7 +2731,453 @@ async function externalWebhooks() {
   console.log('external webhooks OK: gated mirroring, 7 payload shapes, signatures, retry/backoff, dead letters');
 }
 
+// ── 宿主侧兜底：页面租约（探针 / 心跳 / 释放） ──────────────────────
+// 关了页面还能不能收到推送，靠的是一条租约：页面启动先 GET 探测宿主有没有
+// 宿主侧兜底，只有回包说「有」才起心跳；宿主用租约新鲜度判断「页面还在」，
+// 于是两边不会为同一条提醒各推一次。pagehide 立刻释放（keepalive 让请求在
+// 卸载中也能发出去），页面重新可见时补探一次。这一组把时间轴换成可推进的假
+// 时钟，心跳和复探的间隔才可断言。
+function makeTestClock(sandbox) {
+  const state = { now: 0, seq: 0, timers: [] };
+  // Each timer carries an absolute next-fire time, so advancing 19.999 s and
+  // then 1 ms more fires the 20 s interval exactly once — the timers have to
+  // survive an advance that does not reach them.
+  const arm = (fn, ms, once) => {
+    const id = ++state.seq;
+    state.timers.push({ id, fn, ms, once, at: state.now + ms });
+    return id;
+  };
+  sandbox.setInterval = (fn, ms) => arm(fn, ms, false);
+  sandbox.setTimeout = (fn, ms) => arm(fn, ms, true);
+  sandbox.clearInterval = (id) => { state.timers = state.timers.filter((t) => t.id !== id); };
+  sandbox.clearTimeout = sandbox.clearInterval;
+  // Fire everything due within `ms`, advancing the clock by `ms`. One repeat
+  // per timer per advance: the plugin's intervals are far apart.
+  state.advance = (ms) => {
+    const to = state.now + ms;
+    const due = state.timers.filter((t) => t.at <= to);
+    state.timers = state.timers.filter((t) => t.at > to);
+    for (const t of due) {
+      if (!t.once) state.timers.push({ ...t, at: t.at + t.ms });
+      t.fn();
+    }
+    state.now = to;
+    return due.length;
+  };
+  return state;
+}
+
+async function hostBridgeLease() {
+  console.log('\n— host-side fallback: page lease (probe / heartbeat / release) —');
+  const flush = () => new Promise((r) => setImmediate(r));
+  // The probe body the host half answers with (design §4.1): only
+  // hostFallback.enabled === true asks this page to hold a lease.
+  const hostYes = () => ({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({
+      ok: true,
+      version: PKG_VERSION,
+      features: ['page-bridge'],
+      hostFallback: { enabled: true, leaseMs: 60000 },
+      relay: { enabled: true, path: '/__dsh-notify-me/relay/abc123' },
+      language: 'zh',
+    }),
+  });
+  function bootBridge(behavior, opts) {
+    const calls = [];
+    let clock = null;
+    const b = bootBundle({
+      extend(sandbox) {
+        sandbox.fetch = (url, req) => {
+          calls.push({ url: String(url), opts: req || {}, body: String((req && req.body) || '') });
+          try { return Promise.resolve(behavior(calls[calls.length - 1])); } catch (e) { return Promise.reject(e); }
+        };
+        clock = makeTestClock(sandbox);
+        if (opts && opts.seed) opts.seed(sandbox);
+      },
+    });
+    const host = buildHost({ withSessionStatus: true });
+    b.mod.apply(host.ctx);
+    return { b, host, calls, clock, win: b.win, api: b.win.__dshNotifyMe };
+  }
+  const probes = (calls) => calls.filter((c) => c.opts.method === 'GET');
+  const beats = (calls) => calls.filter((c) => c.opts.method === 'POST');
+  // A beat that claims the page is alive; the release is the same POST with
+  // alive:false, so the two never get confused by a bare method filter.
+  const aliveBeats = (calls) => beats(calls).filter((c) => JSON.parse(c.body).alive !== false);
+
+  // 1) the host has a fallback: one probe at boot, one heartbeat, and the beat
+  //    carries this page's language and external-forward state.
+  const yes = bootBridge(hostYes);
+  await flush();
+  const p0 = probes(yes.calls);
+  assert(p0.length === 1 && p0[0].url === HOST_BRIDGE_ROUTE,
+    'boot probes the host bridge route exactly once, got ' + JSON.stringify(p0.map((c) => c.url)));
+  const b0 = aliveBeats(yes.calls);
+  assert(b0.length === 1, 'an enabled host starts the heartbeat at once, got ' + b0.length + ' beat(s)');
+  assert(b0[0].url === HOST_BRIDGE_ROUTE, 'the beat posts to the bridge route, got ' + b0[0].url);
+  assert(b0[0].opts.headers['x-dsh-notify-me-page'] === 'bridge',
+    'the beat carries the page intent header, got ' + JSON.stringify(b0[0].opts.headers));
+  assert(b0[0].opts.keepalive !== true, 'a running page beats without keepalive');
+  const hb0 = JSON.parse(b0[0].body);
+  const lang0 = yes.api.debug().language;
+  assert(hb0.alive === true, 'the beat says alive, got ' + b0[0].body);
+  assert(hb0.language === lang0, 'the beat language follows effectiveLang(), got ' + hb0.language + ' vs ' + lang0);
+  // Exactly two fields, pinned by key: the host's fallback pushes only while
+  // this page is away, so the page's own forward switches must not ride along
+  // (a field the host does not read still reads like it applies to the host).
+  assert(Object.keys(hb0).sort().join(',') === 'alive,language',
+    'the beat body is exactly {alive, language}, got ' + Object.keys(hb0).sort().join(','));
+  const d0 = yes.api.debug();
+  assert(d0.hostBridge.state === 'active', 'debug() reports an active lease, got ' + d0.hostBridge.state);
+  assert(d0.hostBridge.leaseMs === 60000, 'debug() reports the lease the host granted, got ' + d0.hostBridge.leaseMs);
+  assert(d0.hostBridge.relayEnabled === true && d0.hostBridge.relayPath === '/__dsh-notify-me/relay/abc123',
+    'debug() reports the relay route, got ' + JSON.stringify(d0.hostBridge));
+  assert(typeof d0.hostBridge.lastProbeAt === 'string' && typeof d0.hostBridge.lastBeaconAt === 'string',
+    'debug() timestamps the probe and the last beat, got ' + JSON.stringify(d0.hostBridge));
+
+  // 2) the interval is leaseMs/3 (a 60 s lease means a beat every 20 s), and
+  //    the language / forward toggles reach the host on the very next beat.
+  yes.clock.advance(19999);
+  await flush();
+  assert(aliveBeats(yes.calls).length === 1, 'a beat at leaseMs/2 would be too late; got a beat early');
+  yes.clock.advance(1);
+  await flush();
+  assert(aliveBeats(yes.calls).length === 2, 'a 60 s lease beats every 20 s, got ' + aliveBeats(yes.calls).length);
+  yes.api.setConfig({ language: 'en', externalEnabled: true, externalAttention: false });
+  yes.clock.advance(20000);
+  await flush();
+  const hb1 = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
+  assert(aliveBeats(yes.calls).length === 3, 'the beat keeps its pace after the first, got ' + aliveBeats(yes.calls).length);
+  assert(hb1.language === 'en', 'a pinned language reaches the host on the next beat, got ' + hb1.language);
+  // Flipping every external-forward setting must not add or remove a field.
+  assert(Object.keys(hb1).sort().join(',') === 'alive,language',
+    'the beat body stays {alive, language} after the forward toggles change, got ' + Object.keys(hb1).sort().join(','));
+
+  // 3) a bare 404 is the stock install, not a fault: the host-bridge route only
+  //    exists while hostFallback or relay is on, so the webserver answers 404
+  //    with an empty body. Reading res.json() on that used to look like a
+  //    broken host and alarmed every default install.
+  const nope = bootBridge(() => ({ ok: false, status: 404 }));
+  await flush();
+  nope.clock.advance(60000);
+  await flush();
+  // Two probes: the one at boot and the one the 60 s re-probe interval fires.
+  assert(probes(nope.calls).length === 2, 'the re-probe interval still runs without a lease, got ' + probes(nope.calls).length);
+  assert(beats(nope.calls).length === 0, 'a host without a fallback never gets a beat, got ' + beats(nope.calls).length);
+  assert(nope.api.debug().hostBridge.state === 'unavailable',
+    'an absent route (404) is unavailable, not an error, got ' + nope.api.debug().hostBridge.state);
+
+  // 3a) 501 and an empty 204 say the same thing: the host has no bridge.
+  for (const status of [501, 204]) {
+    const stub = bootBridge(() => ({ ok: status === 204, status }));
+    await flush();
+    stub.clock.advance(20000);
+    await flush();
+    assert(beats(stub.calls).length === 0, 'status ' + status + ' never gets a beat');
+    assert(stub.api.debug().hostBridge.state === 'unavailable',
+      'status ' + status + ' reads as unavailable, got ' + stub.api.debug().hostBridge.state);
+    for (const c of [...stub.host.cleanups]) c();
+  }
+
+  // 3b) a real fault still is one: a 5xx or an unreadable body keeps its
+  //     "something is wrong" reading, so the alarm is not lost with the 404.
+  const broken = bootBridge(() => ({ ok: false, status: 500 }));
+  await flush();
+  assert(broken.api.debug().hostBridge.state === 'error',
+    'a 5xx probe is an error, got ' + broken.api.debug().hostBridge.state);
+  const garbage = bootBridge(() => ({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('Unexpected token <')) }));
+  await flush();
+  assert(garbage.api.debug().hostBridge.state === 'error',
+    'a non-JSON bridge body is an error, got ' + garbage.api.debug().hostBridge.state);
+
+  // 3e) the everyday deployment fault: the gate turns the page away. It must
+  //     read as a fault with the gate's own reason, never as "not enabled" —
+  //     that is the difference between the user fixing allowedOrigins and the
+  //     user never hearing about it while the host pushes duplicates.
+  const denied = bootBridge(() => ({
+    ok: false,
+    status: 403,
+    json: () => Promise.resolve({ ok: false, reason: 'bad-host' }),
+  }));
+  await flush();
+  const deniedDbg = denied.api.debug().hostBridge;
+  assert(deniedDbg.state === 'error', 'a 403 is an error, not a silent "off", got ' + deniedDbg.state);
+  assert(deniedDbg.lastReason === 'bad-host', 'the gate reason is kept, got ' + deniedDbg.lastReason);
+  assert(beats(denied.calls).length === 0, 'a refused page does not hold a lease');
+  denied.clock.advance(60000);
+  await flush();
+  // Re-read: debug() hands out a fresh object, and the 60 s re-probe refuses
+  // again, so the reason has to survive the retry rather than be cleared by it.
+  assert(denied.api.debug().hostBridge.lastReason === 'bad-host',
+    'a later refusal keeps naming its reason, got ' + denied.api.debug().hostBridge.lastReason);
+
+  // 3f) a refusal with an unreadable body still reports the status.
+  const deniedBare = bootBridge(() => ({ ok: false, status: 403, json: () => Promise.reject(new SyntaxError('empty body')) }));
+  await flush();
+  assert(deniedBare.api.debug().hostBridge.state === 'error', 'a bare 403 is an error');
+  assert(deniedBare.api.debug().hostBridge.lastReason === 'http-403',
+    'a 403 without a readable reason falls back to the status, got ' + deniedBare.api.debug().hostBridge.lastReason);
+
+  // 3c) a host that answers "no fallback" (relay and fallback both off) reads
+  //     as unavailable rather than broken, and also never gets a beat.
+  const off = bootBridge(() => ({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ ok: true, hostFallback: { enabled: false }, relay: { enabled: false } }),
+  }));
+  await flush();
+  off.clock.advance(20000);
+  await flush();
+  assert(beats(off.calls).length === 0, 'a disabled host fallback never gets a beat');
+  assert(off.api.debug().hostBridge.state === 'unavailable',
+    'a host with no fallback reads as unavailable, got ' + off.api.debug().hostBridge.state);
+  assert(off.api.debug().hostBridge.relayEnabled === false, 'no relay path without an enabled relay');
+
+  // 3d) the relay is its own feature: hostFallback off + relay on is a legal
+  //     configuration (the user wants the same-origin relay only), so the
+  //     relay path must survive the "no fallback" branch.
+  const relayOnly = bootBridge(() => ({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({
+      ok: true,
+      hostFallback: { enabled: false, leaseMs: 60000 },
+      relay: { enabled: true, path: '/__dsh-notify-me/relay/def456', upstreamHost: 'gateway.example' },
+    }),
+  }));
+  await flush();
+  relayOnly.clock.advance(20000);
+  await flush();
+  assert(beats(relayOnly.calls).length === 0, 'relay-only never holds a page lease (nothing to coordinate)');
+  const relayDbg = relayOnly.api.debug().hostBridge;
+  assert(relayDbg.state === 'unavailable', 'relay-only has no lease to hold, got ' + relayDbg.state);
+  assert(relayDbg.relayEnabled === true && relayDbg.relayPath === '/__dsh-notify-me/relay/def456',
+    'the relay path survives an disabled hostFallback, got ' + JSON.stringify(relayDbg));
+  assert(relayDbg.leaseMs === null, 'no lease is reported without a fallback, got ' + relayDbg.leaseMs);
+  // The relay's upstream gateway host travels with the path: the page needs it
+  // to recognise a target that names that same gateway.
+  assert(relayDbg.relayUpstreamHost === 'gateway.example',
+    'the probe publishes the relay upstream host, got ' + JSON.stringify(relayDbg.relayUpstreamHost));
+
+  // 4) pagehide: one keepalive release, then silence — the host must take over
+  //    at once instead of waiting out the lease.
+  const bye = bootBridge(hostYes);
+  await flush();
+  bye.clock.advance(20000);
+  await flush();
+  const beatsBeforeHide = aliveBeats(bye.calls).length;
+  assert(beatsBeforeHide === 2, 'the page was beating before the unload, got ' + beatsBeforeHide);
+  for (const fn of bye.b.pagehideListeners()) fn();
+  await flush();
+  const releases = beats(bye.calls).filter((c) => JSON.parse(c.body).alive === false);
+  assert(releases.length === 1, 'pagehide releases the lease exactly once, got ' + releases.length);
+  assert(releases[0].opts.keepalive === true, 'the release is a keepalive POST so it survives the unload');
+  assert(releases[0].opts.headers['x-dsh-notify-me-page'] === 'bridge', 'the release carries the intent header too');
+  const rel = JSON.parse(releases[0].body);
+  assert(rel.language === bye.api.debug().language, 'the release carries the page language, got ' + JSON.stringify(rel));
+  assert(Object.keys(rel).sort().join(',') === 'alive,language',
+    'the release body is exactly {alive, language}, got ' + Object.keys(rel).sort().join(','));
+  assert(typeof bye.api.debug().hostBridge.lastBeaconAt === 'string', 'debug() timestamps the release');
+  // A visibilitychange into "hidden" is not an unload: only pagehide releases.
+  bye.b.doc.hidden = true;
+  bye.b.doc.visibilityState = 'hidden';
+  bye.b.fireVisibility();
+  bye.clock.advance(60000);
+  await flush();
+  assert(aliveBeats(bye.calls).length === beatsBeforeHide,
+    'no further beat once the page released the lease, got ' + (aliveBeats(bye.calls).length - beatsBeforeHide));
+  assert(beats(bye.calls).filter((c) => JSON.parse(c.body).alive === false).length === 1,
+    'going hidden does not release the lease a second time');
+
+  // 4b) a back/forward-cache restore fires no load event, so pageshow has to
+  //     re-probe: the lease was released on pagehide, and without this the host
+  //     would keep pushing to a page that is right there (duplicate alerts)
+  //     until the next 60 s tick.
+  const restore = bootBridge(hostYes);
+  await flush();
+  for (const fn of restore.b.pagehideListeners()) fn();
+  await flush();
+  assert(beats(restore.calls).some((c) => JSON.parse(c.body).alive === false), 'the unload released the lease');
+  const restoreProbesBefore = probes(restore.calls).length;
+  restore.b.firePageShow(true);
+  await flush();
+  assert(probes(restore.calls).length === restoreProbesBefore + 1,
+    'a bfcache restore re-probes at once, got ' + (probes(restore.calls).length - restoreProbesBefore));
+  assert(restore.api.debug().hostBridge.state === 'active',
+    'the restored page holds the lease again, got ' + restore.api.debug().hostBridge.state);
+  assert(aliveBeats(restore.calls).length === 2, 'a beat resumes after the restore, got ' + aliveBeats(restore.calls).length);
+  // An ordinary pageshow always follows a real load, whose boot probe just ran,
+  // so it must not add a second one.
+  const afterRestore = probes(restore.calls).length;
+  restore.b.firePageShow(false);
+  await flush();
+  assert(probes(restore.calls).length === afterRestore,
+    'an ordinary pageshow adds no probe, got ' + (probes(restore.calls).length - afterRestore));
+  for (const c of [...restore.host.cleanups]) c();
+
+  // 5) the probe is invisible while hidden and comes back once on return.
+  const vis = bootBridge(hostYes);
+  await flush();
+  const probesBefore = probes(vis.calls).length;
+  vis.b.doc.hidden = true;
+  vis.b.doc.visibilityState = 'hidden';
+  vis.clock.advance(60000);   // the interval tick defers while hidden
+  await flush();
+  assert(probes(vis.calls).length === probesBefore, 'a hidden page does not probe, got ' + probes(vis.calls).length);
+  vis.b.doc.hidden = false;
+  vis.b.doc.visibilityState = 'visible';
+  vis.b.fireVisibility();
+  await flush();
+  assert(probes(vis.calls).length === probesBefore + 1,
+    'becoming visible probes once right away, got ' + (probes(vis.calls).length - probesBefore));
+
+  // 6) the debug block keeps its shape in every state.
+  const SHAPE = 'lastBeaconAt,lastProbeAt,lastReason,leaseMs,relayEnabled,relayPath,relayUpstreamHost,state';
+  for (const shape of [yes.api.debug().hostBridge, nope.api.debug().hostBridge, off.api.debug().hostBridge, relayOnly.api.debug().hostBridge, denied.api.debug().hostBridge]) {
+    assert(Object.keys(shape).sort().join(',') === SHAPE,
+      'hostBridge debug keys are stable, got ' + Object.keys(shape).sort().join(','));
+  }
+  for (const c of [...yes.host.cleanups]) c();
+  for (const c of [...nope.host.cleanups]) c();
+  for (const c of [...off.host.cleanups]) c();
+  for (const c of [...bye.host.cleanups]) c();
+  for (const c of [...vis.host.cleanups]) c();
+  for (const c of [...broken.host.cleanups]) c();
+  for (const c of [...garbage.host.cleanups]) c();
+  for (const c of [...relayOnly.host.cleanups]) c();
+  for (const c of [...denied.host.cleanups]) c();
+  for (const c of [...deniedBare.host.cleanups]) c();
+  console.log('host bridge lease OK: probe-gated heartbeat, leaseMs/3 pace, {alive,language}-only body, keepalive release, hidden-page deferral, 404/501/204 = unavailable vs 5xx/403/non-JSON = error with a named reason, relay survives a disabled fallback, bfcache restore re-probes');
+}
+
+// ── 设置页：宿主侧兜底 / 同源中继状态行 ─────────────────────────────
+// 「高级设置 → 外部推送」里那两行是只读的：它们报告宿主探测的结果，不是用户
+// 能拨的开关（要不要心跳由宿主回包决定）。三种状态各自要有一条可读的行，中
+// 英文案都要在，别名与中继地址也要拼对——用户就是照那行字去填自定义目标的。
+async function settingsHostBridgeRows() {
+  console.log('\n— settings page: host-side fallback / relay status rows —');
+  const flush = () => new Promise((r) => setImmediate(r));
+  const answer = (body) => () => ({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  function bootWith(responder, opts) {
+    return settingsBoot(null, null, {
+      advanced: true,
+      fetch: (url, req) => {
+        if (String(url) === HOST_BRIDGE_ROUTE) return Promise.resolve(responder());
+        return Promise.resolve({ ok: true, status: 204 });
+      },
+      seed: (opts && opts.seed) || undefined,
+    });
+  }
+
+  // 1) the host has both features: the row says the fallback keeps pushing
+  //    after the page closes, and the relay row hands out the paste-able URL.
+  const on = bootWith(answer({
+    ok: true,
+    hostFallback: { enabled: true, leaseMs: 60000 },
+    relay: { enabled: true, path: '/__dsh-notify-me/relay/abc123' },
+  }));
+  await flush();
+  const onText = on.renderNow();
+  assert(onText.indexOf('宿主侧兜底') !== -1, 'the host-fallback row renders, got ' + onText.slice(0, 200));
+  assert(onText.indexOf('已启用 · 页面关闭后仍会推送') !== -1,
+    'an enabled fallback says it still pushes after the page closes, got ' + onText);
+  assert(onText.indexOf('同源中继') !== -1, 'the relay row renders');
+  assert(onText.indexOf('已启用 · 地址：http://127.0.0.1:3080/__dsh-notify-me/relay/abc123') !== -1,
+    'the relay row spells out origin + path, got ' + onText);
+  assert(onText.indexOf('宿主未响应') === -1, 'a healthy host shows no error note');
+  on.cleanup();
+
+  // 2) the host answered "no fallback": both rows read disabled, no address.
+  const off = bootWith(answer({ ok: true, hostFallback: { enabled: false }, relay: { enabled: false } }));
+  await flush();
+  const offText = off.renderNow();
+  assert(offText.indexOf('宿主侧兜底') !== -1 && offText.indexOf('未启用') !== -1,
+    'a disabled fallback reads as off, got ' + offText.slice(3800, 4600));
+  assert(offText.indexOf('/__dsh-notify-me/relay/') === -1, 'no relay address without an enabled relay');
+  assert(offText.indexOf('宿主未响应') === -1, 'a reachable host is not reported as unresponsive');
+  off.cleanup();
+
+  // 2b) relay without the fallback is a legal configuration: the relay row
+  //     still hands out the address while the fallback row reads disabled.
+  const relayOnly = bootWith(answer({
+    ok: true,
+    hostFallback: { enabled: false, leaseMs: 60000 },
+    relay: { enabled: true, path: '/__dsh-notify-me/relay/def456' },
+  }));
+  await flush();
+  const relayOnlyText = relayOnly.renderNow();
+  assert(relayOnlyText.indexOf('已启用 · 地址：http://127.0.0.1:3080/__dsh-notify-me/relay/def456') !== -1,
+    'a relay-only host still shows the relay address, got ' + relayOnlyText.slice(3800, 4700));
+  assert(relayOnlyText.indexOf('宿主未响应') === -1, 'relay-only is not an error state');
+  relayOnly.cleanup();
+
+  // 2c) the gate refused the page (403) — the tunnel/allowlist fault. The row
+  //     must not read "not enabled", and the note has to name allowedOrigins.
+  const barred = bootWith(() => ({
+    ok: false,
+    status: 403,
+    json: () => Promise.resolve({ ok: false, reason: 'bad-host' }),
+  }));
+  await flush();
+  const barredText = barred.renderNow();
+  assert(barredText.indexOf('宿主侧兜底 | 宿主未响应') !== -1,
+    'a refused page is reported, not shown as disabled, got ' + barredText.slice(3800, 4700));
+  assert(barredText.indexOf('宿主侧兜底 | 未启用') === -1,
+    'the fallback row must not read "未启用" while the host is refusing the page');
+  assert(barredText.indexOf('allowedOrigins') !== -1,
+    'the refusal note names the key to fix, got ' + barredText.slice(3800, 4700));
+  assert(barredText.indexOf('插件与宿主版本不一致') === -1,
+    'a gate refusal does not use the build-mismatch note');
+  barred.cleanup();
+
+  // 2d) the same refusal without a readable reason: still a fault, but the
+  //     generic note, because nothing named a key.
+  const barredBare = bootWith(() => ({ ok: false, status: 403 }));
+  await flush();
+  const barredBareText = barredBare.renderNow();
+  assert(barredBareText.indexOf('宿主侧兜底 | 宿主未响应') !== -1, 'a bare 403 is still a fault');
+  assert(barredBareText.indexOf('allowedOrigins') === -1,
+    'without a named reason there is no allowlist hint to give');
+  assert(barredBareText.indexOf('插件与宿主版本不一致') !== -1,
+    'a bare refusal falls back to the generic note, got ' + barredBareText.slice(3800, 4700));
+  assert(barredBare.apiNow().debug().hostBridge.lastReason === 'http-403',
+    'debug() still records the status as the reason');
+  barredBare.cleanup();
+
+  // 3) the host is broken rather than absent: fetch refused, a 5xx, or a body
+  //    that is not the bridge JSON. Only then does the page say so.
+  const dead = bootWith(() => ({ ok: false, status: 500 }));
+  await flush();
+  const deadText = dead.renderNow();
+  assert(deadText.indexOf('宿主未响应') !== -1, 'an unreachable host is reported, got ' + deadText.slice(3800, 4600));
+  assert(deadText.indexOf('宿主侧通道没有回应') !== -1, 'the error state explains itself, got ' + deadText.slice(3800, 4600));
+  assert(deadText.indexOf('/__dsh-notify-me/relay/') === -1, 'no relay address while the host is unreachable');
+  dead.cleanup();
+
+  // 4) English parity: every new key exists in both dictionaries, so an
+  //    English page never falls back to Chinese (or to a blank label).
+  const s = settingsBoot(null, null, { advanced: true });
+  const dict = s.dictNow();
+  const KEYS = [
+    'externalHostBridgeLabel', 'externalHostBridgeHint',
+    'externalHostFallbackOn', 'externalHostFallbackOff', 'externalHostFallbackError',
+    'externalHostBridgeErrorNote', 'externalHostBridgeDeniedNote',
+    'externalRelayLabel', 'externalRelayHint',
+    'externalRelayOn', 'externalRelayOff', 'externalRelayAddress',
+  ];
+  for (const key of KEYS) {
+    assert(dict && dict.zh && dict.zh[key], 'UI_zh defines ' + key);
+    assert(dict.en && dict.en[key], 'UI_en defines ' + key);
+    assert(dict.en[key] !== dict.zh[key], 'UI_en translates ' + key + ' rather than reusing the Chinese copy');
+  }
+  s.cleanup();
+  console.log('settings host-bridge rows OK: enabled / disabled / relay-only / host-broken copy, relay address, no alarm on a default install, zh+en parity');
+}
+
 // ── 设置页：外部通知卡片 ────────────────────────────────────────────
+
 async function settingsExternalRows() {
   console.log('\n— settings page: external notification rows —');
   const flush = () => new Promise((r) => setImmediate(r));
@@ -2675,7 +3235,7 @@ async function settingsExternalRows() {
   const test = settingsBoot(
     { enabled: true, externalEnabled: true, externalTargets: [{ id: 't1', type: 'custom', url: 'https://hook.example/x' }] },
     null,
-    { advanced: true, fetch: (url, opts) => { calls.push({ url, opts: opts || {} }); return Promise.resolve({ ok: true, status: 204 }); } }
+    { advanced: true, fetch: (url, opts) => { if (String(url) !== HOST_BRIDGE_ROUTE) calls.push({ url, opts: opts || {} }); return Promise.resolve({ ok: true, status: 204 }); } }
   );
   test.press('测一测外部通知');
   assert(test.textNow().indexOf('发送中') !== -1, 'the test button reports progress in flight');
@@ -2691,7 +3251,7 @@ async function settingsExternalRows() {
   const off = settingsBoot(
     { enabled: true, externalEnabled: false, externalTargets: [{ id: 't1', type: 'custom', url: 'https://hook.example/x' }] },
     null,
-    { advanced: true, fetch: (url) => { offCalls.push(String(url)); return Promise.resolve({ ok: true, status: 204 }); } }
+    { advanced: true, fetch: (url) => { if (String(url) !== HOST_BRIDGE_ROUTE) offCalls.push(String(url)); return Promise.resolve({ ok: true, status: 204 }); } }
   );
   off.press('测一测外部通知');
   assert(off.textNow().indexOf('先打开「转发外部通知」') !== -1, 'master-off gets a hint');
@@ -3178,6 +3738,8 @@ async function approvalTestToastSurvivesMark() {
   toastTagLimits();
   settingsSoundRows();
   await externalWebhooks();
+  await hostBridgeLease();
+  await settingsHostBridgeRows();
   await settingsExternalRows();
   settingsAlertSetup();
   corruptStoredConfig();

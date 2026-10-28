@@ -28,8 +28,9 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 - **When a background reply finishes:** come back for the result; clicking the notification returns to that conversation. Pick "background only", "quiet for the open one", or "always".
 - **When you walk off but the window stays in front:** over 3 minutes without input counts as away, and the alert still fires as usual; the toast that arrived does not clear itself before you come back.
 - **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, or your own webhook.
+- **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see "After the page closes" under [Advanced](#advanced)).
 
-> The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons rely on a Service Worker, so only Web has them — Desktop notifications carry no buttons, and clicking one takes you back to the conversation to decide.
+> The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons rely on a Service Worker, so only Web has them — Desktop notifications carry no buttons, and clicking one takes you back to the conversation to decide. With host-side fallback enabled you still get external push once the page is closed — local toasts and the approval buttons still need the page.
 
 ## UI Preview
 
@@ -81,7 +82,7 @@ Web users can also test the approval buttons, which then appear on the notificat
 window.__dshNotifyMe.test("done")        // "reply finished" sample
 window.__dshNotifyMe.test("attention")   // "needs you" sample
 window.__dshNotifyMe.test("approval")    // Approve / Reject when the bridge is available; a plain notification otherwise (which is what Desktop gets)
-window.__dshNotifyMe.debug()             // bridge ("active" = buttons work), raiseChannel, the last raise attempt in raiseLast, a refused toast's platform message in lastToastReject, and configStored for whether the settings really persisted
+window.__dshNotifyMe.debug()             // bridge ("active" = buttons work), raiseChannel, the last raise attempt in raiseLast, a refused toast's platform message in lastToastReject, configStored for whether the settings really persisted, and hostBridge for host coordination
 ```
 
 If no test notification appears, check in this order: whether the notification permission was declined (click once on the page and choose **Allow**; or address-bar lock → Site settings → Notifications → Allow → reload), whether DSH was restarted after installing, and whether the browser's notifications are switched off in the OS settings.
@@ -170,6 +171,98 @@ Off by default. Supports Discord Webhook / Bark / Gotify / Feishu group bots / S
 
 </details>
 
+#### After the page closes: host-side fallback and the same-origin relay
+
+Both live in the host process (`lib/host-fallback.js`, `lib/relay.js`, optional modules inside the package) and both are off by default: with no config the host registers the raise-window route and nothing else, so behaviour is identical before and after the upgrade. They are configured in the profile's patch layer, not on the Settings page — they make the host act on the page's behalf, they are not browser preferences; the Settings page only reports the state it probed.
+
+<details>
+<summary>Host-side fallback: the host keeps pushing after the page closes</summary>
+
+With no page open the browser half does not run, and that is where alerts stop. The host-side fallback subscribes to the host's session event feed (`session/event`) and pushes the same two alerts to your gateway on its own once the page is closed.
+
+An override example for the profile (`~/.dsh/profiles/<profile>/cordis.patch.yml`). **`config` is replaced wholesale, not deep-merged**: a patch row naming the same `id` assigns the whole `config`, which is why the example spells out all three blocks — an omitted key falls back to the plugin's own defaults (the same values as the bundled YAML), but a `gateway.target` wiped along with it does not come back on its own.
+
+```yaml
+- id: notify-me
+  config:
+    allowedOrigins: []            # top level: page-entry allow-list; empty = loopback / bind address only (all three host routes)
+    gateway:
+      target: ''                  # e.g. https://cue.example/notify/<key>
+      credentialsFile: ''         # mode-0600 JSON, see below
+      headers: {}                 # extra request headers, optional
+    hostFallback:
+      enabled: true
+      target: ''                  # empty = use gateway.target
+      credentialsFile: ''         # empty = use gateway.credentialsFile
+      events: ['turn/end', 'approval/asked']
+      includeSubagents: false
+      turnEndThrottleMs: 15000
+      titlePrefix: 'DSH'
+      language: 'auto'            # auto | zh | en
+      pageLeaseMs: 60000          # 0 = no coordination with the page (duplicates while it is open)
+      healthPath: '/__dsh-notify-me/host-fallback'
+    relay:
+      enabled: false
+      path: ''
+      target: ''
+      credentialsFile: ''
+```
+
+Key by key (defaults in parentheses):
+
+- `enabled` (`false`): off means the host subscribes to nothing and registers no health probe;
+- `target` / `credentialsFile` (empty): empty falls back to `gateway.*`; with both empty there is nowhere to push, so the module is not mounted at all and only one warning line lands in the host log — easier to act on than a failed delivery every time;
+- `events` (`['turn/end', 'approval/asked']`): the events to push; listing one gives you only that one;
+- `includeSubagents` (`false`): sessions with `origin === 'subagent'` are skipped by default, for the same reason as on the page side — they are steps inside the parent conversation's turn;
+- `turnEndThrottleMs` (`15000`): one "reply finished" per session inside that window; the window is only spent when an alert actually went out, so one held off by the lease does not consume it;
+- **The copy matches the page's own toast verbatim**: the title is `<prefix> · Reply finished` / `<prefix> · Approval request`, the body is the session name for a finished turn and `session: tool · reason` for an approval — never any of the user message text (a user message often carries injected `<system-reminder>` blocks, memory context and timestamps, which make a notification unreadable); an abnormal end (`aborted` / `error` / `max-tokens`, …) appends a short parenthetical such as ` (error)`;
+- `titlePrefix` (`DSH`): titles read `<prefix> · Approval request` / `<prefix> · Reply finished` (the page's own labels);
+- `language` (`auto`): `auto` follows the language of the page's last heartbeat and only falls back to Chinese with no heartbeat at all; `zh` / `en` force one;
+- `pageLeaseMs` (`60000`): the page's online lease, see "deduplication" below;
+- `healthPath` (`/__dsh-notify-me/host-fallback`): the path of the read-only health probe.
+
+**The credentials file** is a mode-0600 JSON file readable by the host user, holding `{"user": "...", "password": "..."}` (sent as HTTP Basic) or `{"authorization": "Bearer ..."}` (sent verbatim; a bare token gets `Bearer ` prepended). It must not go into the patch layer — that layer is world-readable and lands in the profile directory. Leaving the key empty sends the request without an authentication header: plenty of webhook endpoints never ask for one, and treating a missing credentials file as an error would make every alert fail; only a path that is configured and unreadable counts as credentials-unavailable. When the gateway answers 401 / 403 the host drops the cached credential, re-reads the file and retries exactly once, so a rotated password needs no host restart.
+
+**Deduplication rides on one page online lease**: on load the page probes `GET /__dsh-notify-me/host-bridge` once (and again every 60 s; no probe while the page is hidden, one catch-up probe when it becomes visible), and it only starts heartbeating when the reply says `hostFallback.enabled === true` — the body carries `{alive, language}` only, the interval is `leaseMs/3` clamped to 5–20 s, and `pagehide` releases immediately with one `{alive:false}` (sent with `keepalive`). A fresh host-side lease means no fallback push (the page is delivering), while an expired lease or an `alive:false` hands over, waiting at most `pageLeaseMs`. The heartbeat carries the language, not the page's push switches: the rule is simply that the host takes over while no page holds the lease, and the page's own visibility and idle heuristics are invisible to the host — honouring half of them would produce a rule nobody can predict. The language it brings is what keeps an English page from getting Chinese host alerts, and it applies whenever `language: 'auto'`. `pageLeaseMs: 0` turns coordination off so the host always pushes — the page then gets everything twice while it is open, so use it for debugging only.
+
+**The two route contracts**: the probe the page calls, `GET /__dsh-notify-me/host-bridge`, answers `{ok, version, features, hostFallback:{enabled, leaseMs}, relay:{enabled, path}, language, page:{alive, ageMs}}`; it is only registered while `hostFallback.enabled` or `relay.enabled` is true, so on a stock install it is a 404 and the page reads that as "off" rather than as a fault. The heartbeat `POST` requires the intent header `x-dsh-notify-me-page: bridge` (missing header → `403`), answers `400` to bad JSON and `413` to a body over 16 KiB, and `200 {ok, leaseUntil}` on success.
+
+**The health probe**: `GET <healthPath>` answers `{ok, version, enabled, events, includeSubagents, pageAlive, lastDelivery: {at, ok, status} | null}`, and any other method gets `405`. It shares the same gate as the other host entry points: the peer has to be this machine (loopback, or the exact address the listener itself is bound to), the `Host` has to be a loopback name, that bind address, or a public name derived from `allowedOrigins`, and a request that fails either is answered `403` with `reason` (`bad-remote` / `bad-host` / `cross-origin`). The probe carries no credential and forwards nothing — it is what you curl from a terminal to confirm that this host process is pushing at all and how the last delivery went.
+
+**Behind a tunnel or reverse proxy `allowedOrigins` is mandatory**: there the `Host` reaching the host is the public domain rather than a loopback address, and `allowedOrigins` is both the `Origin` allow-list and the source of the public `Host` names that are accepted. Without it the page's heartbeat is refused as `bad-host` (the settings row reads "Host did not answer" and the note underneath points you at the top-level `allowedOrigins`), and the host pushes duplicates for a page that is open — exactly the duplication the lease exists to prevent.
+
+</details>
+
+<details>
+<summary>Same-origin relay: reaching a gateway that wants authentication</summary>
+
+The page pushes to its external targets with its own `fetch`, and a gateway behind Basic auth is a dead end, blocked three separate ways:
+
+1. Credentials in the URL (`https://user:pass@host/…`): `fetch` throws before a byte leaves;
+2. An `Authorization` header: the request turns into a preflighted one, and a gateway like Apprise answers no `Access-Control-Allow-*` at all, so the preflight fails;
+3. The `no-cors` fallback: it cannot carry a custom header, which amounts to no authentication at all.
+
+The page is left reporting "sent but unverifiable". The same-origin relay moves that leg into the host: the page POSTs to a route on its own origin, the host adds the credentials and calls the gateway, then answers the page with the gateway's real status.
+
+Enabling it takes `relay.enabled: true`, an absolute `relay.path`, `relay.target` (empty falls back to `gateway.target`) and `relay.credentialsFile` (empty falls back to `gateway.credentialsFile`). The path is itself the capability — knowing it is enough to make the host send a notification for you, so it is worth as much as a password; keep a random token in it: `/__dsh-notify-me/relay/<32 hex token>`.
+
+How to use it: **Settings → Notify me → Advanced → External push** gains two read-only rows, and the "Same-origin relay" one shows `Enabled · address: <origin><relay.path>`; paste that absolute address into the URL of a **custom webhook** target on the same page, and the page never has to know the credentials.
+
+You do not have to change the address either: **a "custom webhook" target that names the relay's own upstream gateway is folded onto the relay route when it is sent.** Such an address cannot work from a browser (the three CORS facts above block it, and the `no-cors` fallback is a *cross-site* POST that Apprise answers `403 Cross-site request rejected`), and older builds recorded that as `unverified` — the settings row read "last delivery sent-unverified" and the test button reported "sent-unverified", **while the phone stayed silent**. Folded, the request stays same-origin and the host adds the credential, so the verdict is the gateway's real status. Folding happens only when the target is of type "custom" *and* its URL's host equals `relay.upstreamHost`; every other host is posted exactly as configured (the relay only delivers to its own gateway), and the settings page prints a note under any target that will be folded.
+
+Behind a tunnel or reverse proxy the relay passes the same `Host` gate as the bridge route: put the page's public origin in the top-level `allowedOrigins`, or both the probe and the `POST` are refused as `bad-host`.
+
+What comes back (which is how the page turns "sent but unverifiable" into something checkable):
+
+- `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`: a read-only probe that forwards nothing and carries no credential, but it does go through **the same gate as the other host entry points** — the path itself is the capability, so an ungated probe would tell whoever guessed it that the guess was right; use it to confirm that this process mounted the path you configured;
+- `POST` → reads the body (64 KiB cap), requires a JSON object, maps it onto the gateway's `{title, body, type:'info'}` (the payload's `tag` is deliberately not forwarded: Apprise treats a tag as a service filter, and an unmatched one answers 424), and attaches `gateway.headers` plus the credentials;
+- `200 {ok, upstreamStatus, upstreamBody}` (with `upstreamBody` at most 500 characters) — the forward succeeded; a non-2xx from the gateway answers `502` in the same shape;
+- `400` (bad or empty JSON body), `413` (body over the cap), `405` (wrong method), `403` (refused by the gate, `reason` as above), `503` (a credentials file is configured but cannot be read), `502 {reason:'upstream-error'}` (the upstream call itself failed).
+
+Credentials stay in the host: the page cannot read them, and they are never echoed into a response or a log line. The `POST` goes through the same gate as the other host entry points, so a forged caller (a cross-site page, a DNS-rebinding page) is refused even if it learns the path.
+
+</details>
+
 #### Runtime & diagnostics
 
 The last block inside Advanced. The page protocol is detected automatically to tell Web from Desktop (DSH Desktop, `dsh-app://`); override it by hand if detection is wrong — on Windows a toast click goes through the host route for native raising, on macOS / Linux through the `dsh://open` deep link (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised)), and it carries no quick-decision buttons, while Web uses `window.focus()` plus the Service Worker bridge. When the manual override disagrees with detection the page says so.
@@ -191,8 +284,10 @@ The last block inside Advanced. The page protocol is detected automatically to t
 | Sound | WebAudio cue by default, with different patterns for "needs you" and "done"; swap in a custom audio file, or hand the sound over to the system notification sound |
 | Tab title | `🔔 Action needed · …` / `✅ Reply finished · …`, following the alert language; gone once you open that session, and both markers can be up at the same time |
 | External push (optional, default off) | Forwards the same alert to Discord / Bark / Gotify / Feishu / ServerChan / WxPusher / a custom webhook |
+| Host-side fallback (optional, default off) | After the page closes the host process keeps pushing "needs you" / "reply finished" to your gateway; needs profile config and a mode-0600 credentials file |
+| Same-origin relay (optional, default off) | The page POSTs to a host route on its own origin, the host adds the credentials and forwards to an authenticated gateway, answering with the gateway's real status |
 
-This is a **browser-layer** plugin: the DSH page has to stay open (minimized or backgrounded is fine — that is exactly the "away" state it watches for).
+This is primarily a **browser-layer** plugin: local toasts, sound and the title marker still only work while the page is open (minimized or backgrounded is fine — that is exactly the "away" state it watches for); with host-side fallback enabled, external push keeps going from the host process once the page is closed.
 
 ## Compatibility
 
@@ -265,6 +360,8 @@ window.__dshNotifyMe.testExternal()               // explicit outbound test to v
 > Picked audio files do not live in `dshNotifyMe.config`: each kind gets its own key (`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`, holding a `{name, size, data}` data URL), because one file inflates by ~1.37× once turned into a data URL and would slow down every config read. `resetConfig()` clears both keys along with the config.
 >
 > To confirm which source is actually in effect, check `soundDone` / `soundAttention` and `customSoundDone` / `customSoundAttention` in `window.__dshNotifyMe.debug()`.
+>
+> `debug().hostBridge` is the read-only snapshot of host coordination: `state` (`idle` the probe has not answered yet; `active` the host has a fallback and this page is holding the lease with its heartbeat; `unavailable` the host is there but offers no fallback, which is what a stock install looks like — an unregistered 404 route counts here too and is not a fault; `error` the host answered nothing usable, or the gate refused this page outright), `leaseMs` (the lease the host granted, in milliseconds), `relayEnabled` and `relayPath` (the relay route, when the host enabled one), `lastReason` (why the last probe failed — `bad-host` / `cross-origin` / `http-403` — and `null` when it was not a fault), and `lastProbeAt` / `lastBeaconAt` (the last probe and the last heartbeat, as ISO strings or `null`). A gate refusal reads as `error` rather than as "off", because it is a configuration the user can fix: add this page's origin to the top-level `allowedOrigins` of the `- id: notify-me` entry in the profile.
 
 </details>
 
@@ -324,7 +421,7 @@ The cases where it will not raise are the same ones listed under [Known limitati
 
 **Runtime prerequisites**
 
-- The page must be open for alerts to fire (background tab / minimized is fine; closing the tab stops it — inherent to a browser-layer plugin).
+- By default alerts only fire while the page is open (a background tab / minimized is fine; closing the tab stops it — inherent to a browser-layer plugin). With host-side fallback enabled you still get **external push** while the page is closed: it needs `hostFallback.enabled: true`, `gateway.target` (or `hostFallback.target`) and a mode-0600 credentials file in the profile, and the host process itself running.
 - Notifications come through the browser, so notification permission must be granted; the first sound / toast after each page load needs one click on the page first; without permission only the sound and the title marker are left.
 - System notification banners are drawn on the primary display only: Windows has no setting and Chromium no API to aim one at another monitor (on a multi-monitor setup the second screen never gets them). The only way across screens is external push to your phone (since 1.12.0 the page no longer draws an approval card).
 - Config lives in browser `localStorage`: switching browsers / devices or clearing site data returns to the defaults (the Settings page restores them in one click).
@@ -346,6 +443,7 @@ The cases where it will not raise are the same ones listed under [Known limitati
 **External push**
 
 - Bounded by browser CORS: an endpoint that does not allow cross-origin degrades to "sent but unverifiable" (no-cors) and is labelled as such; Discord, Feishu, ServerChan and WxPusher do allow cross-origin, so delivery to them is confirmed. DingTalk allows no CORS header at all and only accepts `application/json`, so a page cannot send to it — hence no DingTalk target type (relay it through your own box and use a custom target). A transient failure (network error, 5xx, 429) is retried on the backoff, and a delivery that still fails lands in the failure log; anything else stops at once, no retry. Forwarding is triggered only after the local alert has decided to fire, so an alert muted by the rules is never sent out either.
+- The same-origin relay closes exactly one of those gaps — a page reaching a gateway that wants authentication: the page POSTs to a same-origin route, the host adds the credentials and answers with the gateway's real status. What still holds: both the relay and the host-side fallback need the host process running (`dsh web` or the Desktop main process) — neither is a standalone daemon, so quitting the host stops both; on a host behind a proxy the gateway host has to be in `no_proxy`, or the delivery leaves through the proxy instead; the fallback only covers external push, so local toasts, sound, the title marker and the approval buttons still need the page; `pageLeaseMs: 0` is a debugging switch that gets an open page everything twice; and the relay path is a password, so keep it out of public records.
 
 **Settings icon patch**
 
@@ -356,11 +454,13 @@ The cases where it will not raise are the same ones listed under [Known limitati
 ```sh
 node --check lib/client.js
 node --check lib/index.js
-npm test                         # smoke-test (state machine) + host-route-test (host half) + cordis-host-test
+npm test                         # smoke-test (state machine) + host-route-test (host half) + page-bridge-test + host-fallback-test + relay-route-test + cordis-host-test
 npm pack --dry-run               # preview the published tarball
 ```
 
-`smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + toast tag length handling. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
+`smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + toast tag length handling + the page's host-bridge probe / heartbeat / release and the shape of `debug().hostBridge`. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
+
+The three new suites also ship their own fake `ctx`, need no local DSH and touch no network: `smoke/page-bridge-test.mjs` runs the page-bridge route — status shape, heartbeat and release, missing intent header `403`, cross-origin `403`, bad JSON `400`, oversized `413`, the `allowedOrigins`-derived `Host` (a simulated tunnel) being let through, and path collisions; `smoke/host-fallback-test.mjs` runs the host fallback — approval dedupe, `turn/end` throttling, subagent skip, no push on a fresh lease, a push after the lease expires, an immediate push after `alive:false`, language following the heartbeat, credentials re-read after a 401, and the health probe; `smoke/relay-route-test.mjs` runs the relay — the `GET` probe, `405`, cross-origin `403`, `413`, `400`, `503`, the `200` / `502` mapping and "retry exactly once on a 401".
 
 When `lib/focus-window.ps1` changes (Windows only), also run it by hand:
 
