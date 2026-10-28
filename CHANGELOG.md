@@ -82,7 +82,7 @@ All notable changes to **dsh-notify-me** are documented here.
 ### 文档
 
 - README 中英：提醒渠道补上 Linux；外部推送写明关掉转发会取消已排队的重试、服务码非成功值记失败、2xx 但不是该服务的 JSON 记「已送出不可确认」；控制台示例补 `hostEnv` 与 `debug()` 的 `raiseChannel` / `raiseLast` / `configStored`。
-- 致谢新增 unnamed42（[#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上 `dsh://open` 抬窗失效的报障与补丁）。11 张贡献者头像统一成同一套 48×48 圆形遮罩，`dunxuan`、`Donald-Yip` 之前分别是方形和自带 alpha。
+- README 致谢表补 [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上 `dsh://open` 抬窗失效的报障与补丁。11 张贡献者头像统一成同一套 48×48 圆形遮罩（此前有的方形、有的自带 alpha）。
 - `docs/listing.md` 版本口径同步到 1.14.7。
 
 ### 测试
@@ -248,13 +248,13 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ### 文档
 
-- README 中英：外部推送整节重写（目标类型、可靠性、状态、签名、模板、钉钉为何不支持），控制台示例补 `externalRetryDelays` 与目标字段形状，已知限制口径同步；致谢加上 [@yuexian7](https://github.com/yuexian7) 与 #17。
+- README 中英：外部推送整节重写（目标类型、可靠性、状态、签名、模板、钉钉为何不支持），控制台示例补 `externalRetryDelays` 与目标字段形状，已知限制口径同步；致谢表补 #17。
 
 ## [1.12.0] — 2026-10-21
 
 ### 新增
 
-- **人走开但窗口没走也算离开**（来自 [#16](https://github.com/chromoany/dsh-notify-me/pull/16)，[@shrekcg](https://github.com/shrekcg)）：`idleMinutes`（默认 3 分钟，`0` 关掉）内没有任何键鼠输入，就把「窗口在前台」按离开处理——「需要你」照常提醒、「回复完成」按离开规则提醒、`autoDismiss: "present"` 也不再撤掉那条通知。此前只认窗口失焦 / 页面隐藏，人坐在桌前离开座位时一切都还是「你在看」。
+- **人走开但窗口没走也算离开**（来自 [#16](https://github.com/chromoany/dsh-notify-me/pull/16)）：`idleMinutes`（默认 3 分钟，`0` 关掉）内没有任何键鼠输入，就把「窗口在前台」按离开处理——「需要你」照常提醒、「回复完成」按离开规则提醒、`autoDismiss: "present"` 也不再撤掉那条通知。此前只认窗口失焦 / 页面隐藏，人坐在桌前离开座位时一切都还是「你在看」。
 - **闲置到期会补发被压下的审批**（维护者补的）：`currentHiddenOnly` 把当前对话的等待只留标题标记时，原先只有失焦 / 页面隐藏事件才会补发；现在闲置定时器到期即补发，人离开但窗口没动也能收到。一次性触发，队列清空后不重复。
 - **「回复完成」提醒时机三选一**（#16）：`donePolicy` —— `"background"`（默认，旧行为）/ `"smart"`（屏幕上那条静默，别的对话完成照常提醒）/ `"always"`（从不静默），设置页「什么时候提醒」里换成下拉。
 - **通知自动消失三选一**（#16）：`autoDismiss` —— `"present"`（默认，只有你在页面时才计时关闭，离开时收到的留在通知中心）/ `"always"`（旧行为）/ `"never"`（普通通知等你点掉）。带「同意 / 拒绝」的审批通知仍按 12 秒走。
@@ -276,7 +276,7 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ### 文档
 
-- README 中英：设置清单换成三档下拉、补闲置判定与通知自收、删「副屏与审批卡片」整节、控制台示例同步、致谢加上 [@shrekcg](https://github.com/shrekcg) 与 #16。
+- README 中英：设置清单换成三档下拉、补闲置判定与通知自收、删「副屏与审批卡片」整节、控制台示例同步、致谢表补 #16。
 
 ## [1.11.0] — 2026-10-21
 
@@ -510,7 +510,7 @@ All notable changes to **dsh-notify-me** are documented here.
 - 转发挂在 `fire()` 里、本地提醒决定要发之后触发：**跟本地提醒完全同一套触发规则**（「当前对话不弹通知」「页面打开时也提醒」等开关同样管它）；设置页的「测试提醒」按钮与快捷裁决反馈走 `deliver()`，不会误发 webhook。
 - 跨域（CORS）口径：先走能读回响应的 CORS POST JSON；被拒（CORS/网络错误）时降级 no-cors + `text/plain` 送出，如实标为「已送出不可确认」（响应对页面不可见是浏览器规则，读不回就没法确认）；Bark 另有经典 GET（`<地址>/<标题>/<正文>`）兜底；HTTP 错误如实记失败、不盲重试。
 - 版本号 1.6.1 → 1.7.0；`window.__dshNotifyMe.version` 与 `package.json` 同步；npm 关键词新增 external-notification / webhook / discord / bark / gotify / push-notification / 外部通知 / 推送提醒。
-- README（中英）同步：搜索词、设置清单、提醒方式、控制台配置块（四个新键 + `testExternal()`）、已知限制的 CORS 说明；致谢名单新增 [@RiZhiZhaoYi](https://github.com/RiZhiZhaoYi)（issue #12 的功能建议）。
+- README（中英）同步：搜索词、设置清单、提醒方式、控制台配置块（四个新键 + `testExternal()`）、已知限制的 CORS 说明；致谢表补 #12（功能建议）。
 
 ### 测试
 - `smoke/smoke-test.cjs` 新增两段：① 转发链路（默认零外发、toast 测试不触发转发、四类负载形状、真实提醒镜像与两类开关、主开关、no-cors 降级、HTTP 500 单次不重试、Bark GET 兜底、非法 URL 剔除与未知类型归为 custom）；② 设置页「外部通知」卡片（渲染与空状态、目标增删改落配置、测试按钮反馈文案、两种静默原因的提示语）。
@@ -528,7 +528,7 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ### 变更
 - 版本号 1.6.0 → 1.6.1；`window.__dshNotifyMe.version` 同步。
-- README（中英）致谢名单新增 [@yanzhaohui1999](https://github.com/yanzhaohui1999)（issue #13 的性能报告与 PR #14 的修复及回归断言）。
+- README（中英）致谢表补 #13 / #14（性能报告与修复、回归断言）。
 
 ## [1.6.0] — 2026-10-15
 
@@ -563,7 +563,7 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ### 变更
 - 版本号 1.5.2 → 1.5.3；`window.__dshNotifyMe.version` 同步。
-- README（中英）：「桌面端怎么抬窗的 / How the Desktop window gets raised」补真实壳复测结论与触发时机口径——深链必须在带用户手势的处理器里发（通知 `onclick` 自带手势，产品路径通）；无手势的脚本化注入会被 Chromium 静默丢弃、外部协议不回流，复现时看似「通道被拦死」。致谢名单新增 [@EliteOtaku](https://github.com/EliteOtaku)（issue #9 的逐层排查与三轮真实壳复测）。
+- README（中英）：「桌面端怎么抬窗的 / How the Desktop window gets raised」补真实壳复测结论与触发时机口径——深链必须在带用户手势的处理器里发（通知 `onclick` 自带手势，产品路径通）；无手势的脚本化注入会被 Chromium 静默丢弃、外部协议不回流，复现时看似「通道被拦死」。致谢表补 [#9](https://github.com/chromoany/dsh-notify-me/issues/9)（逐层排查与三轮真实壳复测）。
 
 ### 核实
 - issue #9 真实壳三轮复测（DSH Desktop 0.2.0-rc.2 / Windows 11）：点通知 = 抬窗 + 切会话一步到位，同会话、跨会话、窗口在后台均稳定 ✅，1.5.2 的抬窗修复确认生效。
@@ -628,7 +628,7 @@ All notable changes to **dsh-notify-me** are documented here.
 ### 变更
 - 版本号 1.3.1 → 1.4.0；`window.__dshNotifyMe.version` 同步。
 - README（中英）补上设置页新开关、提醒时机说明、控制台配置示例与工作原理里的子代理口径。
-- README（中英）新增「致谢与贡献须知 / Credits & how contributions land」：外部 PR 的署名口径与贡献者名单；「只静音后台子代理、当前打开的照常提醒」这一口径来自 [@d0ublecl1ck](https://github.com/d0ublecl1ck) 在 [#8](https://github.com/chromoany/dsh-notify-me/pull/8) 讨论里的建议（收编进 main 的原版是整条静音），本次按该口径改准并由维护者落地。
+- README（中英）新增「致谢与贡献须知 / Credits & how contributions land」：外部 PR 的署名口径与贡献者名单；「只静音后台子代理、当前打开的照常提醒」这一口径来自 [#8](https://github.com/chromoany/dsh-notify-me/pull/8) 讨论里的建议（收编进 main 的原版是整条静音），本次按该口径改准并由维护者落地。
 
 ### 测试
 - `smoke/smoke-test.cjs` 新增子代理用例：`ignoreSubagent` 默认值与 `debug()` 字段、后台子代理完成不提醒而普通后台会话照常、后台子代理等待不提醒也不打标题标记、分支（fork）会话仍提醒、关掉开关后子代理的等待与完成重新提醒，以及「当前打开的子代理会话照常提醒」——等待与完成都提醒；后台积压的等待在切进去时按当前对话的规则排队补发，切走则连标题标记与排队通知一起撤下。
