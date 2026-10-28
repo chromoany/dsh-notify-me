@@ -82,7 +82,7 @@ Web users can also test the approval buttons, which then appear on the notificat
 window.__dshNotifyMe.test("done")        // "reply finished" sample
 window.__dshNotifyMe.test("attention")   // "needs you" sample
 window.__dshNotifyMe.test("approval")    // Approve / Reject when the bridge is available; a plain notification otherwise (which is what Desktop gets)
-window.__dshNotifyMe.debug()             // bridge ("active" = buttons work), raiseChannel, the last raise attempt in raiseLast, a refused toast's platform message in lastToastReject, configStored for whether the settings really persisted, and hostBridge for host coordination
+window.__dshNotifyMe.debug()             // bridge ("active" = buttons work), raiseChannel, the last raise attempt in raiseLast, a refused toast's platform message in lastToastReject, configStored for whether the settings really persisted, and hostBridge for host coordination; after coming back to the page, toastsLive / toastsWithdrawn / lastToastWithdrawAt show what is still tracked, how many were withdrawn, and when that last happened
 ```
 
 If no test notification appears, check in this order: whether the notification permission was declined (click once on the page and choose **Allow**; or address-bar lock → Site settings → Notifications → Allow → reload), whether DSH was restarted after installing, and whether the browser's notifications are switched off in the OS settings.

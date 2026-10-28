@@ -82,7 +82,7 @@ Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。桌面�
 window.__dshNotifyMe.test("done")        // 「完成」示例
 window.__dshNotifyMe.test("attention")   // 「需要你」示例
 window.__dshNotifyMe.test("approval")    // 桥可用时带「同意 / 拒绝」按钮；否则只发普通通知（桌面端即如此）
-window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge
+window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge；切回页面后收通知看 toastsLive / toastsWithdrawn / lastToastWithdrawAt（还挂着几条 / 累计收起几条 / 最后一次的时间）
 ```
 
 没有测试通知时，先检查：通知权限是否被拒绝（在页面上点一下 → 选「允许」；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
