@@ -214,7 +214,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 - `target` / `credentialsFile`（空）：留空回落到 `gateway.*`；两处都空等于没地方可推，模块干脆不挂载，只在宿主日志里留一行 warning——比每次投递都失败好查；
 - `events`（`['turn/end', 'approval/asked']`）：要推的事件，只列一种就只有那一种；
 - `includeSubagents`（`false`）：`origin === 'subagent'` 的会话默认跳过，理由与页面侧一致——它们是主对话一轮里的步骤；
-- `turnEndThrottleMs`（`15000`）：同一会话的「回复完成」在这个窗口内只推一条；窗口只在真发出去时才消耗，被租约挡掉的那次不算；
+- `turnEndThrottleMs`（`15000`）：同一会话的「回复完成」在这个窗口内只推一条；窗口只在真发出去时才消耗，被租约挡掉的那次不算。节流只管 `completed`——`aborted` / `error` / `max-tokens` 这些收尾不节流，它们本来就少，而且往往是此刻最该看到的那一条；
 - **文案与页面通知逐字一致**：标题是 `<前缀> · 回复完成` / `<前缀> · 审批请求`，正文「回复完成」只有会话名、「审批请求」是 `会话名：工具名 · 原因`——不含任何用户消息正文（用户消息里常带注入的 `<system-reminder>`、记忆上下文与时间戳，复制进通知就没法读了）；非正常收尾（`aborted` / `error` / `max-tokens`…）会在正文尾部附一个短后缀，如 `（error）`；
 - `titlePrefix`（`DSH`）：标题是 `<前缀> · 审批请求` / `<前缀> · 回复完成`（与页面通知同一套标签）；
 - `language`（`auto`）：`auto` 用页面最近一次心跳报的语言，没有心跳才回落到中文；`zh` / `en` 强制；
@@ -225,7 +225,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 **去重靠一条页面在线租约**：页面加载后 `GET /__dsh-notify-me/host-bridge` 探测一次（之后每 60 秒复探，页面隐藏时不探、回到可见补探一次），只有回包 `hostFallback.enabled === true` 才开始心跳——body 只有 `{alive, language}`，间隔取 `leaseMs/3`、夹在 5–20 秒；`pagehide` 时发一条 `{alive:false}`（带 `keepalive`）立刻释放。宿主侧租约新鲜就不补推（页面自己在推），租约过期或收到 `alive:false` 才接手，最多等 `pageLeaseMs` 这么久。心跳只带语言，不带页面的推送开关：规则是「没有页面持有租约时宿主接手」，而页面的可见性与闲置判定宿主看不见，只照做一半会得到谁也算不清的规则。语言带过来是为了英文页面不收中文宿主提醒，`language: 'auto'` 时生效。`pageLeaseMs: 0` 关掉协调，宿主永远推——页面开着时会收到两份，只在调试时用。
 
-**两个路由的契约**：页面探测的那条 `GET /__dsh-notify-me/host-bridge` 回 `{ok, version, features, hostFallback:{enabled, leaseMs}, relay:{enabled, path}, language, page:{alive, ageMs}}`；它只在 `hostFallback.enabled` 或 `relay.enabled` 为真时注册，默认安装下是 404，页面按「未启用」处理而不是当故障。心跳 `POST` 要求意图头 `x-dsh-notify-me-page: bridge`（缺了回 `403`），坏 JSON 回 `400`，body 超 16 KiB 回 `413`，成功回 `200 {ok, leaseUntil}`。
+**两个路由的契约**：页面探测的那条 `GET /__dsh-notify-me/host-bridge` 回 `{ok, version, features, hostFallback:{enabled, leaseMs}, relay:{enabled, path, upstreamHost, upstreamPath}, language, page:{alive, ageMs}}`（`upstreamHost` / `upstreamPath` 是宿主替你转发时的网关主机名与路径，只在中继启用时给出，凭据永不下发）；它只在 `hostFallback.enabled` 或 `relay.enabled` 为真时注册，默认安装下是 404，页面按「未启用」处理而不是当故障。心跳 `POST` 要求意图头 `x-dsh-notify-me-page: bridge`（缺了回 `403`），坏 JSON 回 `400`，body 超 16 KiB 回 `413`，成功回 `200 {ok, leaseUntil}`。
 
 **健康探针**：`GET <healthPath>` 回 `{ok, version, enabled, events, includeSubagents, pageAlive, lastDelivery: {at, ok, status} | null}`，非 GET / HEAD 回 `405`。它和其它宿主入口共用同一道闸门：对端必须是本机（回环或监听器自己绑定的那个地址），`Host` 必须是回环名 / 绑定地址 / `allowedOrigins` 派生的公网域名，不符回 `403` 并带 `reason`（`bad-remote` / `bad-host` / `cross-origin`）。探针不收凭据、不转发，用它在终端确认「这个宿主进程到底有没有在推、上一次投递是什么结果」。
 
@@ -248,16 +248,16 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 用法：**设置 → 通知提醒 → 高级设置 → 外部推送** 里多出两行只读状态，「同源中继」一行显示 `已启用 · 地址：<origin><relay.path>`；把那个绝对地址填进同页「自定义 Webhook」目标的地址即可，页面不必知道凭据。
 
-不想改地址也行：**「自定义 Webhook」目标里如果填的是中继上游网关本身的地址，发送时会自动折叠到中继路由**。这类地址在浏览器里注定失败（上面三条 CORS 事实各堵一次，其中 `no-cors` 兜底还会被 Apprise 当成跨站请求直接 `403 Cross-site request rejected`），旧版把它记成 `unverified`——设置页显示「上次已送出（不可确认）」、测试按钮报「已送出不可确认」，**而手机一声不响**。折叠之后请求走同源、凭据由宿主补，回执就是网关的真实状态。折叠只发生在目标类型为「自定义」且 URL 的主机名等于 `relay.upstreamHost` 时；别的主机一律原样直发（中继只把东西送到它自己的网关），设置页会在会被折叠的目标下写一行说明。
+不想改地址也行：**「自定义 Webhook」目标里如果填的是中继上游网关本身的地址，发送时会自动折叠到中继路由**。这类地址在浏览器里注定失败（上面三条 CORS 事实各堵一次，其中 `no-cors` 兜底还会被 Apprise 当成跨站请求直接 `403 Cross-site request rejected`），旧版把它记成 `unverified`——设置页显示「上次已送出（不可确认）」、测试按钮报「已送出不可确认」，**而手机一声不响**。折叠之后请求走同源、凭据由宿主补，回执就是网关的真实状态。折叠要同时满足：目标类型是「自定义」、URL 主机名等于 `relay.upstreamHost`、路径也等于 `relay.upstreamPath`、目标没配签名密钥（签名在页面算，中继带不过去）、且目标不是本页同源。主机名或路径有一项对不上就原样直发（一个网关常按路径分多个 notify key，只比主机名会把 A key 的提醒发到 B key 去），设置页会在会被折叠的目标下写一行说明。
 
 走隧道 / 反代时中继要和桥接路由过同一道 `Host` 闸门：把页面的公网来源写进顶层 `allowedOrigins`，否则探针与 `POST` 都会被判 `bad-host`。
 
 回包口径（页面据此把「已送出不可确认」变成可核对的状态）：
 
 - `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`：只读探针，不转发、不带凭据，但**和其它宿主入口走同一道闸门**——路径本身就是能力，不设闸门的探针会把「猜对了」告诉猜的人；拿它确认「这个进程挂的是不是我配的那条路径」；
-- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（页面载荷里的 `tag` 不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；
+- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（页面载荷里的 `tag` 不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
 - `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字符）＝转发成功；上游非 2xx 回 `502`，同为这一形状；
-- `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝，`reason` 同上）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常）。
+- `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝或缺少意图头）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常或网关回了 3xx——跳转不跟，因为跟过去会把 body 和 `Authorization` 重放到别处）。
 
 凭据只在宿主：页面拿不到它，它也不会回显在响应或日志里。`POST` 走与其它宿主入口同一道闸门，所以跨站页面或 DNS rebinding 的伪造来源即使猜到路径也会被拒。
 
@@ -360,7 +360,7 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 >
 > 想确认当前生效的来源，看 `window.__dshNotifyMe.debug()` 的 `soundDone` / `soundAttention` 与 `customSoundDone` / `customSoundAttention`。
 >
-> `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
+> `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`relayUpstreamHost` / `relayUpstreamPath`（中继上游网关的主机名与路径，即会被折叠的那个端点）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
 
 </details>
 

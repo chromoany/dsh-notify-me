@@ -90,7 +90,7 @@ function call(route, spec) {
     const req = {
       method: spec.method,
       headers: Object.assign({ host: '127.0.0.1:3080' }, spec.headers || {}),
-      socket: { remoteAddress: spec.remoteAddress || '127.0.0.1' },
+      socket: { remoteAddress: spec.remoteAddress || '127.0.0.1', encrypted: spec.encrypted === true },
       on(type, fn) { (listeners[type] = listeners[type] || []).push(fn); return req; },
       resume() {},
     };
@@ -314,7 +314,80 @@ try {
       'the health route falls back to its default path');
   }
 
-  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions');
+  // 11) A portless Host means the port this connection came in on, never the
+  // port the Origin's scheme would have used. The difference is a page the user
+  // never opened: an http://localhost page reaching an https listener is a cross
+  // origin, and reading the default off the Origin would call it same-origin.
+  {
+    const portGate = boot({
+      allowedOrigins: ['https://localhost'],
+      hostFallback: { enabled: true, target: 'https://gw.example/hook', credentialsFile: credFile },
+    });
+    const portBridge = routeAt(portGate.routes, BRIDGE);
+    const schemeSwap = await call(portBridge, {
+      method: 'GET',
+      encrypted: true,
+      headers: { host: 'localhost', origin: 'http://localhost' },
+    });
+    assert(schemeSwap.status === 403 && schemeSwap.body.reason === 'cross-origin',
+      'an http Origin against an https listener is cross-origin (got ' + schemeSwap.status + ' ' + JSON.stringify(schemeSwap.body) + ')');
+    const sameOrigin = await call(portBridge, {
+      method: 'GET',
+      encrypted: true,
+      headers: { host: 'localhost', origin: 'https://localhost' },
+    });
+    assert(sameOrigin.status === 200, 'the matching Origin still passes (got ' + sameOrigin.status + ')');
+  }
+
+  // 12) The relay publishes the path of its own gateway endpoint, because the
+  // page may only fold a target that addresses *that* endpoint: one gateway
+  // usually serves several notify keys.
+  {
+    const withRelay = boot({
+      relay: { enabled: true, path: RELAY, target: 'https://gateway.example/notify/KEY', credentialsFile: credFile },
+    });
+    const relayBridge = routeAt(withRelay.routes, BRIDGE);
+    const relayStatus = await call(relayBridge, { method: 'GET' });
+    assert(relayStatus.body.relay.upstreamHost === 'gateway.example',
+      'the relay reports its upstream host (got ' + JSON.stringify(relayStatus.body.relay) + ')');
+    assert(relayStatus.body.relay.upstreamPath === '/notify/KEY',
+      'the relay reports its upstream path (got ' + JSON.stringify(relayStatus.body.relay) + ')');
+  }
+
+  // 13) The fallback is only reported as enabled when it can actually push: a
+  // fallback with no gateway is left unmounted, and the page must not hold a
+  // lease for a takeover that can never happen.
+  {
+    const noTarget = boot({ hostFallback: { enabled: true, credentialsFile: credFile } });
+    assert(noTarget.routes.filter((r) => r.path === BRIDGE).length === 1,
+      'the bridge route still exists, so the page can ask');
+    const noTargetBridge = routeAt(noTarget.routes, BRIDGE);
+    const noTargetStatus = await call(noTargetBridge, { method: 'GET' });
+    assert(noTargetStatus.body.hostFallback.enabled === false,
+      'a fallback without a gateway is not reported as enabled (got ' + JSON.stringify(noTargetStatus.body.hostFallback) + ')');
+    assert(noTargetStatus.body.features.indexOf('host-fallback') === -1,
+      'and features do not claim it (got ' + JSON.stringify(noTargetStatus.body.features) + ')');
+    assert(noTargetStatus.body.features.indexOf('page-bridge') !== -1, 'the bridge itself is still there');
+  }
+
+  // 14) A relay without a target is likewise reported as off: the module leaves
+  // the route unmounted, so a page that believed it was on would post every
+  // alert to a 404 and record the gateway's silence as a refusal.
+  {
+    const noRelayTarget = boot({ relay: { enabled: true, path: RELAY } });
+    assert(noRelayTarget.routes.filter((r) => r.path === RELAY).length === 0,
+      'a relay without a gateway mounts no route');
+    const noRelayBridge = routeAt(noRelayTarget.routes, BRIDGE);
+    const noRelayStatus = await call(noRelayBridge, { method: 'GET' });
+    assert(noRelayStatus.body.relay.enabled === false && noRelayStatus.body.relay.path === null,
+      'a relay without a gateway is not reported as enabled (got ' + JSON.stringify(noRelayStatus.body.relay) + ')');
+    assert(noRelayStatus.body.relay.upstreamHost === null,
+      'and it publishes no upstream host (got ' + JSON.stringify(noRelayStatus.body.relay) + ')');
+    assert(noRelayStatus.body.features.indexOf('relay') === -1,
+      'and features do not claim it (got ' + JSON.stringify(noRelayStatus.body.features) + ')');
+  }
+
+  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves');
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

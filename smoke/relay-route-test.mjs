@@ -99,7 +99,9 @@ function call(route, spec) {
     const listeners = {};
     const req = {
       method: spec.method,
-      headers: Object.assign({ host: '127.0.0.1:3080' }, spec.headers || {}),
+      // The relay requires its intent header on POST; the page's folded request
+      // carries it, so every case here does too unless it is testing the miss.
+      headers: Object.assign({ host: '127.0.0.1:3080' }, spec.method === 'POST' ? { 'x-dsh-notify-me-relay': 'relay' } : {}, spec.headers || {}),
       socket: { remoteAddress: spec.remoteAddress || '127.0.0.1' },
       on(type, fn) { (listeners[type] = listeners[type] || []).push(fn); return req; },
       resume() {},
@@ -183,6 +185,14 @@ try {
     assert(foreignHost.status === 403 && foreignHost.body.reason === 'bad-host',
       'a foreign Host is refused (got ' + foreignHost.status + ')');
     assert(calls.length === 0, 'none of the refused requests reached the gateway (got ' + calls.length + ')');
+
+    // The intent header: a cross-site text/plain form post is CORS-simple, so the
+    // gate is not the only layer — a request that never meant to be a relay post
+    // cannot set this header without a preflight, which the gateway never allows.
+    const noIntent = await call(handle, { method: 'POST', body: eventBody(), headers: { 'x-dsh-notify-me-relay': '' } });
+    assert(noIntent.status === 403 && noIntent.body.reason === 'missing-intent',
+      'a POST without the intent header is refused (got ' + noIntent.status + ' ' + JSON.stringify(noIntent.body) + ')');
+    assert(calls.length === 0, 'a POST without the intent header never reaches the gateway (got ' + calls.length + ')');
     globalThis.fetch = realFetch;
   }
 

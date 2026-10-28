@@ -273,6 +273,12 @@ try {
     await sleep(220);
     hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 3, reason: { kind: 'completed' } } });
     await waitFor(() => calls.length === 3, 'a turn outside the window');
+    // The window collapses finished turns only: a turn that ended badly is the
+    // alert the user has to act on, so it is never swallowed as a burst.
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 4, reason: { kind: 'error', message: 'boom' } } });
+    await waitFor(() => calls.length === 4, 'an abnormal end inside the window');
+    assert(JSON.parse(calls[3].body).body.indexOf('（error）') !== -1,
+      'the abnormal end names its reason, got ' + calls[3].body);
     globalThis.fetch = realFetch;
   }
 

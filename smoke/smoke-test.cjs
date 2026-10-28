@@ -1684,11 +1684,18 @@ async function desktopRaiseChannel() {
   assert(desk.focusHits === 1, 'window.focus() is still called first, got ' + desk.focusHits);
   assert(desk.iframes.length === 0,
     'no dsh://open deep link fires on Windows, got ' + JSON.stringify(desk.iframes.map((f) => f.src)));
-  assert(desktopSpy.calls.length === 1, 'the click posts to the focus route exactly once, got ' + desktopSpy.calls.length);
-  assert(desktopSpy.calls[0].url === FOCUS_ROUTE, 'the raise posts to ' + FOCUS_ROUTE + ', got ' + desktopSpy.calls[0].url);
-  assert(desktopSpy.calls[0].opts.method === 'POST', 'the raise is a POST, got ' + desktopSpy.calls[0].opts.method);
-  assert(desktopSpy.calls[0].opts.headers && desktopSpy.calls[0].opts.headers['x-dsh-notify-me-focus'] === 'focus',
-    'the raise carries the CSRF header, got ' + JSON.stringify(desktopSpy.calls[0].opts.headers));
+  // The tally below is about the raise. Disposing the plugin (which the sandbox
+  // does on the way out of raiseCase) releases the page lease, so the bridge
+  // route also sees one POST — split it out instead of counting it against the
+  // raise.
+  const deskFocus = desktopSpy.calls.filter((c) => c.url === FOCUS_ROUTE);
+  const deskRelease = desktopSpy.calls.filter((c) => c.url === HOST_BRIDGE_ROUTE);
+  assert(deskFocus.length === 1, 'the click posts to the focus route exactly once, got ' + deskFocus.length);
+  assert(deskFocus[0].opts.method === 'POST', 'the raise is a POST, got ' + deskFocus[0].opts.method);
+  assert(deskFocus[0].opts.headers && deskFocus[0].opts.headers['x-dsh-notify-me-focus'] === 'focus',
+    'the raise carries the CSRF header, got ' + JSON.stringify(deskFocus[0].opts.headers));
+  assert(deskRelease.length === 1 && JSON.parse(deskRelease[0].opts.body).alive === false,
+    'disposing the plugin hands the last page lease back, got ' + JSON.stringify(deskRelease.map((c) => c.opts.body)));
   assert(desk.debug.raiseLast === 'focused', 'debug() records the focused verdict, got ' + desk.debug.raiseLast);
   assert(desk.opened.length === 1 && desk.opened[0] === 's2',
     'the click still switches the alerted conversation, got ' + JSON.stringify(desk.opened));
@@ -1708,8 +1715,12 @@ async function desktopRaiseChannel() {
   assert(linux.iframes[0].src === 'dsh://open',
     'the Linux frame navigates to dsh://open, got ' + linux.iframes[0].src);
   assert(linux.focusHits === 1, 'window.focus() is still called first on Linux, got ' + linux.focusHits);
-  assert(linuxSpy.calls.length === 0,
-    'the Linux deep link never posts to the Windows host route, got ' + linuxSpy.calls.length);
+  // Every case here ends with the plugin's disposer releasing the page lease on
+  // the bridge route, so the question these assertions ask is only about the
+  // Windows focus route.
+  const offFocus = (spy) => spy.calls.filter((c) => c.url === FOCUS_ROUTE).length;
+  assert(offFocus(linuxSpy) === 0,
+    'the Linux deep link never posts to the Windows host route, got ' + offFocus(linuxSpy));
   assert(linux.debug.raiseLast === 'deeplink', 'debug() records the deep-link verdict, got ' + linux.debug.raiseLast);
   assert(linux.opened.length === 1 && linux.opened[0] === 's2',
     'the Linux click still switches the alerted conversation, got ' + JSON.stringify(linux.opened));
@@ -1723,7 +1734,7 @@ async function desktopRaiseChannel() {
     'macOS uses the deep-link raise channel, got ' + mac.debug.raiseChannel);
   assert(mac.iframes.length === 1 && mac.iframes[0].src === 'dsh://open',
     'the macOS raise navigates one frame to dsh://open, got ' + JSON.stringify(mac.iframes.map((f) => f.src)));
-  assert(macSpy.calls.length === 0, 'macOS never posts to the Windows host route, got ' + macSpy.calls.length);
+  assert(offFocus(macSpy) === 0, 'macOS never posts to the Windows host route, got ' + offFocus(macSpy));
   assert(mac.debug.raiseLast === 'deeplink', 'debug() records the macOS deep-link verdict, got ' + mac.debug.raiseLast);
 
   // Browser tab: no host route, window.focus() is all that exists.
@@ -1731,7 +1742,7 @@ async function desktopRaiseChannel() {
   const web = await raiseCase({ location: webOrigin, fetchSpy: webSpy });
   assert(web.debug.desktop === false, 'a plain origin is not the desktop shell');
   assert(web.debug.raiseChannel === 'window-focus', 'browsers keep the window-focus channel');
-  assert(webSpy.calls.length === 0, 'a browser never reaches for the host route, got ' + webSpy.calls.length);
+  assert(offFocus(webSpy) === 0, 'a browser never reaches for the host route, got ' + offFocus(webSpy));
   assert(web.debug.raiseLast === 'browser', 'a browser raise records the browser verdict, got ' + web.debug.raiseLast);
   assert(web.iframes.length === 0, 'no deep link fires in a browser');
   assert(web.opened.length === 1 && web.opened[0] === 's2', 'the browser click switches the conversation');
@@ -1742,14 +1753,14 @@ async function desktopRaiseChannel() {
   assert(forcedWeb.debug.desktop === false, 'forcing web overrides desktop detection');
   assert(forcedWeb.debug.raiseChannel === 'window-focus', 'forced web keeps the window-focus channel');
   assert(forcedWeb.debug.hostEnvDetected === 'desktop', 'debug() still reports what detection saw');
-  assert(forcedWebSpy.calls.length === 0, 'forced web never posts to the focus route');
+  assert(offFocus(forcedWebSpy) === 0, 'forced web never posts to the focus route');
 
   const forcedDeskSpy = focusFetchSpy();
   const forcedDesk = await raiseCase({ location: webOrigin, fetchSpy: forcedDeskSpy, config: { hostEnv: 'desktop' }, userAgent: WINDOWS_UA });
   assert(forcedDesk.debug.desktop === true, 'forcing desktop overrides web detection');
   assert(forcedDesk.debug.raiseChannel === 'host-route', 'forced desktop uses the host route');
-  assert(forcedDeskSpy.calls.length === 1 && forcedDeskSpy.calls[0].url === FOCUS_ROUTE,
-    'forced desktop posts to the focus route on a web origin');
+  assert(offFocus(forcedDeskSpy) === 1,
+    'forced desktop posts to the focus route on a web origin, got ' + offFocus(forcedDeskSpy));
 
   // A host that refuses (web profile, non-Windows shell) must not break the
   // click: the toast still has to land on the right conversation.
@@ -2429,7 +2440,7 @@ async function externalWebhooks() {
     status: 200,
     json: () => Promise.resolve({ ok: true, hostFallback: { enabled: false, leaseMs: 60000 }, relay: relay }),
   });
-  const RELAY_ON = { enabled: true, path: RELAY, upstreamHost: 'gateway.example' };
+  const RELAY_ON = { enabled: true, path: RELAY, upstreamHost: 'gateway.example', upstreamPath: '/notify/KEY' };
   const RELAY_OFF = { enabled: false, path: null, upstreamHost: null };
   const folded = bootWeb((rec) => {
     if (relayProbe(rec)) return bridgeAnswer(RELAY_ON);
@@ -2444,6 +2455,8 @@ async function externalWebhooks() {
   assert(folded.calls[0].url === RELAY,
     'the folded target is posted to the same-origin relay path, got ' + folded.calls[0].url);
   assert(folded.calls[0].opts.mode !== 'no-cors', 'the folded request is not an opaque one');
+  assert(folded.calls[0].opts.headers && folded.calls[0].opts.headers['x-dsh-notify-me-relay'] === 'relay',
+    'the folded request carries the relay intent header, got ' + JSON.stringify(folded.calls[0].opts.headers));
   const foldBody = JSON.parse(folded.calls[0].body);
   assert(foldBody.source === 'dsh-notify-me' && foldBody.title === '外部通知测试' && typeof foldBody.body === 'string',
     'the folded payload keeps the custom shape and the copy, got ' + JSON.stringify(foldBody));
@@ -2462,6 +2475,35 @@ async function externalWebhooks() {
   await elsewhere.win.__dshNotifyMe.testExternal();
   assert(elsewhere.calls.length === 1 && elsewhere.calls[0].url === 'https://other.example/x',
     'a target on another host keeps its own address, got ' + JSON.stringify(elsewhere.calls.map((c) => c.url)));
+
+  // 3c-ii) one gateway serves several notify keys: a target whose path is not
+  //        the relay's own is another key, and folding it would deliver that
+  //        key's alert through this one.
+  const otherKey = bootWeb((rec) => {
+    if (relayProbe(rec)) return bridgeAnswer(RELAY_ON);
+    return { ok: true, status: 204 };
+  }, { externalEnabled: true, externalTargets: [{ id: 't1', type: 'custom', url: GATEWAY + '/notify/OTHER' }] });
+  await flush();
+  otherKey.calls.length = 0;
+  await otherKey.win.__dshNotifyMe.testExternal();
+  assert(otherKey.calls.length === 1 && otherKey.calls[0].url === GATEWAY + '/notify/OTHER',
+    'a target on another notify key keeps its own address, got ' + JSON.stringify(otherKey.calls.map((c) => c.url)));
+
+  // 3c-iii) a target with a signature secret never rides the relay: the
+  //         signature is computed in the page from that secret, and the relay
+  //         has no way to reproduce it, so folding would strip it.
+  const signed = bootWeb((rec) => {
+    if (relayProbe(rec)) return bridgeAnswer(RELAY_ON);
+    return { ok: true, status: 204 };
+  }, {
+    externalEnabled: true,
+    externalTargets: [{ id: 't1', type: 'custom', url: GATEWAY + '/notify/KEY', secret: 'shh' }],
+  });
+  await flush();
+  signed.calls.length = 0;
+  await signed.win.__dshNotifyMe.testExternal();
+  assert(signed.calls.length === 1 && signed.calls[0].url === GATEWAY + '/notify/KEY',
+    'a signed target is never folded onto the relay, got ' + JSON.stringify(signed.calls.map((c) => c.url)));
 
   // 3d) without an enabled relay there is nothing to fold onto: the target is
   //     posted as configured, and the opaque fallback is reported as unverified
@@ -3034,7 +3076,7 @@ async function hostBridgeLease() {
     'becoming visible probes once right away, got ' + (probes(vis.calls).length - probesBefore));
 
   // 6) the debug block keeps its shape in every state.
-  const SHAPE = 'lastBeaconAt,lastProbeAt,lastReason,leaseMs,relayEnabled,relayPath,relayUpstreamHost,state';
+  const SHAPE = 'lastBeaconAt,lastProbeAt,lastReason,leaseMs,relayEnabled,relayPath,relayUpstreamHost,relayUpstreamPath,state';
   for (const shape of [yes.api.debug().hostBridge, nope.api.debug().hostBridge, off.api.debug().hostBridge, relayOnly.api.debug().hostBridge, denied.api.debug().hostBridge]) {
     assert(Object.keys(shape).sort().join(',') === SHAPE,
       'hostBridge debug keys are stable, got ' + Object.keys(shape).sort().join(','));
