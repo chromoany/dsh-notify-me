@@ -19,8 +19,8 @@ README 只保留这两节的摘要与链接，完整内容在对应的 `.md` / `
 
 | 文件 | 尺寸 | 内容 |
 | --- | --- | --- |
-| `settings-zh.png` | 592×994 | 中文设置页完整面板 |
-| `settings-en.png` | 592×1012 | 英文设置页完整面板 |
+| `settings-zh.png` | 592×1006 | 中文设置页完整面板（1.17.0） |
+| `settings-en.png` | 592×1024 | 英文设置页完整面板（1.17.0） |
 | `notify-toast.png` | 593×239 | Edge 里的普通通知，不含审批按钮 |
 
 README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown 里的链接不用改。`screenshots.json` 是提交插件市场时给的一套图列表，换图时一并同步。
