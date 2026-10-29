@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/brand/icon-app-128.png" width="76" height="76" alt="dsh-notify-me">
-
-# dsh-notify-me
+<img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/brand/header.jpg" width="100%" alt="Banner: a lit bell mark over a dark desk scene, titled dsh-notify-me, subtitled Step away. Stay informed.">
 
 **Step away from DSH and know when to come back.**
 

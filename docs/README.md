@@ -5,7 +5,7 @@
 | 路径 | 内容 | 什么时候要动 |
 | --- | --- | --- |
 | `listing.md` | 各插件市场条目的文案与提交状态 | 提交或修改市场条目时 |
-| `brand/` | 图标源文件、各尺寸位图、重新生成脚本 | 改图标时，取舍见 [`brand/README.md`](brand/README.md) |
+| `brand/` | 图标源文件、各尺寸位图、仓库头图与社交预览、重新生成脚本 | 改图标或换头图时，取舍见 [`brand/README.md`](brand/README.md) |
 | `contributors/` | README 致谢表用的头像 | 有人新增贡献、要进致谢表时 |
 | `screenshots/` | README 里的界面截图 | DSH 设置界面改版后重拍 |
 | [`compatibility.md`](compatibility.md) · [`compatibility.en.md`](compatibility.en.md) | 宿主兼容性全篇：逐版实测记录、代际形状差异、两个会静默失效的坑 | 适配新宿主版本后 |

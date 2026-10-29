@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/brand/icon-app-128.png" width="76" height="76" alt="dsh-notify-me">
-
-# dsh-notify-me
+<img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/brand/header.jpg" width="100%" alt="仓库头图：深色桌面上亮起的铃铛标志，标题 dsh-notify-me，副标题 Step away. Stay informed.">
 
 **离开 DSH 页面，也能及时知道何时需要回来。**
 

@@ -13,6 +13,30 @@
 | `icon-app-512.png` / `-256` / `-128` / `-64` / `-32` | 由 `icon-app.svg` 直接栅格化的位图，圆角外透明 |
 | `favicon.svg` / `favicon-32.png` | 32×32 简化版：线宽放大到 1.9，圆点更大，缩到 16px 仍能分辨 |
 | `preview.png` | 上面这张总览图，改标志后重新生成 |
+| `header.png` | 仓库头图母版（1774×887，约 1.6 MB），只作源文件，README 不直接引用 |
+| `header.jpg` | 由 `header.png` 导出的首屏用图（同为 1774×887，质量 90，约 129 KB），中英 README 顶部都用它 |
+| `social-preview.jpg` | 仓库社交预览图（1774×887，约 198 KB），在 GitHub 仓库 Settings 里人工上传 |
+
+## 头图与社交预览
+
+README 顶部那张横幅的母版是 `header.png`（1774×887）。1.6 MB 的 PNG 挂在首屏，图不下载完页面就铺不开，所以 README 引用的是同尺寸导出的 `header.jpg`（质量 90，约 129 KB）——肉眼分不出差别，体积差一个数量级。换图时先改 `header.png`，再按下面的片段导出一次：
+
+```powershell
+Add-Type -AssemblyName System.Drawing
+$src = [System.Drawing.Image]::FromFile((Resolve-Path 'docs\brand\header.png'))
+$bmp = New-Object System.Drawing.Bitmap($src.Width, $src.Height)
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+$g.DrawImage($src, 0, 0, $src.Width, $src.Height)
+$g.Dispose()
+$enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+$ps = New-Object System.Drawing.Imaging.EncoderParameters(1)
+$ps.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]90)
+$bmp.Save((Join-Path (Get-Location) 'docs\brand\header.jpg'), $enc, $ps)
+$bmp.Dispose(); $src.Dispose()
+```
+
+`social-preview.jpg` 是分享链接时显示的社交预览卡片，画面与头图相同、宽高比 2:1。它只能人工上传：仓库 Settings → General → Social preview，GitHub 没有对应 API，提交进仓库不会自动生效。
 
 ## 用法
 
