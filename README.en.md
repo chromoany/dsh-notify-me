@@ -13,7 +13,7 @@
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#installation)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
-[![DSH Compatibility](https://img.shields.io/badge/DSH-tested%200.2.2--alpha.2-6366f1.svg?style=flat-square)](#compatibility)
+[![DSH Compatibility](https://img.shields.io/badge/DSH-tested%200.2.2--alpha.2%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#compatibility)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 </div>
@@ -310,7 +310,7 @@ This is primarily a **browser-layer** plugin: local toasts, sound and the title 
 
 ## Compatibility
 
-Every release from `0.1.1-rc.2` through `0.2.2-alpha.2` was tested to actually activate (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). Per-release records, the host-generation shape differences and the two traps that fail silently are in **[docs/compatibility.en.md](docs/compatibility.en.md)**.
+Every release from `0.1.1-rc.2` through `0.2.2-alpha.2` was tested to actually activate, including the recent desktop build `0.2.1-rc.5` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). Per-release records, the host-generation shape differences and the two traps that fail silently are in **[docs/compatibility.en.md](docs/compatibility.en.md)**.
 
 ## Advanced console configuration
 
