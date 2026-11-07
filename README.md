@@ -450,6 +450,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&legend=bottom-right" />
  </picture>
 </a>
+
 ## License
 
 MIT — 见 [LICENSE](LICENSE)。
