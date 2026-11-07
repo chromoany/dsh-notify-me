@@ -441,7 +441,15 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/ekexium"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ekexium.png" width="40" height="40" alt="@ekexium"></a> | [#23](https://github.com/chromoany/dsh-notify-me/issues/23)：按对话静音的诉求（每会话一个开关、跨重启持久化、会话行上带标记），1.16.0 起支持 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
+## Star History
 
+<a href="https://www.star-history.com/?repos=chromoany%2Fdsh-notify-me&type=timeline&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&legend=bottom-right" />
+ </picture>
+</a>
 ## License
 
 MIT — 见 [LICENSE](LICENSE)。
