@@ -2343,10 +2343,11 @@ async function externalWebhooks() {
   const flush = () => new Promise((r) => setImmediate(r));
 
   // A fetch stand-in recording every call; `behavior` answers (or throws).
-  // The page GETs its host-bridge probe route at boot; that belongs to the
-  // hostBridgeLease case, so the assertions below count everything else (Bark's
-  // delivery fallback is a GET too, and stays in).
-  const isProbe = (c) => c.opts.method === 'GET' && c.url === HOST_BRIDGE_ROUTE;
+  // The page talks to its own host-bridge route in the background — the boot
+  // probe, the heartbeat and the release beacon — and that traffic belongs to
+  // the hostBridgeLease case, so the webhook assertions below count everything
+  // else (Bark's delivery fallback is a GET off this route, and stays in).
+  const isProbe = (c) => c.url === HOST_BRIDGE_ROUTE;
   // A live probe-blind view. The cases reset the log with `.length = 0`, so the
   // view stays array-shaped: records are re-filtered from the underlying spy on
   // every read, and a reset skips everything recorded so far (the log only
@@ -2878,12 +2879,14 @@ async function hostBridgeLease() {
   const lang0 = yes.api.debug().language;
   assert(hb0.alive === true, 'the beat says alive, got ' + b0[0].body);
   assert(hb0.language === lang0, 'the beat language follows effectiveLang(), got ' + hb0.language + ' vs ' + lang0);
-  // The host's fallback pushes only while this page is away, so the page's own
-  // forward switches must not ride along (a field the host does not read still
-  // reads like it applies to the host). The muted-session list is the one piece
-  // the host genuinely needs, because it speaks for silenced sessions.
-  assert(Object.keys(hb0).sort().join(',') === 'alive,language,muted',
-    'the beat body is exactly {alive, language, muted}, got ' + Object.keys(hb0).sort().join(','));
+  // The host's fallback pushes only while this page is away, but it pushes to
+  // the same endpoints these switches govern: 「转发外部通知」 off has to silence
+  // it too, or closing the tab would deliver the alert the user just switched
+  // off. The muted-session list rides along for the same reason.
+  assert(Object.keys(hb0).sort().join(',') === 'alive,external,language,muted',
+    'the beat body is exactly {alive, external, language, muted}, got ' + Object.keys(hb0).sort().join(','));
+  assert(JSON.stringify(hb0.external) === JSON.stringify({ enabled: false, attention: true, done: true }),
+    'the beat reports the default forward switches (master off, both kinds on), got ' + JSON.stringify(hb0.external));
   assert(Array.isArray(hb0.muted) && hb0.muted.length === 0,
     'nothing is muted by default, got ' + JSON.stringify(hb0.muted));
   const d0 = yes.api.debug();
@@ -2902,15 +2905,25 @@ async function hostBridgeLease() {
   yes.clock.advance(1);
   await flush();
   assert(aliveBeats(yes.calls).length === 2, 'a 60 s lease beats every 20 s, got ' + aliveBeats(yes.calls).length);
-  yes.api.setConfig({ language: 'en', externalEnabled: true, externalAttention: false });
+  yes.api.setConfig({ externalEnabled: true, externalAttention: false });
+  await flush();
+  // A forward switch reaches the host at once instead of waiting for the
+  // interval: it decides whether the host may send at all, and the user can
+  // close the tab the second after flipping it.
+  assert(aliveBeats(yes.calls).length === 3,
+    'flipping a forward switch beats at once, got ' + aliveBeats(yes.calls).length);
+  const hbFlip = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
+  assert(JSON.stringify(hbFlip.external) === JSON.stringify({ enabled: true, attention: false, done: true }),
+    'the beat carries the flipped switches, got ' + JSON.stringify(hbFlip.external));
+  yes.api.setConfig({ language: 'en' });
   yes.clock.advance(20000);
   await flush();
   const hb1 = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
-  assert(aliveBeats(yes.calls).length === 3, 'the beat keeps its pace after the first, got ' + aliveBeats(yes.calls).length);
+  assert(aliveBeats(yes.calls).length === 4, 'the beat keeps its pace after the first, got ' + aliveBeats(yes.calls).length);
   assert(hb1.language === 'en', 'a pinned language reaches the host on the next beat, got ' + hb1.language);
   // Flipping every external-forward setting must not add or remove a field.
-  assert(Object.keys(hb1).sort().join(',') === 'alive,language,muted',
-    'the beat body stays {alive, language, muted} after the forward toggles change, got ' + Object.keys(hb1).sort().join(','));
+  assert(Object.keys(hb1).sort().join(',') === 'alive,external,language,muted',
+    'the beat body stays {alive, external, language, muted} after the forward toggles change, got ' + Object.keys(hb1).sort().join(','));
 
   // 2b) muting a session reaches the host on the next beat without waiting for
   //     the interval: the host filters its alerts on the last list it heard, so a
@@ -2918,7 +2931,7 @@ async function hostBridgeLease() {
   yes.api.setConfig({ mutedSessions: ['sess-muted-1', '  sess-muted-2  ', 'sess-muted-1', 42, ''] });
   await flush();
   const hbMute = JSON.parse(aliveBeats(yes.calls)[aliveBeats(yes.calls).length - 1].body);
-  assert(aliveBeats(yes.calls).length === 4,
+  assert(aliveBeats(yes.calls).length === 5,
     'a mute change beats at once instead of waiting for the interval, got ' + aliveBeats(yes.calls).length);
   assert(JSON.stringify(hbMute.muted) === JSON.stringify(['sess-muted-1', 'sess-muted-2']),
     'the beat carries the pruned mute list, got ' + JSON.stringify(hbMute.muted));
@@ -3067,8 +3080,14 @@ async function hostBridgeLease() {
   assert(releases[0].opts.headers['x-dsh-notify-me-page'] === 'bridge', 'the release carries the intent header too');
   const rel = JSON.parse(releases[0].body);
   assert(rel.language === bye.api.debug().language, 'the release carries the page language, got ' + JSON.stringify(rel));
-  assert(Object.keys(rel).sort().join(',') === 'alive,language',
-    'the release body is exactly {alive, language}, got ' + Object.keys(rel).sort().join(','));
+  // The release is what lets the host push, so it has to carry the switches
+  // that decide whether the host may push at all — otherwise the fallback would
+  // use the answer from up to a beat ago, and "switch off, close the tab" would
+  // still deliver one last alert.
+  assert(Object.keys(rel).sort().join(',') === 'alive,external,language',
+    'the release body is exactly {alive, external, language}, got ' + Object.keys(rel).sort().join(','));
+  assert(typeof rel.external === 'object' && rel.external !== null && typeof rel.external.enabled === 'boolean',
+    'the release reports the forward switches, got ' + JSON.stringify(rel.external));
   assert(typeof bye.api.debug().hostBridge.lastBeaconAt === 'string', 'debug() timestamps the release');
   // A visibilitychange into "hidden" is not an unload: only pagehide releases.
   bye.b.doc.hidden = true;

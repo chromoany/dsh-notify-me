@@ -184,6 +184,23 @@ try {
   assert(manyMute.status === 200 && manyMute.body.ok === true,
     'an oversized mute list is still accepted (got ' + manyMute.status + ' ' + JSON.stringify(manyMute.body) + ')');
 
+  // A half-written switch report is ignored rather than half-applied: an
+  // `external` object missing a field must not read as "forwarding off", which
+  // would silently mute a fallback the operator configured.
+  const junkExternal = await call(bridge, {
+    method: 'POST',
+    headers: { 'x-dsh-notify-me-page': 'bridge' },
+    body: JSON.stringify({ alive: true, external: { enabled: false } }),
+  });
+  assert(junkExternal.status === 200 && junkExternal.body.ok === true,
+    'an incomplete switch report is accepted and ignored (got ' + junkExternal.status + ')');
+  const stringExternal = await call(bridge, {
+    method: 'POST',
+    headers: { 'x-dsh-notify-me-page': 'bridge' },
+    body: JSON.stringify({ alive: true, external: 'nope' }),
+  });
+  assert(stringExternal.status === 200, 'a non-object switch report is ignored (got ' + stringExternal.status + ')');
+
   // Lease expiry is what hands delivery back to the host.
   await sleep(450);
   const expired = await call(bridge, { method: 'GET' });
@@ -405,7 +422,33 @@ try {
       'and features do not claim it (got ' + JSON.stringify(noRelayStatus.body.features) + ')');
   }
 
-  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves');
+  // 15) The presence gate the host fallback reads: a page's forward switches are
+// the user's own statement, so the host obeys them — but only when the page
+// actually reported a complete set. Unknown (never reported) stays open, and a
+// half-written report keeps the previous answer instead of reading as "off".
+  {
+    const bridgeLib = await import(pathToFileURL(path.join(ROOT, 'lib', 'page-bridge.js')).href);
+    const presence = bridgeLib.createPresence({ leaseMs: 60000 });
+    assert(presence.externalAllowed('attention') === true && presence.externalAllowed('done') === true,
+      'with no report yet both kinds stay allowed (the profile opt-in decides)');
+    presence.touch({ alive: true, external: { enabled: false, attention: true, done: true } });
+    assert(presence.externalAllowed('attention') === false && presence.externalAllowed('done') === false,
+      'the master switch off silences both kinds');
+    presence.touch({ alive: true, external: { enabled: true, attention: false, done: true } });
+    assert(presence.externalAllowed('attention') === false && presence.externalAllowed('done') === true,
+      'a per-kind switch only silences its own kind');
+    presence.touch({ alive: true, external: { attention: true } });
+    assert(presence.externalAllowed('attention') === false && presence.externalAllowed('done') === true,
+      'an incomplete report keeps the previous answer (got ' + JSON.stringify(presence.snapshot().external) + ')');
+    assert(presence.snapshot().external.enabled === true,
+      'the snapshot exposes the switches, got ' + JSON.stringify(presence.snapshot().external));
+    // The release must not forget them: it is the moment the host takes over.
+    presence.touch({ alive: false, external: { enabled: false, attention: true, done: true } });
+    assert(presence.isAlive() === false && presence.externalAllowed('done') === false,
+      'the switches survive the page release');
+  }
+
+  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves, external switches');
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
