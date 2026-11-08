@@ -16,7 +16,8 @@ window.__dshNotifyMe.setConfig({
   idleMinutes: 3,             // minutes without keyboard/mouse input before "away" counts (0 = turn the idle rule off)
   autoDismiss: "present",     // toast auto-dismiss (the timer only; leftovers are withdrawn once you are back): 'present' keep while away | 'always' always close | 'never' never close
   ignoreSubagent: true,       // true = no alerts for background subagent sessions (the open one still alerts)
-  mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell, survives reloads)
+  mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell or the right-click menu, survives reloads)
+  muteRowButton: true,        // true = show the mute bell in the row hover strip; false = right-click menu only (a muted row keeps its bell)
   sound: true,                // sound switch (also governs the "system notification sound" mode)
   soundDone: "synth",         // "reply finished" sound source: 'synth' built-in | 'custom' picked file | 'system' OS notification sound
   soundAttention: "synth",    // "needs you" sound source, same values

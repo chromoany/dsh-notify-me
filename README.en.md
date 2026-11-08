@@ -141,18 +141,21 @@ Open **Settings → Notify me**. The page lays out three blocks — how you get 
 
 For the "this one runs automated work in the background — I do not need to hear about it tonight" case: silence one row and nothing else.
 
-- **Mute**: hover a session in the sidebar, a bell appears on the right; click it to mute that conversation (the button reads "mute alerts for this session"), click again to resume.
+- **Mute**: hover a session in the sidebar, a bell appears on the right; click it to mute that conversation (the button reads "mute alerts for this session"), click again to resume. You can also right-click the session and pick "Mute alerts for this session" — touch devices have no hover strip, so that menu row is their entry point.
 - **Mark**: a muted conversation shows a crossed bell before its title (announced as "alerts muted for this session").
+- **The hover bell can be switched off**: the "Show the mute bell on hover" switch at the top of the "Muted sessions" card on the settings page defaults to on; off hides the bell from the hover strip, and unmuted conversations are muted from the right-click menu instead. A muted conversation keeps its bell — it shows the state and unmutes in one click; the crossed bell before the title is unaffected.
 - **Scope**: "needs you", "reply finished", sound, the tab-title mark and external forwarding are all silenced for that conversation; every other conversation is untouched. The test buttons under "Try it" still fire — they exist to check the channel on the spot.
 - **Persistence**: the list lives in local storage, so it survives reloads and restarts; a hand-edited list is pruned instead of breaking the page.
 - **After the tab closes**: the list travels with the heartbeat, so the host-side fallback honours it too — otherwise closing the page would start the very alerts you turned off.
 
-The settings page has a "Muted sessions" card under "When to alert" with the current count and an "Unmute all" button.
+The settings page has a "Muted sessions" card under "When to alert" with the current count, the hover-bell switch at the top of the card, and an "Unmute all" button.
 
 <details>
 <summary>Edge cases</summary>
 
 - The mark lives in the host's `sidebar.session.row.leading` slot, and the host puts its status dots there while a session is running, so the mark is not rendered then — a running background job shows no crossed bell until it stops. The mute itself is unaffected.
+- The right-click menu row lives in the host's legacy `sidebar.workspaces.session.menu.item` slot; a host that does not declare that slot only loses that one row — the hover bell, the settings page and the mute itself keep working.
+- With the hover bell off, an unmuted conversation has no mute control in the row at all, so checking or clearing the mute goes through the right-click menu; a muted conversation keeps its pressed-state bell at the end of the row.
 - Muting keys on the session id: renaming or moving the directory changes nothing, and a deleted session is harmless in the list (capped at 200 ids; "Unmute all" clears it).
 - Muting does not change the "reply finished" policy or "current conversation stays quiet"; when both apply, the mute wins.
 

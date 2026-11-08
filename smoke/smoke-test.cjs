@@ -4084,26 +4084,36 @@ async function mutedSessionsHonoured() {
   console.log('per-session mute OK: silences its own row, spares the rest, survives a reload, drops junk');
 }
 
-// The row UI: a bell in the row's hover actions and a mark before the title,
-// both reading the same list, plus the settings card that can clear it.
+// The row UI: a bell in the row's hover actions, a mark before the title, and
+// the same switch in the Session context menu — all reading the same list, plus
+// the settings card that can clear it and turn the hover bell off.
 function mutedSessionsUi() {
-  console.log('\n— per-session mute: sidebar row + settings card —');
+  console.log('\n— per-session mute: sidebar row + session menu + settings card —');
   const sb = settingsBoot({ mutedSessions: [] });
   const zh = sb.dictNow().zh;
   const en = sb.dictNow().en;
-  for (const key of ['secMute', 'muteHint', 'muteNone', 'muteMuted', 'muteClear', 'muteSession', 'unmuteSession', 'muteMark']) {
+  for (const key of ['secMute', 'muteHint', 'muteRow', 'muteRowHint', 'muteNone', 'muteMuted', 'muteClear', 'muteSession', 'unmuteSession', 'muteMark']) {
     assert(zh[key] && en[key], 'both languages define ' + key);
   }
-  // Both slots are injected — each on its own, so a host with only one still works.
+  // All three slots are injected — each on its own, so a host with only some of
+  // them still gets what it declares.
   assert(sb.injectedNow().indexOf('sidebar.workspaces.session.row.action') !== -1,
     'the row hover-action slot is injected');
   assert(sb.injectedNow().indexOf('sidebar.session.row.leading') !== -1,
     'the row leading slot is injected');
+  assert(sb.injectedNow().indexOf('sidebar.workspaces.session.menu.item') !== -1,
+    'the Session menu row slot is injected');
   const btnReg = sb.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute');
   const markReg = sb.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute-mark');
-  assert(btnReg && markReg, 'both row entries registered');
+  const menuReg = sb.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute-menu');
+  assert(btnReg && markReg && menuReg, 'all three row entries registered');
   assert(btnReg.spec.name === 'sidebar.workspaces.session.row.action', 'the bell registers into the action slot');
   assert(markReg.spec.name === 'sidebar.session.row.leading', 'the mark registers into the leading slot');
+  assert(menuReg.spec.name === 'sidebar.workspaces.session.menu.item', 'the menu entry registers into the legacy menu slot');
+  // The hover bell defaults to on, and the card carries the switch (issue #26).
+  const muteSwitch = sb.find((n) => n.props && n.props.role === 'switch' && n.props['aria-label'] === zh.muteRow);
+  assert(muteSwitch, 'the hover-bell switch renders in the mute card');
+  assert(muteSwitch.props['aria-checked'] === 'true', 'the hover-bell switch defaults to on');
 
   const renderSlot = (reg, sessionId) => {
     sb.beforeRender();
@@ -4132,6 +4142,58 @@ function mutedSessionsUi() {
   assert(mark && mark.props['aria-label'] === zh.muteMark, 'a muted row carries the mark');
   assert(renderSlot(markReg, 's-other') === null, 'the mark belongs to its own row only');
 
+  // The Session context menu offers the same switch. The fixture has no
+  // primitives module, so this exercises the fallback row; a real host renders
+  // the shipped MenuItemButton. Acting has to close the shared menu through the
+  // host's useMenuOpenState hook.
+  const renderMenu = (sessionId, hook) => {
+    sb.beforeRender();
+    const el = menuReg.comp({ sessionId, displayTitle: 'Demo', useMenuOpenState: hook });
+    return el.type(el.props);
+  };
+  const menu = renderMenu('s-menu');
+  assert(menu.type === 'button', 'the fallback menu row is a plain button');
+  assert(menu.props.role === 'menuitem', 'the fallback menu row announces itself as a menu item');
+  assert(collectText(menu).join(' ').indexOf(zh.muteSession) !== -1, 'an unmuted menu row offers 静音');
+  let dismissed = null;
+  const menuToMute = renderMenu('s-menu', () => [true, (open) => { dismissed = open; }]);
+  menuToMute.props.onClick({ preventDefault() {} });
+  assert(dismissed === false, 'acting on the menu row dismisses the menu');
+  assert(JSON.stringify(sb.configNow().mutedSessions) === '["s-silent","s-menu"]',
+    'the menu row mutes its session, got ' + JSON.stringify(sb.configNow().mutedSessions));
+  const menuToUnmute = renderMenu('s-menu');
+  assert(collectText(menuToUnmute).join(' ').indexOf(zh.unmuteSession) !== -1, 'a muted menu row offers 取消静音');
+  menuToUnmute.props.onClick({});
+  assert(JSON.stringify(sb.configNow().mutedSessions) === '["s-silent"]',
+    'the menu row unmutes again, got ' + JSON.stringify(sb.configNow().mutedSessions));
+
+  // Issue #26's opt-out: with the hover bell off, an unmuted row shows nothing
+  // there; a muted row keeps the bell as its state (and as one-click unmute);
+  // the mark before the title is unaffected.
+  const quiet = settingsBoot({ muteRowButton: false, mutedSessions: ['s-muted'] });
+  const quietZh = quiet.dictNow().zh;
+  const quietBell = quiet.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute');
+  const quietMark = quiet.registeredNow().find((r) => r.spec && r.spec.id === 'dsh-notify-me-mute-mark');
+  assert(quiet.text.indexOf(quietZh.muteRow) !== -1, 'the hover-bell switch renders when the bell is off too');
+  const quietRender = (reg, sessionId) => {
+    quiet.beforeRender();
+    const el = reg.comp({ sessionId });
+    return el.type(el.props);
+  };
+  assert(quietRender(quietBell, 's-plain') === null, 'with the switch off an unmuted row shows no hover bell');
+  const keptBell = quietRender(quietBell, 's-muted');
+  assert(keptBell && keptBell.props['aria-pressed'] === 'true', 'a muted row keeps the bell as its state');
+  assert(quietRender(quietMark, 's-muted') !== null, 'the crossed bell before the title stays when the hover bell is off');
+  const offSwitch = quiet.find((n) => n.props && n.props.role === 'switch' && n.props['aria-label'] === quietZh.muteRow);
+  assert(offSwitch && offSwitch.props['aria-checked'] === 'false', 'the switch reads off from the stored config');
+  offSwitch.props.onClick();
+  assert(quiet.configNow().muteRowButton === true, 'pressing the switch turns the hover bell back on');
+  // A hand-edited value of another type falls back to the default, not to off.
+  const coerced = settingsBoot({ muteRowButton: 'off', mutedSessions: [] });
+  assert(coerced.configNow().muteRowButton === true, 'a non-boolean hover-bell value falls back to the default');
+  coerced.cleanup();
+  quiet.cleanup();
+
   // The settings card counts it and can clear the whole list. This uses its own
   // page instance: the fixture shares one hook table between every component it
   // renders, so mixing a slot render into the page's render pass would hand the
@@ -4146,7 +4208,7 @@ function mutedSessionsUi() {
   assert(page.renderNow().indexOf(zh.muteNone) !== -1, 'the empty state comes back after clearing');
   page.cleanup();
   sb.cleanup();
-  console.log('mute UI OK: bell toggles one row, mark follows it, card clears the list');
+  console.log('mute UI OK: bell toggles one row, mark follows it, menu row toggles too, switch hides only the idle bell, card clears the list');
 }
 
 (async () => {
