@@ -442,6 +442,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上 `dsh://open` 抬窗失效的报障与补丁，1.14.4 起 macOS / Linux 恢复深链抬窗 |
 | <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25)：页面关闭后由宿主兜底推送、同源中继两个可选模块（默认关），含测试与文档 |
 | <a href="https://github.com/ekexium"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ekexium.png" width="40" height="40" alt="@ekexium"></a> | [#23](https://github.com/chromoany/dsh-notify-me/issues/23)：按对话静音的诉求（每会话一个开关、跨重启持久化、会话行上带标记），1.16.0 起支持 |
+| <a href="https://github.com/AomiRaku"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AomiRaku.png" width="40" height="40" alt="@AomiRaku"></a> | [#26](https://github.com/chromoany/dsh-notify-me/issues/26)：会话行悬停按钮遮挡标题的反馈——静音铃铛改为可关闭、右键菜单补一个静音入口，1.18.0 起支持 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 ## Star History
