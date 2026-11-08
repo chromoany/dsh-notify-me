@@ -14,7 +14,8 @@ window.__dshNotifyMe.setConfig({
   currentHiddenOnly: true,    // true = 当前对话的等待只留标题标记（人离开后补发）
   donePolicy: "background",   // 「回复完成」策略：'background' 仅后台 | 'smart' 仅当前对话静默 | 'always' 总是提醒
   idleMinutes: 3,             // 超过多少分钟没有键鼠输入算「离开」（0 = 关掉闲置判定）
-  autoDismiss: "present",     // 通知自动消失（只管定时关闭，回到页面时残留的一律收起）：'present' 离开时保留 | 'always' 总是关闭 | 'never' 从不关闭
+  autoDismiss: "present",     // 通知自动消失（只管定时关闭；回到页面时残留的通知默认收起，除非 keepOnReturn 为 true）：'present' 离开时保留 | 'always' 总是关闭 | 'never' 从不关闭
+  keepOnReturn: false,        // false = 回到页面时收起残留通知；true = 保留，留到你点掉或点「关闭」
   ignoreSubagent: true,       // true = 后台子代理（subagent）会话不提醒（当前打开的照常）
   mutedSessions: [],          // 按对话静音的会话 id 列表（侧边栏铃铛或右键菜单写入，重载后仍在）
   muteRowButton: true,        // true = 悬停会话行时显示静音铃铛；false = 只用右键菜单（已静音的会话行仍保留铃铛）

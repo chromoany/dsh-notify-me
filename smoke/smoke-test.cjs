@@ -3788,6 +3788,38 @@ async function withdrawnOnReturn() {
     assert(present.closed === true, 'and the one still up from before the trip, got closed=' + present.closed);
   }
 
+  // 6) keepOnReturn: the explicit opt-in for a reminder that waits on screen
+  //    until the user dismisses it. None of the three return routes withdraws
+  //    anything while it is on.
+  {
+    const b = bootBundle({ withNotification: true });
+    const host = buildHost({ withUiSession: false });
+    host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.setConfig({
+      sound: false, language: 'zh', enabled: true, idleMinutes: 0,
+      autoDismiss: 'never', keepOnReturn: true,
+    });
+    b.doc.hidden = true;
+    b.doc.visibilityState = 'hidden';
+    b.win.__dshNotifyMe.test('done');
+    const kept = b.lastNotification();
+    assert(kept && kept.closed === false, 'the toast is up while away');
+    b.doc.hidden = false;
+    b.doc.visibilityState = 'visible';
+    b.fireVisibility();
+    assert(kept.closed === false, 'keepOnReturn: the visibility route withdraws nothing');
+    b.setWindowFocus(false);
+    b.win.__dshNotifyMe.test('done');
+    const focusedAway = b.lastNotification();
+    assert(focusedAway && focusedAway.closed === false, 'a second toast is up in the unfocused window');
+    b.setWindowFocus(true);
+    assert(focusedAway.closed === false, 'keepOnReturn: the focus route withdraws nothing');
+    const dbg = b.win.__dshNotifyMe.debug();
+    assert(dbg.toastsLive === 2, 'both handles are still live, got ' + dbg.toastsLive);
+    assert(dbg.toastsWithdrawn === 0, 'keepOnReturn counts no withdrawal, got ' + dbg.toastsWithdrawn);
+  }
+
   console.log('return-withdraw OK: focus, visibility and post-idle input all clear the leftovers, request intact');
 }
 

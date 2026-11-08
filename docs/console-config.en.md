@@ -14,7 +14,8 @@ window.__dshNotifyMe.setConfig({
   currentHiddenOnly: true,    // true = waits in the conversation on screen keep only the title marker (replayed once away)
   donePolicy: "background",   // "reply finished" policy: 'background' only when away | 'smart' quiet only for the open one | 'always' always alert
   idleMinutes: 3,             // minutes without keyboard/mouse input before "away" counts (0 = turn the idle rule off)
-  autoDismiss: "present",     // toast auto-dismiss (the timer only; leftovers are withdrawn once you are back): 'present' keep while away | 'always' always close | 'never' never close
+  autoDismiss: "present",     // toast auto-dismiss (the timer only; leftovers are withdrawn once you are back unless keepOnReturn is true): 'present' keep while away | 'always' always close | 'never' never close
+  keepOnReturn: false,        // false = withdraw the leftovers when you come back; true = keep them until you dismiss or click Close
   ignoreSubagent: true,       // true = no alerts for background subagent sessions (the open one still alerts)
   mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell or the right-click menu, survives reloads)
   muteRowButton: true,        // true = show the mute bell in the row hover strip; false = right-click menu only (a muted row keeps its bell)
