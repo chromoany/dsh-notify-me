@@ -28,6 +28,8 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 - **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, or your own webhook.
 - **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see "After the page closes" under [Advanced](#advanced)).
 
+> **macOS Desktop (DSH Desktop)** raises its system notifications through a small host-spawned helper, `DSH Notify.app`: build it once with `bash macos/build.sh` and allow it in System Settings (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)).
+
 > The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons rely on a Service Worker, so only Web has them — Desktop notifications carry no buttons, and clicking one takes you back to the conversation to decide. With host-side fallback enabled you still get external push once the page is closed — local toasts and the approval buttons still need the page.
 
 ## UI Preview
@@ -302,7 +304,7 @@ The last block inside Advanced. The page protocol is detected automatically to t
 
 | Channel | What it does |
 | --- | --- |
-| System notification | Through the browser into the Windows / macOS / Linux notification centre; clicking it returns to the conversation it came from. Web can carry Approve / Reject |
+| System notification | Through the browser into the Windows / macOS / Linux notification centre; clicking it returns to the conversation it came from. On macOS Desktop the host spawns `DSH Notify.app` to post it (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)). Web can carry Approve / Reject |
 | Sound | WebAudio cue by default, with different patterns for "needs you" and "done"; swap in a custom audio file, or hand the sound over to the system notification sound |
 | Tab title | `🔔 Action needed · …` / `✅ Reply finished · …`, following the alert language; gone once you open that session, and both markers can be up at the same time |
 | External push (optional, default off) | Forwards the same alert to Discord / Bark / Gotify / Feishu / ServerChan / WxPusher / a custom webhook |
@@ -370,6 +372,19 @@ That header is only a "this came from the page" marker, not the defence — a DN
 The cases where it will not raise are the same ones listed under [Known limitations](#known-limitations) (elevated window, another virtual desktop, a foreground repeatedly stolen, a window hidden to the tray with `SW_HIDE`); they all answer `202` truthfully and the conversation switch still happens.
 
 </details>
+### How macOS Desktop raises system notifications
+
+On macOS Desktop (`dsh-app://app`) the page's own `new Notification()` never reaches the Notification Centre — nothing is shown and nothing throws (`Notification.permission` still reads `granted`). The plugin takes the host path there instead: the page POSTs `/__dsh-notify-me/mac-notify`, the host (`lib/mac-notify.js`) spawns the helper app in `macos/`, and that helper posts a real `UNUserNotificationCenter` notification.
+
+- **One-time setup**: `bash macos/build.sh` builds `macos/DSH Notify.app` (needs Xcode Command Line Tools, a few seconds). The bundle is `.gitignore`d, so it is in neither the repository nor the npm package. Allow it under System Settings → Notifications → DSH Notify the first time one arrives.
+- **Which path is used is automatic**: the host registers the route only when all three hold — macOS, the desktop shell (the Electron binary), and a built helper. Otherwise the `GET` probe reports `enabled: false` and the page keeps its own notification, exactly as before this change. `dsh web` in a browser never reaches the route.
+- **Clicking returns to that conversation**: the helper writes the session id to `dsh-notify-me-click.json` in the temp directory and opens `dsh://open` to raise the window; the next time the page regains focus it `GET`s that id once, switches to the conversation and clears it, so nothing jumps twice. With `autoFocus` off the window is raised but the conversation is left alone.
+- **Sound**: the "system notification sound" mode hands the sound to macOS; the synthesized modes stay in the page, so the two never stack.
+- **Still no Approve / Reject buttons**: notification actions require registered categories, and the helper never touches approval state — decisions stay in the conversation.
+- **Turning it off**: add `macNotify: { enabled: false }` to the `notify-me` entry in the profile's patch layer, or delete `macos/DSH Notify.app` and the probe falls back to `enabled: false`.
+
+Like the window-raise route, this one registers exactly one exact path and refuses everything else: anything but GET / POST is `405` (including the preflight `OPTIONS`, which never gets a CORS header), a non-loopback peer or an unlisted `Host` / `Origin` is `403`, a POST without the `x-dsh-notify-me-mac: notify` header is `403`, a missing helper is `501`, and a body that is not a notification is `400`. The reply carries no system information, only the helper's exit status.
+
 
 ## Known limitations
 
@@ -409,13 +424,15 @@ The cases where it will not raise are the same ones listed under [Known limitati
 ```sh
 node --check lib/client.js
 node --check lib/index.js
-npm test                         # smoke-test (state machine) + host-route-test (host half) + page-bridge-test + host-fallback-test + relay-route-test + cordis-host-test
+npm test                         # smoke-test (state machine) + host-route-test (host half) + page-bridge-test + host-fallback-test + relay-route-test + mac-notify-test + cordis-host-test
 npm pack --dry-run               # preview the published tarball
 ```
 
 `smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + withdrawing leftover toasts on return + toast tag length handling + the page's host-bridge probe / heartbeat / release and the shape of `debug().hostBridge`. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
 
 The three new suites also ship their own fake `ctx`, need no local DSH and touch no network: `smoke/page-bridge-test.mjs` runs the page-bridge route — status shape, heartbeat and release, missing intent header `403`, cross-origin `403`, bad JSON `400`, oversized `413`, the `allowedOrigins`-derived `Host` (a simulated tunnel) being let through, and path collisions; `smoke/host-fallback-test.mjs` runs the host fallback — approval dedupe, `turn/end` throttling, subagent skip, no push on a fresh lease, a push after the lease expires, an immediate push after `alive:false`, language following the heartbeat, credentials re-read after a 401, and the health probe; `smoke/relay-route-test.mjs` runs the relay — the `GET` probe, `405`, cross-origin `403`, `413`, `400`, `503`, the `200` / `502` mapping and "retry exactly once on a 401".
+
+`smoke/mac-notify-test.mjs` runs the macOS notification route: registered only on the macOS desktop host, the probe, the `405` / `403` / `501` / `400` refusals, the arguments handed to the helper, and the click hand-off being taken exactly once. It fakes the platform and Electron version, needs no real helper, and runs on every platform.
 
 When `lib/focus-window.ps1` changes (Windows only), also run it by hand:
 

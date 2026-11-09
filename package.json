@@ -21,7 +21,11 @@
     "README.md",
     "README.en.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "smoke/mac-notify-test.mjs",
+    "macos/DSHNotify.swift",
+    "macos/build.sh",
+    "lib/mac-notify.js"
   ],
   "keywords": [
     "deepseek-harness",
@@ -69,7 +73,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node smoke/smoke-test.cjs && node smoke/host-route-test.mjs && node smoke/page-bridge-test.mjs && node smoke/host-fallback-test.mjs && node smoke/relay-route-test.mjs && node smoke/cordis-host-test.mjs",
+    "test": "node smoke/smoke-test.cjs && node smoke/host-route-test.mjs && node smoke/page-bridge-test.mjs && node smoke/host-fallback-test.mjs && node smoke/relay-route-test.mjs && node smoke/cordis-host-test.mjs && node smoke/mac-notify-test.mjs",
     "pack": "npm pack --dry-run"
   },
   "publishConfig": {

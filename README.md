@@ -28,7 +28,10 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 - **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher 或自己的 Webhook。
 - **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[高级设置](#高级设置)里的「页面关闭后：宿主侧兜底与同源中继」）。
 
+> **macOS 桌面端（DSH Desktop）** 的系统通知由宿主拉起的小助手 `DSH Notify.app` 发出，需先执行一次 `bash macos/build.sh` 并在系统设置里允许它发通知（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。
+
 > 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮依赖 Service Worker，只有 Web 端有，桌面端的通知不带按钮，点通知回到对话里裁决。开启宿主侧兜底后，页面关闭仍能收到外部推送——本地通知与审批按钮仍要页面在。
+
 
 ## 效果预览
 
@@ -302,7 +305,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 | 渠道 | 表现 |
 | --- | --- |
-| 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；Web 端可带「同意 / 拒绝」 |
+| 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；macOS 桌面端由宿主拉起 `DSH Notify.app` 发（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）；Web 端可带「同意 / 拒绝」 |
 | 提示音 | 默认 WebAudio 合成音，「需要你」与「完成」音型不同；可换自定义音频，或交给系统通知音 |
 | 标签页标题 | `🔔 需要你 · …` / `✅ 回复完成 · …`（随通知语言切换），打开对应会话即消失；两种标记可同时出现 |
 | 外部推送（可选，默认关） | 把同一条提醒转发到 Discord / Bark / Gotify / 飞书 / Server酱 / WxPusher / 自定义 Webhook |
@@ -370,6 +373,19 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 抬不起来的几种场合与[已知限制](#已知限制)里列的一致（提权窗口、另一虚拟桌面、前台被反复抢走、`SW_HIDE` 托盘隐藏），一律如实回 `202`、对话照常切。
 
 </details>
+### macOS 桌面端怎么发系统通知
+
+页面里的 `new Notification()` 在 macOS 的 DSH Desktop（`dsh-app://app`）上进不了通知中心——不弹，也不报错（`Notification.permission` 照样是 `granted`）。插件在这一平台上改走宿主：页面 POST `/__dsh-notify-me/mac-notify`，宿主（`lib/mac-notify.js`）拉起 `macos/` 下的小助手 `DSH Notify.app`，由它用 `UNUserNotificationCenter` 发一条真正的系统通知。
+
+- **一次性准备**：`bash macos/build.sh` 编译出 `macos/DSH Notify.app`（需要 Xcode Command Line Tools，几秒钟）。产物在 `.gitignore` 里，不进仓库也不进 npm 包。首次弹通知时在「系统设置 → 通知 → DSH Notify」里允许。
+- **走哪条路是自动的**：宿主只在「macOS + 桌面壳（Electron 二进制）+ 助手已编译」三个条件都满足时注册这条路由；任一不满足，`GET` 探测报 `enabled: false`，页面继续用自己原来的通知，行为与改动前一致。`dsh web`（浏览器）永远走不到这条路由。
+- **点通知回到对应对话**：小助手把会话 id 写进临时目录的 `dsh-notify-me-click.json` 并打开 `dsh://open` 抬窗；页面重新获得焦点时 `GET` 一次取走这个 id、切到对应对话，取走后即清掉，不会重复跳转。`autoFocus` 关掉时只抬窗不切会话。
+- **提示音**：设置里选「系统通知音」时交给 macOS，其余音效模式仍由页面自己合成，不会两声叠在一起。
+- **通知上仍然没有「同意 / 拒绝」按钮**：macOS 的通知动作要求注册通知类别，助手不碰审批状态，裁决仍在对话里做。
+- **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `macNotify: { enabled: false }`；或删掉 `macos/DSH Notify.app`，路由会退回 `enabled: false`。
+
+与抬窗路由一样，这条路由只开一个 exact 路径，其余一律拒：非 GET / POST 回 `405`（含从不回 CORS 头的预检 `OPTIONS`），非 loopback 或未放行的 `Host` / `Origin` 回 `403`，POST 缺 `x-dsh-notify-me-mac: notify` 头回 `403`，助手不存在回 `501`，请求体不是合法通知回 `400`。响应里不含系统信息，只回报助手的退出状态。
+
 
 ## 已知限制
 
@@ -386,7 +402,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 - Windows 的系统通知标签上限 64 字符，而 Chromium 交给平台的是 `n#<origin>#<tag>` 整串——桌面页面 `dsh-app://app` 一项就占去 16 个。插件按当前 `location.origin` 算剩余预算，超长时保留可读前缀、尾部换成短哈希，所以 `debug()` 里看到的标签可能被截短；平台仍然拒发时，原文记在 `debug().lastToastReject`，设置页的测试按钮也会如实报出来，不再「提示已发送但什么都没弹」。
 - 桌面端（Windows）点通知后窗口仍可能抬不起来：目标窗口属于更高完整性级别（提权 / UAC）、在另一个虚拟桌面、前台被别的进程反复抢回去，或窗口被 `SW_HIDE` 隐藏到托盘时，宿主脚本回 `FOCUSED=0`、路由回 `202`，对话照常切（详见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）。
 - 桌面端（macOS / Linux）点通知依赖 `dsh://open` 深链：系统未注册 `x-scheme-handler/dsh`、或壳没有 `second-instance` / `open-url` 处理时抬不起来；Linux 上已实测正常，macOS 未实测。
-- macOS：提醒、提示音、标题标记、点通知跳转都没有平台假设，照常工作；但 DSH Desktop（Electron）的系统通知要求应用已签名，未签名的通知直接发不出去，官方 macOS 版是否满足这一前提未实测；审批按钮在 macOS 桌面宿主上的渲染同样未实测（Windows 桌面端已实测不渲染）。
+- macOS 桌面端：页面自带的 `new Notification()` 进不了通知中心（`Notification.permission` 报 `granted` 却什么也不弹），所以插件改由宿主拉起助手发通知，需要先 `bash macos/build.sh`（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。助手未编译时退回原行为，即桌面端弹不出系统通知。审批按钮在 macOS 桌面宿主上仍然不渲染（与 Windows 桌面端一致）。
 
 **提醒内容与时机**
 
@@ -409,13 +425,15 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 ```sh
 node --check lib/client.js
 node --check lib/index.js
-npm test                         # smoke-test（状态机）+ host-route-test（宿主半路由）+ page-bridge-test + host-fallback-test + relay-route-test + cordis-host-test
+npm test                         # smoke-test（状态机）+ host-route-test（宿主半路由）+ page-bridge-test + host-fallback-test + relay-route-test + mac-notify-test + cordis-host-test
 npm pack --dry-run               # 预览发布包
 ```
 
 `smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」。
+
+`smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
 
 改到 `lib/focus-window.ps1` 时（仅 Windows），另需手动跑一次：
 

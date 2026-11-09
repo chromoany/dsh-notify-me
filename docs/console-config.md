@@ -46,6 +46,8 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 >
 > 想确认当前生效的来源，看 `window.__dshNotifyMe.debug()` 的 `soundDone` / `soundAttention` 与 `customSoundDone` / `customSoundAttention`。
 >
+> `macNotify` 不是 localStorage 里的页面偏好，而是 profile patch 层里 `- id: notify-me` 的配置：`macNotify: { enabled: false }` 关掉 macOS 桌面端的原生通知，`macNotify: { appPath: "/path/to/DSH Notify.app" }` 指到别处编译的助手（默认用包内的）。`debug().macNative` 报本页是否走这条通道，`debug().macNativeLast` 是最近一次投递的结果。
+
 > `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`relayUpstreamHost` / `relayUpstreamPath`（中继上游网关的主机名与路径，即会被折叠的那个端点）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
 
 </details>

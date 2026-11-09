@@ -23,6 +23,30 @@ All notable changes to **dsh-notify-me** are documented here.
 
 - README 中英「静音某些对话」补上右键菜单入口与「悬停时显示静音按钮」开关，边界条件说明菜单行依赖宿主旧菜单槽位、悬停铃铛关掉后的表现；`docs/listing.md` 的 `latest` 更新到 1.18.0。
 
+## [Unreleased]
+
+macOS 桌面端（DSH Desktop）的系统通知改由宿主拉起助手 App 发出。
+
+### 新增
+
+- **macOS 桌面端能弹系统通知了**：页面里的 `new Notification()` 在 `dsh-app://app` 上进不了通知中心（`Notification.permission` 报 `granted` 却什么都不弹）。新增 `lib/mac-notify.js`，在 macOS 桌面宿主上注册 `POST /__dsh-notify-me/mac-notify`，由它拉起 `macos/DSH Notify.app`——一个用 `UNUserNotificationCenter` 发通知的小助手（源码 `macos/DSHNotify.swift`，`macos/build.sh` 编译，产物在 `.gitignore` 中）。页面侧在探测到该路由可用时改走它，`canToast()` 不再依赖页面自身的通知权限（`lib/client.js`）。
+- **点击通知切回对应对话**：助手把会话 id 写入临时目录的 `dsh-notify-me-click.json` 并打开 `dsh://open` 抬窗；页面重新获得焦点时 `GET` 一次取走并切到该会话，取走后清掉。`autoFocus` 关闭时只抬窗不切会话。
+- 配置项 `macNotify: { enabled, appPath }`，默认 `enabled` 为真（仍需助手已编译）；`debug()` 新增 `macNative` / `macNativeLast` 两个字段。
+
+### 变更
+
+- macOS 桌面端不再依赖页面通知权限：路由可用时提示音仍由页面合成，只有「系统通知音」模式交给 macOS。
+- 未注册该路由的平台（Windows、Linux、Web、助手未编译）行为不变；审批通知在 macOS 桌面端仍不带快捷裁决按钮。
+
+### 测试
+
+- 新增 `smoke/mac-notify-test.mjs`：桌面宿主门控、`GET` 探针、`405` / `403` / `501` / `400` 拒绝、传给助手的参数、点击回传只被取走一次。用假的平台与 Electron 版本号驱动，不需要真助手，任何平台都跑。
+
+### 文档
+
+- README 中英同步新增「macOS 桌面端怎么发系统通知」一节，并更新顶部导读、提醒渠道表、已知限制与开发自检的测试清单。
+
+
 ## [1.17.0] — 2026-10-29
 
 回到页面，还挂着的通知立刻收起；三种「自动消失」设置从此只约束定时关闭。
