@@ -2,6 +2,53 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.19.0] — 2026-11-09
+
+「回到页面也保留提醒」把 1.17.0 的收起动作交还给你；Windows 桌面端的审批通知终于带上真的「同意 / 拒绝」按钮，macOS 桌面端的系统通知改由宿主助手发出。同时收编 [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28) / [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30) / [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32) / [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：把「转发外部通知」总开关接到宿主兜底上，并修掉 macOS 原生通道的几个边界。
+
+### 新增
+
+- **回到页面也保留提醒**（配置键 `keepOnReturn`，默认关；[#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28)）：1.17.0 起只要回到 DSH 页面，残留通知一律收起。系统通知样式设成「持续」时，这正好把你要留着的提醒收走——现在打开这个开关，离开时收到的通知在你回到页面后不再被收起，留到你点掉或点「关闭」。它只管「回到页面收起残留通知」这一条；三种「自动消失」仍只管定时关闭。
+- **一键「前台也提醒」**（[#27](https://github.com/chromoany/dsh-notify-me/issues/27) 第 2 点）：设置页「什么时候提醒」卡片顶部新增这一行，一次把「窗口在前台时也提醒『需要你』」打开、「当前对话不弹通知」关掉、「回复完成」设为「总是提醒」——等价于下面三项都调成前台可见。关掉它恢复默认的「只在后台提醒」。它不新增存储键，只是那三项的派生视图，三者任一被单独改动，这一行会跟着变。
+- **Windows 桌面端审批通知带「同意 / 拒绝」按钮**（[#33](https://github.com/chromoany/dsh-notify-me/issues/33)）：Electron 的渲染进程把 `Notification` 的 `actions` 数组整个丢掉（`platform_notification_service.cc` 只抄 title/body/tag/icon/silent/has_reply/timeout_type），桌面端 `dsh-app://` 又注册不了 Service Worker——按钮因此从来没在 Windows 桌面出现过。现在审批提醒改由宿主发原生 Toast：`lib/index.js` 起 `lib/win-toast.ps1`（WinRT `ToastNotificationManager`，AUMID `electron.app.DeepSeek Harness`），按钮用 `activationType="protocol"` 指向 `dsh-notify-me://approve?token=…` / reject，点击后宿主把动作交回页面，仍走页面里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。首次使用时在 `HKCU\Software\Classes\dsh-notify-me` 注册协议处理器（一个把动作写入文件再打开 `dsh://open` 的 VBS）；token 单次、3 分钟有效，动作文件取走即删。不需要编译、不需要管理员权限；关掉它：profile patch 层 `winToast: { enabled: false }`。
+- **macOS 桌面端系统通知**（[#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32)，原提案 xty13114150041）：页面里的 `new Notification()` 在 `dsh-app://app` 上进不了通知中心。新增 `lib/mac-notify.js` + `macos/DSHNotify.swift`（`macos/build.sh` 编译），宿主用 `UNUserNotificationCenter` 发通知；点通知把会话 id 写回临时文件并打开 `dsh://open`，页面重新获得焦点时取走并切到对应对话，`autoFocus` 关掉时只抬窗。`macNotify: { enabled, appPath }`，路由与助手都就绪时才生效；提示音仍由页面合成，「系统通知音」模式交给 macOS。
+
+### 修复
+
+- **总开关现在也管页面关闭后的宿主兜底**：宿主侧兜底（`hostFallback`）推送时只问了「有没有页面持有租约」，从不知道页面里那个总开关，心跳也刻意没带它。于是把「转发外部通知」关掉、再关掉标签页，宿主照样把「回复完成 / 审批请求」推到你的网关——正是刚被关掉的那条外部通知。现在心跳与 pagehide 释放都会带上 `external: {enabled, attention, done}`，宿主侧兜底照它决定推不推：总开关关了就两条都不推，「转发「需要你」」关了只留回复完成，「转发「回复完成」」关了只留审批。被开关压下的审批不占去重 id，开关再打开时同一审批仍会补上；被压下的 `turn/end` 也不吃掉那 15 秒节流窗口。
+- **开关一改就立刻告诉宿主**：与静音列表同一条路径——改完马上补一次心跳，而不是等下一次间隔（最长 20 秒）。关掉开关、紧接着关标签页，不会再有那一段「宿主还按旧答案推送」的窗口。
+- **半截的开关汇报按「没说过」处理**：`external` 只有三个字段全是布尔才被采纳；缺字段、写错类型都保留上一次的答案，绝不会因为读到 `enabled` 缺失就当成关闭，把运维明确打开的兜底悄悄静音。页面从没报过开关时（宿主刚起来、页面还没打开）兜底照旧按 `hostFallback.enabled` 推，不会被静音。
+- **macOS 原生通道不再漏掉启动时的等待**：探测是异步的，而宿主起来时积压的等待可能在探测回包前就被绑定并计为「已提醒」——那一条用页面通知发不出去（macOS 桌面端本来就收不到），此后再也不会补发。现在探测完成前到达的提醒先排队，探测回包后统一重放；期间已被答掉的审批直接丢弃，不再补一条幽灵通知。探测同时加了「页面必须真的在桌面壳里」这一道门（`isDesktopShell()`），浏览器经隧道连到 macOS 宿主时不会再把提醒送进宿主机器。
+- **原生通知也参与收起与自动消失**：macOS 通知中心里的那条原来不归 `trackToast()` 记账，回到页面收不掉，「总是关闭 / 从不关闭」也管不到它。助手新增 `--id` / `--remove` 两个参数（按请求 identifier 撤回），页面侧把原生通知按 tag 记账并交给同一套定时器与 `withdrawToasts()`——回到页面（或打开 `keepOnReturn` 时保留）、到点关闭，与构造器通知一致。Windows 原生 Toast 走同一条记账路径，`remove` 用 `ToastNotificationManager.History.Remove(tag, group, aumid)`。
+- **助手可以按 id 撤回**：`lib/mac-notify.js` 的 `POST /__dsh-notify-me/mac-notify` 新增 `{remove: id}` 分支；`macos/DSHNotify.swift` 收到 `--remove <id>` 时调用 `removeDeliveredNotifications(withIdentifiers:)` 后退出。`--id` 为空时仍回落 UUID，旧助手没有这两个参数也不会被打坏（撤回失败只是留在通知中心，不影响提醒）。
+- **macOS 路由测试不再依赖 POSIX shell**：原测试用 `#!/bin/sh` 桩当助手可执行文件，Windows CI 上 `spawn` 不认 shebang，恰是 Codex 在 #32 上标出的 P1。`mountMacNotify` 现在接受可注入的 `deps`（`spawn` / `execFile` / `clickFile`），测试用假 `spawn` + 普通空文件当助手，任何平台都跑；`smoke/win-toast-test.mjs` 同样用假 `spawn` 驱动 `reg.exe` / `powershell.exe`。
+
+### 变更
+
+- **设置页总开关的说明补上兜底**：中文「关闭后不向任何外部端点发送，页面关闭后的宿主兜底也一样。」、英文同样加一句，原先那句只描述页面自己。
+- **健康探针新增 `pageExternal`**：报出页面最近一次汇报的开关（没报过是 `null`）。「兜底怎么不推了」这类问题，答案就在这里。
+- **macOS 桌面端不再依赖页面通知权限**：路由可用时提示音仍由页面合成，只有「系统通知音」模式交给 macOS。
+- **未注册原生路由的平台行为不变**：Linux、Web、助手未编译、`winToast` 关掉时都退回原来的页面通知；macOS 审批通知仍不带快捷裁决按钮，Windows 桌面端改由宿主 Toast 提供按钮。
+- **设置页文案按通道分流**：「审批通知上直接裁决」的说明、「试一试」的反馈、「回到页面就收起」的边界都写明 Web 有按钮、Windows 桌面端有按钮、macOS 桌面端没有；`bridgeOffDesktop` 同样按通道说清。
+- **原生通知与页面通知共用同一套开关**：`keepOnReturn` / 三种「自动消失」对宿主发出的通知同样生效；`debug()` 新增 `winNative` / `winNativeLast`。
+
+### 测试
+
+- `smoke/host-fallback-test.mjs` 新增两节：总开关关闭后两种提醒都不推出、打开后恢复、「需要你 / 回复完成」各自只静音自己那一类、被压下的审批不烧 id、页面从没报过开关时仍然推送。
+- `smoke/page-bridge-test.mjs` 新增：`createPresence` 的 `externalAllowed()` 语义（未报告 → 放行、总开关 → 全静音、分项 → 只静音自己、半截报告 → 保留上一次、释放后仍记得），以及心跳里 `external` 字段的容错。
+- `smoke/smoke-test.cjs`：心跳体改为 `{alive, external, language, muted}`，释放体为 `{alive, external, language}`；新增「改开关立即补一次心跳」；webhook 计数视图改为屏蔽整条 host-bridge 路由（探测、心跳、释放都算宿主协调，不算投递）；`keepOnReturn` 打开后回到页面不再收起残留通知。
+- `smoke/mac-notify-test.mjs` 重写：`mountMacNotify` 注入假 `spawn` / `execFile` 与临时 `clickFile`，助手只是普通文件、无需可执行位；覆盖未在 macOS 桌面宿主时不注册、缺助手时 `enabled:false` 与 `501`、探针、`405` / `403` / `400`、传入参数含 `--id` / `--sound`、`{remove:id}` 走撤回、点击回传只被取走一次。
+- 新增 `smoke/win-toast-test.mjs`：Windows 桌面门控、探针与 `enabled`、`405` / `403` / `501` / `400`、审批 payload（AUMID / tag / 标题 / 按钮 token / 文案）与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、协议动作单次绑定审批 key、`open` 动作带会话、token 过期、`{remove}` 走 `-RemoveTag`。用假 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真宿主。
+- `npm test` 现在跑八套：上面这些加上原有的 host-route / page-bridge / host-fallback / relay / cordis-host，`smoke/smoke-test.cjs` 末尾断言 `api.version` 与 `package.json` 一致（1.19.0）。
+
+### 文档
+
+- README 中英的心跳契约更新为 `{alive, language, muted, external}`，并重写「心跳不带页面的推送开关」那段立场：可见性 / 闲置那类启发式仍然不带（宿主看不见，只照做一半会得到谁也说不清的规则），但用户亲手写进配置的开关与静音列表一样，宿主照它执行就是页面自己的意思。
+- README 中英新增「Windows 桌面端怎么发带按钮的通知」一节；「macOS 桌面端怎么发系统通知」补上原生通知参与收起 / 自动消失、启动时排队的等待会重放、助手 `--id` / `--remove`；顶部导读、提醒渠道表、已知限制与开发自检的测试清单同步。
+- `docs/console-config.md` / `.en.md` 补 `winToast`（profile patch 层配置，`{enabled:false}` 关掉宿主原生审批 Toast）与 `debug().winNative` / `winNativeLast`。
+- `cordis.patch.yml` 补 `winToast` 配置行与注释；`docs/listing.md` 的 `latest` 更新到 1.19.0。
+- 设置页截图未重拍：两张都还是 1.18.0 的界面，1.19.0 在「什么时候提醒」里多了一行「前台也提醒（一键）」，`docs/README.md` 的尺寸表已按这个口径标注。
+
 ## [1.18.0] — 2026-11-08
 
 回应 [#26](https://github.com/chromoany/dsh-notify-me/issues/26)：会话行悬停时那两个图标已经挤到标题了——铃铛可以关掉，右键菜单里也放一个同样能用的。

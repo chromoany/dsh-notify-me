@@ -16,3 +16,6 @@ temp-*/
 
 # local agent instructions (carry machine paths & ecosystem notes)
 AGENTS.md
+
+# macOS helper build output
+macos/DSH Notify.app/

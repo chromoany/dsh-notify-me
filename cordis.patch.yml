@@ -10,6 +10,11 @@
 #   relay         a same-origin route that lets the page reach an authenticated
 #                 notification gateway the browser cannot talk to.
 #
+# Native notification helpers ride along with the same entry: the macOS helper
+# (macos/DSH Notify.app) is used when it has been built, and Windows approval
+# toasts are posted by the host by default — `winToast: { enabled: false }`
+# turns the Windows ones off.
+#
 # HOW TO OVERRIDE
 # A profile patch row that names the same id REPLACES the entry's `config`
 # wholesale — the loader assigns the field, it does not deep-merge. So a
@@ -79,3 +84,10 @@
           path: ''              # exact route, e.g. /__dsh-notify-me/relay/<32 hex token>
           target: ''
           credentialsFile: ''
+        # Native Windows approval toasts with real Approve / Reject buttons. On
+        # by default whenever the host runs the Windows desktop shell: the host
+        # posts the toast through WinRT and registers a HKCU protocol handler on
+        # the first one (no admin rights needed). Set enabled: false to keep
+        # approval alerts on the page's own button-less notification channel.
+        winToast:
+          enabled: true

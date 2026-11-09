@@ -531,7 +531,68 @@ try {
     globalThis.fetch = realFetch;
   }
 
-  console.log('host fallback OK: lease gate, dedupe, throttle, subagent skip, mute, language, page-parity copy, retry, probe');
+  // 16) The page's external master switch travels with the heartbeat: with
+  // 「转发外部通知」off the host's fallback must not post to the gateway either.
+  // Otherwise turning the switch off only closes the page-side door and leaves
+  // the host's own open — the alert the user just switched off still arrives
+  // once the tab is closed, which is exactly the report this case comes from.
+  {
+    const calls = captureFetch();
+    const hostHalf = bootHost(baseConfig({ turnEndThrottleMs: 0 }));
+    await hostHalf.beat(JSON.stringify({ alive: false, external: { enabled: false, attention: true, done: true } }));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+    hostHalf.emit(ALPHA, { type: 'approval/asked', data: { id: 'ap-off', toolName: 'shell' } });
+    await sleep(80);
+    assert(calls.length === 0, 'the external master switch off silences both kinds (got ' + calls.length + ')');
+
+    // Switching it back on resumes delivery: the last report wins, and it is a
+    // state the user wrote into the config, not a page heuristic the host
+    // cannot see.
+    await hostHalf.beat(JSON.stringify({ alive: false, external: { enabled: true, attention: true, done: true } }));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'a turn after the master switch was turned back on');
+
+    // 「转发「需要你」」off keeps approvals home while turns still go out.
+    calls.length = 0;
+    await hostHalf.beat(JSON.stringify({ alive: false, external: { enabled: true, attention: false, done: true } }));
+    hostHalf.emit(ALPHA, { type: 'approval/asked', data: { id: 'ap-kind', toolName: 'shell' } });
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 3, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'a turn while approvals are switched off');
+    await sleep(60);
+    assert(calls.length === 1 && JSON.parse(calls[0].body).type === 'info',
+      'only the turn went out while 「需要你」 was off, got ' + JSON.stringify(calls.map((c) => JSON.parse(c.body).type)));
+
+    // 「转发「回复完成」」off is the mirror case.
+    calls.length = 0;
+    await hostHalf.beat(JSON.stringify({ alive: false, external: { enabled: true, attention: true, done: false } }));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 4, reason: { kind: 'completed' } } });
+    hostHalf.emit(ALPHA, { type: 'approval/asked', data: { id: 'ap-kind-2', toolName: 'shell' } });
+    await waitFor(() => calls.length === 1, 'an approval while turns are switched off');
+    await sleep(60);
+    assert(calls.length === 1 && JSON.parse(calls[0].body).type === 'warning',
+      'only the approval went out while 「回复完成」 was off, got ' + JSON.stringify(calls.map((c) => JSON.parse(c.body).type)));
+
+    // A suppressed alert must not burn an approval id: the switch going back on
+    // before the user ever saw that id's ask is a fresh edge, not a repeat.
+    calls.length = 0;
+    await hostHalf.beat(JSON.stringify({ alive: false, external: { enabled: true, attention: true, done: true } }));
+    hostHalf.emit(ALPHA, { type: 'approval/asked', data: { id: 'ap-kind', toolName: 'shell' } });
+    await waitFor(() => calls.length === 1, 'the approval held back while the switch was off');
+    globalThis.fetch = realFetch;
+  }
+
+  // 17) A page that never reported its switches leaves the host on its profile
+  // opt-in: `hostFallback.enabled` is the operator's own statement, and silence
+  // by default would turn a configured fallback into a no-op.
+  {
+    const calls = captureFetch();
+    const hostHalf = bootHost(baseConfig({ turnEndThrottleMs: 0 }));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'a turn with no switch report at all');
+    globalThis.fetch = realFetch;
+  }
+
+  console.log('host fallback OK: lease gate, dedupe, throttle, subagent skip, mute, external switches, language, page-parity copy, retry, probe');
 } finally {
   globalThis.fetch = realFetch;
   fs.rmSync(tempDir, { recursive: true, force: true });

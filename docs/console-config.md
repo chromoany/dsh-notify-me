@@ -14,7 +14,8 @@ window.__dshNotifyMe.setConfig({
   currentHiddenOnly: true,    // true = 当前对话的等待只留标题标记（人离开后补发）
   donePolicy: "background",   // 「回复完成」策略：'background' 仅后台 | 'smart' 仅当前对话静默 | 'always' 总是提醒
   idleMinutes: 3,             // 超过多少分钟没有键鼠输入算「离开」（0 = 关掉闲置判定）
-  autoDismiss: "present",     // 通知自动消失（只管定时关闭，回到页面时残留的一律收起）：'present' 离开时保留 | 'always' 总是关闭 | 'never' 从不关闭
+  autoDismiss: "present",     // 通知自动消失（只管定时关闭；回到页面时残留的通知默认收起，除非 keepOnReturn 为 true）：'present' 离开时保留 | 'always' 总是关闭 | 'never' 从不关闭
+  keepOnReturn: false,        // false = 回到页面时收起残留通知；true = 保留，留到你点掉或点「关闭」
   ignoreSubagent: true,       // true = 后台子代理（subagent）会话不提醒（当前打开的照常）
   mutedSessions: [],          // 按对话静音的会话 id 列表（侧边栏铃铛或右键菜单写入，重载后仍在）
   muteRowButton: true,        // true = 悬停会话行时显示静音铃铛；false = 只用右键菜单（已静音的会话行仍保留铃铛）
@@ -42,10 +43,16 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 
 > **外部通知测试的开关边界**：设置页「发送测试通知」要求「启用提醒」与「外部通知」主开关开启，但忽略两类提醒的转发开关。控制台 `testExternal()` 是显式测试调用：只要配置了有效目标，即使上述主开关关闭，也会向这些目标发送测试消息；没有有效目标则不发送。普通的 `test("done")` / `test("attention")` / `test("approval")` 只测试本地提醒，不外发。
 
+> 设置页「什么时候提醒」顶部的「前台也提醒（一键）」不是独立配置键：它只是把 `attentionHiddenOnly` 设为 `false`、`currentHiddenOnly` 设为 `false`、`donePolicy` 设为 `"always"` 三项的派生视图。三项任一被单独改动，这一行会跟着变；关掉它恢复 `attentionHiddenOnly: false`、`currentHiddenOnly: true`、`donePolicy: "background"`。
+
 > 自定义音效文件不在 `dshNotifyMe.config` 里，而是按类别各存一个键（`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`，内容是 `{name, size, data}` 的 data URL）——一个文件转成 data URL 会膨胀约 1.37 倍，塞进配置会拖慢每次读取。`resetConfig()` 会连这两个键一起清掉。
 >
 > 想确认当前生效的来源，看 `window.__dshNotifyMe.debug()` 的 `soundDone` / `soundAttention` 与 `customSoundDone` / `customSoundAttention`。
 >
+> `macNotify` 不是 localStorage 里的页面偏好，而是 profile patch 层里 `- id: notify-me` 的配置：`macNotify: { enabled: false }` 关掉 macOS 桌面端的原生通知，`macNotify: { appPath: "/path/to/DSH Notify.app" }` 指到别处编译的助手（默认用包内的）。`debug().macNative` 报本页是否走这条通道，`debug().macNativeLast` 是最近一次投递的结果。
+
+> `winToast` 同理是 profile patch 层配置：`winToast: { enabled: false }` 关掉 Windows 桌面端由宿主发出的原生审批 Toast（带「同意 / 拒绝」按钮），退回页面自己的通知（不带按钮）。宿主第一次发带按钮的通知时会顺手在 `HKCU\Software\Classes\dsh-notify-me` 注册协议处理器（把按钮动作写回本机、再打开 `dsh://open`），不需要管理员权限；没有审批提醒、或只走本地 `dsh-app://` 页面的安装不会触发注册。`debug().winNative` 报本页是否走这条通道，`debug().winNativeLast` 是最近一次投递或动作的结果。
+
 > `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`relayUpstreamHost` / `relayUpstreamPath`（中继上游网关的主机名与路径，即会被折叠的那个端点）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
 
 </details>

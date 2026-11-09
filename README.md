@@ -24,11 +24,14 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 
 - **需要你操作时**：审批、方案确认、提问，用通知、提示音和标题标记提醒。
 - **后台回复完成时**：及时回来查看结果，点击通知可回到对应对话；提醒时机可选「仅后台 / 仅当前对话静默 / 总是提醒」。
-- **人走开但窗口没走**：窗口留在最前台、人却离开座位，超过 3 分钟没有输入也算离开，该提醒的照常提醒；收到的那条通知不会在你回来之前自己消失，一回到页面（点任务栏、Alt+Tab、点通知都算）就收起。
+- **人走开但窗口没走**：窗口留在最前台、人却离开座位，超过 3 分钟没有输入也算离开，该提醒的照常提醒；收到的那条通知不会在你回来之前自己消失，一回到页面（点任务栏、Alt+Tab、点通知都算）就收起（想让它在回到页面后继续留着，打开「回到页面也保留提醒」）。
 - **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher 或自己的 Webhook。
 - **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[高级设置](#高级设置)里的「页面关闭后：宿主侧兜底与同源中继」）。
 
-> 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮依赖 Service Worker，只有 Web 端有，桌面端的通知不带按钮，点通知回到对话里裁决。开启宿主侧兜底后，页面关闭仍能收到外部推送——本地通知与审批按钮仍要页面在。
+> **macOS 桌面端（DSH Desktop）** 的系统通知由宿主拉起的小助手 `DSH Notify.app` 发出，需先执行一次 `bash macos/build.sh` 并在系统设置里允许它发通知（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。
+
+> 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮依赖 Service Worker，Web 端由页面自己的通知提供；Windows 桌面端由宿主发原生 Toast，同样带按钮；macOS 桌面端的通知仍不带按钮，点通知回到对话里裁决。开启宿主侧兜底后，页面关闭仍能收到外部推送——本地通知与审批按钮仍要页面在。
+
 
 ## 效果预览
 
@@ -72,15 +75,15 @@ dsh plugin --profile web add dsh-notify-me
 2. 打开 **设置 → 通知提醒**，确认出现该分区及底部插件版本号，保持「启用提醒」「提示音」开启。
 3. 点击设置页的「测试『回复完成』」按钮：应出现一条测试通知，并按当前音效设置播放声音。这个本地测试不会转发到外部通知端点，也不受「窗口在前台时也提醒」开关限制。
 
-Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。桌面端拿不到 Service Worker，这条测试只发一条普通通知；真实审批的提醒同理——只弹通知，点它回到对话里裁决。
+Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。Windows 桌面端由宿主发原生 Toast，同样带按钮（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）；macOS 桌面端拿不到 Service Worker、原生助手也不带按钮，这条测试只发一条普通通知——真实审批的提醒同理，点它回到对话里裁决。
 
 **控制台验证（可选）** — 支持 DevTools 的环境也可执行：
 
 ```js
 window.__dshNotifyMe.test("done")        // 「完成」示例
 window.__dshNotifyMe.test("attention")   // 「需要你」示例
-window.__dshNotifyMe.test("approval")    // 桥可用时带「同意 / 拒绝」按钮；否则只发普通通知（桌面端即如此）
-window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge；切回页面后收通知看 toastsLive / toastsWithdrawn / lastToastWithdrawAt（还挂着几条 / 累计收起几条 / 最后一次的时间）
+window.__dshNotifyMe.test("approval")    // Web 桥可用、或 Windows 桌面宿主原生 Toast 时带「同意 / 拒绝」按钮；macOS 桌面与无桥环境只发普通通知
+window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge、原生通道看 macNative / winNative 与各自 last；切回页面后收通知看 toastsLive / toastsWithdrawn / lastToastWithdrawAt（还挂着几条 / 累计收起几条 / 最后一次的时间）
 ```
 
 没有测试通知时，先检查：通知权限是否被拒绝（在页面上点一下 → 选「允许」；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
@@ -99,7 +102,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 | 🔔 需要你操作 | 页面可见也提醒；当前对话只留标题标记 |
 | ✅ 回复完成 | 页面隐藏 / 后台时提醒（可选「仅当前对话静默」或「总是提醒」） |
 
-**需要你操作**包括审批请求、方案待确认（plan review）和提问（`ask_user_question`）。带按钮的快捷裁决只在 Web 端可用，桌面端点通知回到对话里裁决（见[已知限制](#已知限制)）。
+**需要你操作**包括审批请求、方案待确认（plan review）和提问（`ask_user_question`）。带按钮的快捷裁决在 Web 与 Windows 桌面端可用（Windows 由宿主发原生 Toast），macOS 桌面端与没有 Service Worker 的页面点通知回到对话里裁决（见[已知限制](#已知限制)）。
 
 **回复完成**也覆盖后台会话；完成但还没看时，标题带 `✅ 回复完成 ·` 标记，打开对应会话即撤。标题标记不受提醒策略限制。
 
@@ -115,14 +118,16 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 - **启用提醒** 总开关：关闭后不弹通知、不响提示音，也不改标签页标题；
 - **提示音 / 音量**：开关直接切；音量滑块收在该行里，点一下标题（▸ 变成 ▾）展开。具体播什么由「高级设置 → 音效来源」决定；
-- **审批通知上直接裁决**（默认开）：审批带「同意 / 拒绝」，点一下即完成裁决，不用切回页面。Web 走带按钮的系统通知；桌面端 `dsh-app://` 注册不了 Service Worker，通知上没有按钮，点通知回到对话里裁决。设置页「试一试」下面那行会如实说明当前环境能不能给按钮。
+- **审批通知上直接裁决**（默认开）：审批带「同意 / 拒绝」，点一下即完成裁决，不用切回页面。Web 走带按钮的系统通知；Windows 桌面端由宿主发原生 Toast，按钮是真的原生按钮；macOS 桌面端 `dsh-app://` 注册不了 Service Worker、原生助手也不带按钮，点通知回到对话里裁决。设置页「试一试」下面那行会如实说明当前环境能不能给按钮。
 
 ### 什么时候提醒
 
 - **窗口在前台时也提醒「需要你」**（默认开）：关掉后只有窗口转到后台才提醒；
+- **前台也提醒（一键）**（默认关）：一次把下面三项调成「前台也提醒」——「窗口在前台时也提醒『需要你』」打开、「当前对话不弹通知」关掉、「回复完成」设为「总是提醒」。它不新增存储键，只是那三项的派生视图：三项任一被单独改动，这一行会跟着变；关掉它恢复默认的「只在后台提醒」；
 - **当前对话不弹通知**（默认开）：正看着的对话里的等待只留标签页标记，人离开后照常补发；
 - **「回复完成」什么时候提醒**（默认「仅后台」）：仅后台 / 仅当前对话静默 / 总是提醒，三选一；
 - **通知自动消失**（默认「离开时保留」）：离开时保留 / 总是关闭 / 从不关闭，三选一；三种设置只管「时间到点」那一次关闭，你回到页面时残留的通知一律收起；
+- **回到页面也保留提醒**（默认关）：打开后，离开时收到的通知在你回到 DSH 页面后不再被收起，会一直留到你点掉或点「关闭」——适合把系统通知样式设成「持续」、希望提醒常驻屏幕的用法；
 - **子代理会话不提醒**（默认开）：跳过后台子代理（subagent）会话，你正开着的那个照常提醒；
 - **点击通知回到对应对话**（默认开）：切到对应对话并把窗口带到前台，Windows 桌面走宿主路由原生抬窗、macOS / Linux 走 `dsh://open` 深链，多个标签页只调起一个。
 
@@ -132,7 +137,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 - **后台的判定**：切到别的应用、被别的窗口盖住、最小化都算；窗口一直留在前台但 3 分钟没有任何键鼠输入同样算，`idleMinutes: 0` 退回只看窗口。
 - **「当前对话不弹通知」何时补发**：窗口转到后台或闲置超时后照常提醒；若你已处理掉就作废。
 - **「回复完成」三档**：「仅后台」＝不在看页面才提醒；「仅当前对话静默」＝屏幕上那条静默、别的对话照常提醒，多开对话时有用；「总是提醒」＝从不静默。老配置里的「窗口在前台时也提醒『回复完成』」开关自动迁移到这一项。
-- **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止；桌面端画不出按钮的审批通知按 12 秒收，人不在时同样不撤，回到页面同样收起。
+- **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。**打开「回到页面也保留提醒」后，回到页面这一条也不再收起**，通知留到你点掉或点「关闭」，系统通知样式设成「持续」时会一直挂在屏幕上。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止（仅 Web 端的 Service Worker 通知如此）；macOS 桌面端画不出按钮的审批通知、以及 Windows 桌面端带按钮的原生审批 Toast，都按 12 秒收。宿主发出的原生通知（Windows 原生 Toast、macOS 通知中心）同样归这套记账管：人不在时同样不撤，回到页面同样收起（该开关打开时也保留），「总是关闭 / 从不关闭」也管得到它们。
 - **点击通知的兜底**：桌面端抬不起来时只切对话，原因记在 `debug().raiseLast` 里；关掉这一项后点通知不做任何事。
 
 </details>
@@ -182,7 +187,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 <details>
 <summary>目标地址、转发开关、发送测试与失败记录</summary>
 
-- **外部通知**（默认关）：把提醒同时转发到你自己的推送端点，人不在电脑前也能收到；可加多个目标，每个目标可单独启停。「转发「需要你」」「转发「回复完成」」各自独立开关；**发送测试通知**往所有目标发一条测试消息（不受这两类开关限制，也不会冒充真提醒）。转发跟本地提醒走同一套触发规则（「当前对话不弹通知」等开关同样管它）；提醒正文会原样发往你填的地址，**只填你自己信任的端点**；
+- **外部通知**（默认关）：把提醒同时转发到你自己的推送端点，人不在电脑前也能收到；可加多个目标，每个目标可单独启停。「转发「需要你」」「转发「回复完成」」各自独立开关；**发送测试通知**往所有目标发一条测试消息（不受这两类开关限制，也不会冒充真提醒）。转发跟本地提醒走同一套触发规则（「当前对话不弹通知」等开关同样管它）；总开关关闭后**页面关闭时的宿主侧兜底也一并停**（开关随心跳交给宿主，见「页面关闭后」一节），不会出现「页面关了还在推」；提醒正文会原样发往你填的地址，**只填你自己信任的端点**；
 - **各目标的填法**：Discord 填 Webhook 地址；Bark 填 `https://api.day.app/<设备密钥>`；Gotify 填 `https://<服务器>/message?token=<应用令牌>`；飞书填群机器人 Webhook，可选填签名校验密钥；Server酱 填 `…/send/<SendKey>.send` 完整地址；WxPusher 填 appToken 与接收者 UID；自定义端点收一条 POST JSON：`{source, event, title, body, text, sessionId, time}`；
 - **可靠投递**：明显是临时故障的失败（网络中断、5xx、429）按 2 秒 / 6 秒自动重试两次，其它错误立即停；关掉「外部通知」总开关或删掉某个目标后，已经排在定时器上的重试立刻作废，既不算失败也不进失败记录；重试仍失败会把这一条记进「失败记录」（最多 10 条，只留标题与正文摘要和主机名，不留完整端点），设置页能一眼看到并清空；
 - **服务码与「不可确认」**：飞书 / Server酱 / WxPusher 的 2xx 还会读返回体里的服务码（飞书与 Server酱是 `0`，WxPusher 是 `1000`），码不对按失败记并带服务端文案；2xx 但正文不是该服务的 JSON（空白、代理或 WAF 的网页）记「已送出不可确认」，不冒充成功；
@@ -200,7 +205,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 <details>
 <summary>宿主侧兜底：页面关闭后由宿主接着推</summary>
 
-页面不在时页面半体不运行，提醒就断在这里。宿主侧兜底订阅宿主的会话事件流（`session/event`），在页面关闭后自己把同样两条提醒发到你配置的网关。
+页面不在时页面半体不运行，提醒就断在这里。宿主侧兜底订阅宿主的会话事件流（`session/event`），在页面关闭后自己把同样两条提醒发到你配置的网关。它跟页面共用同一组开关：心跳把 `external: {enabled, attention, done}` 报给宿主，页面里「转发外部通知」总开关关掉（或只关掉「需要你」/「回复完成」其中一类）时，兜底也照同样规则闭嘴——否则关掉总开关、再关掉标签页，最后那条外部通知还是会到。
 
 profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`config` 是整块替换、不是深合并**：patch 里写同一个 `id` 就把整个 `config` 赋过去，所以示例把三块都写全——漏写的键会回落到插件内的默认值（与随包 YAML 是同一份），但被一起冲掉的 `gateway.target` 不会自己回来。
 
@@ -245,7 +250,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 **凭据文件**：宿主用户可读的 0600 JSON，内容是 `{"user": "...", "password": "..."}`（按 HTTP Basic 发）或 `{"authorization": "Bearer ..."}`（原样发；裸 token 会自动补上 `Bearer `）。它不能写进 patch 层——那一层世界可读、还会进 profile 目录。不填这个键时请求不带认证头：很多 webhook 端点本来就不要认证，把「没配凭据」当成错误会让每个提醒都失败；只有「配了路径却读不出来」才算凭据不可用。网关回 401 / 403 时宿主丢掉缓存的凭据、重读文件、只重试一次，所以轮换密码不需要重启宿主。
 
-**去重靠一条页面在线租约**：页面加载后 `GET /__dsh-notify-me/host-bridge` 探测一次（之后每 60 秒复探，页面隐藏时不探、回到可见补探一次），只有回包 `hostFallback.enabled === true` 才开始心跳——body 是 `{alive, language, muted}`（`muted` 是被静音会话的 id 列表），间隔取 `leaseMs/3`、夹在 5–20 秒；`pagehide` 时发一条 `{alive:false}`（带 `keepalive`）立刻释放。宿主侧租约新鲜就不补推（页面自己在推），租约过期或收到 `alive:false` 才接手，最多等 `pageLeaseMs` 这么久。心跳带语言与静音列表，不带页面的推送开关：规则是「没有页面持有租约时宿主接手」，而页面的可见性与闲置判定宿主看不见，只照做一半会得到谁也算不清的规则；静音列表是例外，它是用户逐条点出来、写在配置里的确定状态，宿主照它跳过就是页面自己的意思。语言带过来是为了英文页面不收中文宿主提醒，`language: 'auto'` 时生效。列表在心跳里按字节截断（预算 8 KiB、最多 200 条）：被截掉的会话仍在本页静音，只是不由兜底接管。`pageLeaseMs: 0` 关掉协调，宿主永远推——页面开着时会收到两份，只在调试时用。
+**去重靠一条页面在线租约**：页面加载后 `GET /__dsh-notify-me/host-bridge` 探测一次（之后每 60 秒复探，页面隐藏时不探、回到可见补探一次），只有回包 `hostFallback.enabled === true` 才开始心跳——body 是 `{alive, language, muted, external}`（`muted` 是被静音会话的 id 列表，`external` 是 `{enabled, attention, done}` 三个转发开关），间隔取 `leaseMs/3`、夹在 5–20 秒；改静音列表或任一转发开关时不等间隔，立刻补一次心跳；`pagehide` 时发一条 `{alive:false, language, external}`（带 `keepalive`）立刻释放。宿主侧租约新鲜就不补推（页面自己在推），租约过期或收到 `alive:false` 才接手，最多等 `pageLeaseMs` 这么久。心跳带语言、静音列表与转发开关：前三样都是用户亲手写进配置的确定状态，宿主照它们执行就是页面自己的意思——静音列表决定哪些会话闭嘴，`external.enabled: false`（设置页「转发外部通知」关掉）则连宿主兜底一起停，否则关掉总开关、再关掉标签页，宿主照样把刚被关掉的那条外部通知推出去；`attention` / `done` 分别管「需要你」「回复完成」两类。仍然不带的是页面的可见性与闲置判定：那是宿主看不见的启发式，只照做一半会得到谁也算不清的规则。语言带过来是为了英文页面不收中文宿主提醒，`language: 'auto'` 时生效。`external` 只有三个字段全是布尔才被采纳，缺字段或类型不对保留上一次答案；页面从没报过（宿主刚起、页面还没开）时兜底照旧按 `hostFallback.enabled` 推。列表在心跳里按字节截断（预算 8 KiB、最多 200 条）：被截掉的会话仍在本页静音，只是不由兜底接管。`pageLeaseMs: 0` 关掉协调，宿主永远推——页面开着时会收到两份，只在调试时用。
 
 **两个路由的契约**：页面探测的那条 `GET /__dsh-notify-me/host-bridge` 回 `{ok, version, features, hostFallback:{enabled, leaseMs}, relay:{enabled, path, upstreamHost, upstreamPath}, language, page:{alive, ageMs}}`（`upstreamHost` / `upstreamPath` 是宿主替你转发时的网关主机名与路径，只在中继启用时给出，凭据永不下发）；它只在 `hostFallback.enabled` 或 `relay.enabled` 为真时注册，默认安装下是 404，页面按「未启用」处理而不是当故障。心跳 `POST` 要求意图头 `x-dsh-notify-me-page: bridge`（缺了回 `403`），坏 JSON 回 `400`，body 超 16 KiB 回 `413`，成功回 `200 {ok, leaseUntil}`。
 
@@ -287,7 +292,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 #### 运行环境与诊断
 
-在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——Windows 桌面点通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深链（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）、通知上不带快捷裁决按钮；Web 端走 `window.focus()` 与 Service Worker 桥。手动覆盖与自动识别不一致时，设置页会明示检测结果。
+在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——Windows 桌面点通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深链（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；抬窗通道本身不带快捷裁决按钮——按钮来自 Web 的 Service Worker 桥，或 Windows 桌面端的宿主原生 Toast。手动覆盖与自动识别不一致时，设置页会明示检测结果。
 
 <details>
 <summary>通知语言、桌面端抬窗与恢复默认</summary>
@@ -302,7 +307,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 | 渠道 | 表现 |
 | --- | --- |
-| 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；Web 端可带「同意 / 拒绝」 |
+| 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；macOS 桌面端由宿主拉起 `DSH Notify.app` 发（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）；Windows 桌面端的审批提醒由宿主发原生 Toast，带「同意 / 拒绝」按钮（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）；Web 端可带「同意 / 拒绝」 |
 | 提示音 | 默认 WebAudio 合成音，「需要你」与「完成」音型不同；可换自定义音频，或交给系统通知音 |
 | 标签页标题 | `🔔 需要你 · …` / `✅ 回复完成 · …`（随通知语言切换），打开对应会话即消失；两种标记可同时出现 |
 | 外部推送（可选，默认关） | 把同一条提醒转发到 Discord / Bark / Gotify / 飞书 / Server酱 / WxPusher / 自定义 Webhook |
@@ -339,12 +344,12 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 ### 快捷裁决怎么走通的
 
-带「同意 / 拒绝」按钮的通知只能由 Service Worker 弹出（往 `new Notification()` 里传 `actions` 会直接抛 `TypeError`），所以 bundle 的同一份文件再注册成一个只干转信的 worker，把「点了哪个按钮」带回页面。**裁决仍在页面里发生**，调的是审批面板里「允许一次 / 拒绝」用的同一个 `PendingApproval.answer('allowed-once' | 'rejected')`——「同意」就是「允许一次」，不多放行任何东西。
+Web 端带「同意 / 拒绝」按钮的通知只能由 Service Worker 弹出（往 `new Notification()` 里传 `actions` 会直接抛 `TypeError`），所以 bundle 的同一份文件再注册成一个只干转信的 worker，把「点了哪个按钮」带回页面；Windows 桌面端改由宿主发原生 Toast，按钮同样是「同意 / 拒绝」。**裁决仍在页面里发生**，调的是审批面板里「允许一次 / 拒绝」用的同一个 `PendingApproval.answer('allowed-once' | 'rejected')`——「同意」就是「允许一次」，不多放行任何东西。
 
 <details>
 <summary>展开按钮通知的记账与调窗口</summary>
 
-每条按钮通知按交互 key 记账，一次只认领一条等待；请求被页面里答掉、或被新请求顶替之后，残留通知上的按钮再点也不会误裁，只是安静地关掉。带按钮的通知不设自动撤回，等你点按钮或把请求答掉才消失；普通通知 5 秒自收，桌面端没有按钮的审批通知 12 秒自收。「通知自动消失」选「从不关闭」时，这两类都不因到点而收；三种设置都只管定时器那一次关闭，你回到页面时残留的通知一律收起。没来得及点就回页面里裁决，对话里的审批一直等着你。
+每条按钮通知按交互 key 记账，一次只认领一条等待；请求被页面里答掉、或被新请求顶替之后，残留通知上的按钮再点也不会误裁，只是安静地关掉。Web 端带按钮的通知不设自动撤回，等你点按钮或把请求答掉才消失；普通通知 5 秒自收，macOS 桌面端没有按钮的审批通知与 Windows 桌面端带按钮的原生审批 Toast 都 12 秒自收。「通知自动消失」选「从不关闭」时，这两类都不因到点而收；三种设置都只管定时器那一次关闭，你回到页面时残留的通知一律收起（「回到页面也保留提醒」打开时不收起）。没来得及点就回页面里裁决，对话里的审批一直等着你。
 
 点正文的「调窗口 + 切对话」也归 worker 这半侧调度：`client.focus()` 只调起一个窗口（优先当前可见的），也只让那个窗口切对话——多个 DSH 标签页不会互相抢焦点或一起乱切。
 
@@ -370,6 +375,32 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 抬不起来的几种场合与[已知限制](#已知限制)里列的一致（提权窗口、另一虚拟桌面、前台被反复抢走、`SW_HIDE` 托盘隐藏），一律如实回 `202`、对话照常切。
 
 </details>
+### macOS 桌面端怎么发系统通知
+
+页面里的 `new Notification()` 在 macOS 的 DSH Desktop（`dsh-app://app`）上进不了通知中心——不弹，也不报错（`Notification.permission` 照样是 `granted`）。插件在这一平台上改走宿主：页面 POST `/__dsh-notify-me/mac-notify`，宿主（`lib/mac-notify.js`）拉起 `macos/` 下的小助手 `DSH Notify.app`，由它用 `UNUserNotificationCenter` 发一条真正的系统通知。
+
+- **一次性准备**：`bash macos/build.sh` 编译出 `macos/DSH Notify.app`（需要 Xcode Command Line Tools，几秒钟）。产物在 `.gitignore` 里，不进仓库也不进 npm 包。首次弹通知时在「系统设置 → 通知 → DSH Notify」里允许。
+- **走哪条路是自动的**：宿主只在「macOS + 桌面壳（Electron 二进制）+ 助手已编译」三个条件都满足时注册这条路由；任一不满足，`GET` 探测报 `enabled: false`，页面继续用自己原来的通知，行为与改动前一致。`dsh web`（浏览器）永远走不到这条路由。
+- **点通知回到对应对话**：小助手把会话 id 写进临时目录的 `dsh-notify-me-click.json` 并打开 `dsh://open` 抬窗；页面重新获得焦点时 `GET` 一次取走这个 id、切到对应对话，取走后即清掉，不会重复跳转。`autoFocus` 关掉时只抬窗不切会话。
+- **提示音**：设置里选「系统通知音」时交给 macOS，其余音效模式仍由页面自己合成，不会两声叠在一起。
+- **通知上仍然没有「同意 / 拒绝」按钮**：macOS 的通知动作要求注册通知类别，助手不碰审批状态，裁决仍在对话里做。
+- **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `macNotify: { enabled: false }`；或删掉 `macos/DSH Notify.app`，路由会退回 `enabled: false`。
+
+与抬窗路由一样，这条路由只开一个 exact 路径，其余一律拒：非 GET / POST 回 `405`（含从不回 CORS 头的预检 `OPTIONS`），非 loopback 或未放行的 `Host` / `Origin` 回 `403`，POST 缺 `x-dsh-notify-me-mac: notify` 头回 `403`，助手不存在回 `501`，请求体不是合法通知回 `400`。响应里不含系统信息，只回报助手的退出状态。
+
+### Windows 桌面端怎么发带按钮的通知
+
+页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast。
+
+- **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到「DeepSeek Harness」这个 AUMID 下——与 DSH 自己的通知同级，走同一套系统通知设置。
+- **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。
+- **注册**：第一次发带按钮的 Toast 时在 `HKCU\Software\Classes\dsh-notify-me` 注册上面那个处理器（当前用户级，不需要管理员权限），并按 tag 记账到 `ToastNotificationManager.History`。token 单次、3 分钟有效；动作文件被取走后即删。
+- **不弹的场合**：非 Windows 桌面宿主、`winToast.enabled: false`、或 `powershell.exe` 不存在时，路由报 `enabled: false`（`501`），页面继续用自己那条不带按钮的通知，行为与改动前一致。
+- **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `winToast: { enabled: false }`，审批提醒回到页面自己的通知（无按钮）。
+- **自动消失与收起**：原生 Toast 归 `trackToast()` 记账，普通通知 5 秒、带按钮的审批 12 秒（「总是关闭 / 从不关闭」照旧），回到页面（`keepOnReturn` 关闭时）同样收起。
+
+路由只开一个 exact 路径，其余一律拒：非 GET / POST 回 `405`，非 loopback 或未放行的 `Host` / `Origin` 回 `403`，POST 缺 `x-dsh-notify-me-win: toast` 头回 `403`，请求体不合法回 `400`。响应只回报投递状态，不含系统信息。
+
 
 ## 已知限制
 
@@ -382,11 +413,11 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 **平台差异**
 
-- 快捷裁决按钮要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 这类局域网地址不行；**桌面端（`dsh-app://`）已实测无法注册 Service Worker**（宿主未开放 `allowServiceWorkers` 特权），审批通知退回无按钮样式。宿主不渲染通知按钮时，`debug()` 的 `bridge` 字段会说明原因，其余功能不受影响。
+- 快捷裁决按钮要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 这类局域网地址不行；**桌面端（`dsh-app://`）已实测无法注册 Service Worker**（宿主未开放 `allowServiceWorkers` 特权）。因此 Windows 桌面端的审批按钮改由宿主发原生 Toast（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)），macOS 桌面端仍无按钮、点通知回对话裁决。宿主不渲染通知按钮时，`debug()` 的 `bridge` 字段会说明原因，其余功能不受影响。
 - Windows 的系统通知标签上限 64 字符，而 Chromium 交给平台的是 `n#<origin>#<tag>` 整串——桌面页面 `dsh-app://app` 一项就占去 16 个。插件按当前 `location.origin` 算剩余预算，超长时保留可读前缀、尾部换成短哈希，所以 `debug()` 里看到的标签可能被截短；平台仍然拒发时，原文记在 `debug().lastToastReject`，设置页的测试按钮也会如实报出来，不再「提示已发送但什么都没弹」。
 - 桌面端（Windows）点通知后窗口仍可能抬不起来：目标窗口属于更高完整性级别（提权 / UAC）、在另一个虚拟桌面、前台被别的进程反复抢回去，或窗口被 `SW_HIDE` 隐藏到托盘时，宿主脚本回 `FOCUSED=0`、路由回 `202`，对话照常切（详见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）。
 - 桌面端（macOS / Linux）点通知依赖 `dsh://open` 深链：系统未注册 `x-scheme-handler/dsh`、或壳没有 `second-instance` / `open-url` 处理时抬不起来；Linux 上已实测正常，macOS 未实测。
-- macOS：提醒、提示音、标题标记、点通知跳转都没有平台假设，照常工作；但 DSH Desktop（Electron）的系统通知要求应用已签名，未签名的通知直接发不出去，官方 macOS 版是否满足这一前提未实测；审批按钮在 macOS 桌面宿主上的渲染同样未实测（Windows 桌面端已实测不渲染）。
+- macOS 桌面端：页面自带的 `new Notification()` 进不了通知中心（`Notification.permission` 报 `granted` 却什么也不弹），所以插件改由宿主拉起助手发通知，需要先 `bash macos/build.sh`（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。助手未编译时退回原行为，即桌面端弹不出系统通知。审批按钮在 macOS 桌面宿主上仍然不渲染；Windows 桌面端改由宿主发原生 Toast，按钮可用（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）。
 
 **提醒内容与时机**
 
@@ -409,13 +440,17 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 ```sh
 node --check lib/client.js
 node --check lib/index.js
-npm test                         # smoke-test（状态机）+ host-route-test（宿主半路由）+ page-bridge-test + host-fallback-test + relay-route-test + cordis-host-test
+npm test                         # smoke-test（状态机）+ host-route-test（宿主半路由）+ page-bridge-test + host-fallback-test + relay-route-test + cordis-host-test + mac-notify-test + win-toast-test
 npm pack --dry-run               # 预览发布包
 ```
 
 `smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」。
+
+`smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数（含 `--id` / `--sound` 与 `{remove:id}` 撤回）、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
+
+`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。
 
 改到 `lib/focus-window.ps1` 时（仅 Windows），另需手动跑一次：
 
@@ -440,11 +475,15 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/Donald-Yip"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Donald-Yip.png" width="40" height="40" alt="@Donald-Yip"></a> | [#18](https://github.com/chromoany/dsh-notify-me/issues/18)：Windows 通知 tag 超过 64 字符上限、审批测试通知被平台静默拒收的报告 |
 | <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20)：当前会话的通知正文用占位符、未取会话标题的报告 |
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上 `dsh://open` 抬窗失效的报障与补丁，1.14.4 起 macOS / Linux 恢复深链抬窗 |
-| <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25)：页面关闭后由宿主兜底推送、同源中继两个可选模块（默认关），含测试与文档 |
+| <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25)：页面关闭后由宿主兜底推送、同源中继两个可选模块（默认关），含测试与文档；[#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30)：宿主兜底漏读「转发外部通知」开关（心跳与 pagehide 带 `external`），1.19.0 起生效 |
 | <a href="https://github.com/ekexium"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ekexium.png" width="40" height="40" alt="@ekexium"></a> | [#23](https://github.com/chromoany/dsh-notify-me/issues/23)：按对话静音的诉求（每会话一个开关、跨重启持久化、会话行上带标记），1.16.0 起支持 |
 | <a href="https://github.com/AomiRaku"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AomiRaku.png" width="40" height="40" alt="@AomiRaku"></a> | [#26](https://github.com/chromoany/dsh-notify-me/issues/26)：会话行悬停按钮遮挡标题的反馈——静音铃铛改为可关闭、右键菜单补一个静音入口，1.18.0 起支持 |
+| <a href="https://github.com/Matthew-Laplace"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Matthew-Laplace.png" width="40" height="40" alt="@Matthew-Laplace"></a> | [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28)：`keepOnReturn`（回到页面也保留提醒）的提案与最小实现，以及「前台也提醒」一键预设的诉求，1.19.0 起支持 |
+| <a href="https://github.com/xty13114150041"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/xty13114150041.png" width="40" height="40" alt="@xty13114150041"></a> | [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32)：macOS 桌面端页面通知不响的排查与宿主助手方案（`lib/mac-notify.js` + `macos/`），1.19.0 起支持 |
+| <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：Windows 桌面端审批通知没有「同意 / 拒绝」按钮的反馈，以及 Electron 丢弃 `actions` / 桌面端注册不了 Service Worker 的源码级定位，1.19.0 起支持 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=chromoany%2Fdsh-notify-me&type=timeline&legend=bottom-right">

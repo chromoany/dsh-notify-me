@@ -14,7 +14,8 @@ window.__dshNotifyMe.setConfig({
   currentHiddenOnly: true,    // true = waits in the conversation on screen keep only the title marker (replayed once away)
   donePolicy: "background",   // "reply finished" policy: 'background' only when away | 'smart' quiet only for the open one | 'always' always alert
   idleMinutes: 3,             // minutes without keyboard/mouse input before "away" counts (0 = turn the idle rule off)
-  autoDismiss: "present",     // toast auto-dismiss (the timer only; leftovers are withdrawn once you are back): 'present' keep while away | 'always' always close | 'never' never close
+  autoDismiss: "present",     // toast auto-dismiss (the timer only; leftovers are withdrawn once you are back unless keepOnReturn is true): 'present' keep while away | 'always' always close | 'never' never close
+  keepOnReturn: false,        // false = withdraw the leftovers when you come back; true = keep them until you dismiss or click Close
   ignoreSubagent: true,       // true = no alerts for background subagent sessions (the open one still alerts)
   mutedSessions: [],          // session ids muted per conversation (written by the sidebar bell or the right-click menu, survives reloads)
   muteRowButton: true,        // true = show the mute bell in the row hover strip; false = right-click menu only (a muted row keeps its bell)
@@ -43,10 +44,16 @@ window.__dshNotifyMe.testExternal()               // explicit outbound test to v
 
 > **External-test switch boundary:** the settings page's "Send test notification" needs the "Enable reminders" and "External notifications" master switches on, but ignores the two per-kind forwarding switches. The console `testExternal()` call is an explicit test: with valid configured targets it sends to them even when those master switches are off; with no valid targets it sends nothing. Ordinary `test("done")` / `test("attention")` / `test("approval")` calls only test local alerts and never forward externally.
 
+> The "Alert in the foreground too" row at the top of the "When to alert" card on the Settings page is not its own config key: it is a derived view of `attentionHiddenOnly: false`, `currentHiddenOnly: false` and `donePolicy: "always"`. Changing any of the three on its own moves the row too; turning it off restores `attentionHiddenOnly: false`, `currentHiddenOnly: true` and `donePolicy: "background"`.
+
 > Picked audio files do not live in `dshNotifyMe.config`: each kind gets its own key (`dshNotifyMe.sound.done` / `dshNotifyMe.sound.attention`, holding a `{name, size, data}` data URL), because one file inflates by ~1.37× once turned into a data URL and would slow down every config read. `resetConfig()` clears both keys along with the config.
 >
 > To confirm which source is actually in effect, check `soundDone` / `soundAttention` and `customSoundDone` / `customSoundAttention` in `window.__dshNotifyMe.debug()`.
 >
+> `macNotify` is profile-patch config on the `- id: notify-me` entry rather than a page preference in `localStorage`: `macNotify: { enabled: false }` turns native macOS Desktop notifications off, `macNotify: { appPath: "/path/to/DSH Notify.app" }` points at a helper built elsewhere (the bundled one is the default). `debug().macNative` says whether this page uses that channel; `debug().macNativeLast` is the last delivery result.
+
+> `winToast` is likewise profile-patch config: `winToast: { enabled: false }` turns off the native Windows approval toasts the host posts (the ones with real Approve / Reject buttons) and falls back to the page's own notification channel (no buttons). The first button-carrying toast registers a protocol handler under `HKCU\Software\Classes\dsh-notify-me` (it writes the button action back to this machine, then opens `dsh://open`); no admin rights are needed, and installs that never raise approval alerts — or that only run the local `dsh-app://` page — never trigger the registration. `debug().winNative` says whether this page uses that channel; `debug().winNativeLast` is the last delivery or action result.
+
 > `debug().hostBridge` is the read-only snapshot of host coordination: `state` (`idle` the probe has not answered yet; `active` the host has a fallback and this page is holding the lease with its heartbeat; `unavailable` the host is there but offers no fallback, which is what a stock install looks like — an unregistered 404 route counts here too and is not a fault; `error` the host answered nothing usable, or the gate refused this page outright), `leaseMs` (the lease the host granted, in milliseconds), `relayEnabled` and `relayPath` (the relay route, when the host enabled one), `relayUpstreamHost` / `relayUpstreamPath` (the gateway endpoint the fold matches), `lastReason` (why the last probe failed — `bad-host` / `cross-origin` / `http-403` — and `null` when it was not a fault), and `lastProbeAt` / `lastBeaconAt` (the last probe and the last heartbeat, as ISO strings or `null`). A gate refusal reads as `error` rather than as "off", because it is a configuration the user can fix: add this page's origin to the top-level `allowedOrigins` of the `- id: notify-me` entry in the profile.
 
 </details>
