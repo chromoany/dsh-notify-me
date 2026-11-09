@@ -47,7 +47,7 @@ All notable changes to **dsh-notify-me** are documented here.
 - README 中英新增「Windows 桌面端怎么发带按钮的通知」一节；「macOS 桌面端怎么发系统通知」补上原生通知参与收起 / 自动消失、启动时排队的等待会重放、助手 `--id` / `--remove`；顶部导读、提醒渠道表、已知限制与开发自检的测试清单同步。
 - `docs/console-config.md` / `.en.md` 补 `winToast`（profile patch 层配置，`{enabled:false}` 关掉宿主原生审批 Toast）与 `debug().winNative` / `winNativeLast`。
 - `cordis.patch.yml` 补 `winToast` 配置行与注释；`docs/listing.md` 的 `latest` 更新到 1.19.0。
-- 设置页截图未重拍：两张都还是 1.18.0 的界面，1.19.0 在「什么时候提醒」里多了一行「前台也提醒（一键）」，`docs/README.md` 的尺寸表已按这个口径标注。
+- 设置页截图按 1.19.0 重拍：中文 592×1170、英文 592×1188（比 1.18.0 多「前台也提醒（一键）」与「回到页面也保留提醒」两行，页脚版本号已是 `dsh-notify-me v1.19.0`），`docs/README.md` 的尺寸表与版本标注同步更新。
 
 ## [1.18.0] — 2026-11-08
 
