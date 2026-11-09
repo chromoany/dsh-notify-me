@@ -18,7 +18,7 @@
 
 </div>
 
-[Install](#installation) · [Preview](#ui-preview) · [Settings](#configure-it-from-dsh-settings) · [Compatibility](#compatibility) · [Known limitations](#known-limitations) · [Changelog](CHANGELOG.md)
+[Preview](#ui-preview) · [Install](#installation) · [Settings](#configure-it-from-dsh-settings) · [Compatibility](#compatibility) · [Known limitations](#known-limitations) · [Changelog](CHANGELOG.md)
 
 A notification plugin for DSH Web / Desktop, so you can afford to keep full access off without watching the page all day.
 
@@ -26,11 +26,7 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 - **When a background reply finishes:** come back for the result; clicking the notification returns to that conversation. Pick "background only", "quiet for the open one", or "always".
 - **When you walk off but the window stays in front:** over 3 minutes without input counts as away, and the alert still fires as usual; the toast that arrived does not clear itself before you come back, and is withdrawn the moment you are back at the page (taskbar, Alt-Tab or the toast itself) — turn on "keep alerts when you come back" to let it wait there instead.
 - **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, or your own webhook.
-- **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see "After the page closes" under [Advanced](#advanced)).
-
-> **macOS Desktop (DSH Desktop)** raises its system notifications through a small host-spawned helper, `DSH Notify.app`: build it once with `bash macos/build.sh` and allow it in System Settings (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)).
-
-> The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons rely on a Service Worker, so Web gets them through the page's own notification; Windows Desktop gets them through a native toast posted by the host, while macOS Desktop notifications still carry no buttons — clicking one takes you back to the conversation to decide. With host-side fallback enabled you still get external push once the page is closed — local toasts and the approval buttons still need the page.
+- **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see [After the page closes: host-side fallback and the same-origin relay](#after-the-page-closes-host-side-fallback-and-the-same-origin-relay)).
 
 ## UI Preview
 
@@ -46,6 +42,10 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 Just the plugin's own panel (the real component, on the same dark theme as the host), without the DSH navigation sidebar; row explanations only appear once the pointer rests on the title text, which is why only the titles show here.
 
 </details>
+
+> **macOS Desktop (DSH Desktop)** raises its system notifications through a small host-spawned helper, `DSH Notify.app`: build it once with `bash macos/build.sh` and allow it in System Settings (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)).
+
+> The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons work on Web and Windows Desktop; macOS Desktop and pages without a Service Worker get a plain notification — click it and decide in the conversation (see [Alert channels](#alert-channels)). With host-side fallback enabled you still get external push once the page is closed — local toasts and the approval buttons still need the page.
 
 ## Installation
 
@@ -74,9 +74,12 @@ The Electron application manages the `desktop` profile. Do not change the Web co
 2. Open **Settings → Notify me**. Confirm that the section and the plugin version at its foot appear, and leave "Enable reminders" and "Sound" on.
 3. Click **Test "reply finished"** on the settings page. A test notification should appear and play a sound according to your current sound settings. This local test is not forwarded to any external endpoint, and the "also alert while the window is in front" switch does not apply to it.
 
-Web users can also test the approval buttons, which then appear on the notification. Windows Desktop posts a native toast through the host and also carries the buttons (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)); macOS Desktop has no Service Worker and its native helper carries no buttons, so this test sends a plain notification — real approval alerts work the same way, and clicking one takes you back to the conversation to decide.
+Web users can also test the approval buttons, which then appear on the notification. Windows Desktop posts a native toast through the host and carries the same buttons; macOS Desktop sends a plain notification (the differences are in [Alert channels](#alert-channels)).
 
-**Optional console check** — in environments with DevTools, you can also run:
+<details>
+<summary>Optional console check</summary>
+
+In environments with DevTools, you can also run:
 
 ```js
 window.__dshNotifyMe.test("done")        // "reply finished" sample
@@ -84,6 +87,8 @@ window.__dshNotifyMe.test("attention")   // "needs you" sample
 window.__dshNotifyMe.test("approval")    // Approve / Reject when the bridge is available (Web) or through the Windows desktop host's native toast; a plain notification otherwise (macOS Desktop, or no Service Worker)
 window.__dshNotifyMe.debug()             // bridge ("active" = buttons work), raiseChannel, the last raise attempt in raiseLast, a refused toast's platform message in lastToastReject, configStored for whether the settings really persisted, hostBridge for host coordination, and the native channels in macNative / macNativeLast and winNative / winNativeLast; after coming back to the page, toastsLive / toastsWithdrawn / lastToastWithdrawAt show what is still tracked, how many were withdrawn, and when that last happened
 ```
+
+</details>
 
 If no test notification appears, check in this order: whether the notification permission was declined (click once on the page and choose **Allow**; or address-bar lock → Site settings → Notifications → Allow → reload), whether DSH was restarted after installing, and whether the browser's notifications are switched off in the OS settings.
 
@@ -136,7 +141,7 @@ Open **Settings → Notify me**. The page lays out three blocks — how you get 
 - **What counts as background**: switching to another app, being covered by another window, or minimizing all count; a window left in front with 3 minutes of no keyboard or mouse input counts too, and `idleMinutes: 0` falls back to looking only at the window.
 - **When "stay quiet for the conversation on screen" is replayed**: as usual once the window goes to the background or the idle timer fires; if you already handled it, it is dropped.
 - **The three "reply finished" choices**: "background only" = alert when you are not watching the page; "quiet for the open one" = the one on screen stays silent while other conversations still alert, useful with several open; "always" = never suppress. An old profile's "also alert 'reply finished' while in front" switch migrates to this setting automatically.
-- **"Keep while away"**: while you are at the page a plain toast closes itself after a few seconds; one that arrived while you were away stays in the notification centre until you come back. It is withdrawn the moment you are back (taskbar, Alt-Tab, the toast itself, or restoring a minimized window), and none of the three options affect that — so a toast you never opened in the notification centre is not left in your way. **With "keep alerts when you come back" on, the return no longer withdraws them either** — they wait until you dismiss them or click Close, and stay on screen under a persistent OS notification style. A Web toast with Approve / Reject carries no auto-dismiss timer — it stays until you click a button, answer the request in the page, or a newer request replaces it; a macOS desktop approval toast, which cannot render buttons, and a Windows desktop native approval toast both close after 12 s and are likewise not withdrawn while you are away. Host-posted native notifications (the Windows native toast, macOS Notification Centre) are tracked by the same ledger: not withdrawn while you are away, withdrawn when you return unless that switch is on, and covered by the auto-dismiss choice as well. All of them are withdrawn when you come back to the page (and kept when that switch is on).
+- **"Keep while away"**: while you are at the page a plain toast closes itself after a few seconds; one that arrived while you were away stays in the notification centre until you come back. It is withdrawn the moment you are back (taskbar, Alt-Tab, the toast itself, or restoring a minimized window), and none of the three options affect that — so a toast you never opened in the notification centre is not left in your way. **With "keep alerts when you come back" on, the return no longer withdraws them either** — they wait until you dismiss them or click Close, and stay on screen under a persistent OS notification style. A Web toast with Approve / Reject carries no auto-dismiss timer — it stays until you click a button, answer the request in the page, or a newer request replaces it; a macOS desktop approval toast, which cannot render buttons, and a Windows desktop native approval toast both close after 12 s and are likewise not withdrawn while you are away. Host-posted native notifications (the Windows native toast, macOS Notification Centre) are tracked by the same ledger: not withdrawn while you are away, withdrawn when you return unless that switch is on, and covered by the auto-dismiss choice as well.
 - **Fallback for a toast click**: on Desktop a window that will not raise leaves only the conversation switch, with the reason in `debug().raiseLast`; turn this switch off and a click does nothing.
 
 </details>
@@ -197,7 +202,20 @@ Off by default. Supports Discord Webhook / Bark / Gotify / Feishu group bots / S
 
 </details>
 
-#### After the page closes: host-side fallback and the same-origin relay
+#### Runtime & diagnostics
+
+The last block inside Advanced. The page protocol is detected automatically to tell Web from Desktop (DSH Desktop, `dsh-app://`); override it by hand if detection is wrong — on Windows a toast click goes through the host route for native raising, on macOS / Linux through the `dsh://open` deep link (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised)), and the raise path itself carries no quick-decision buttons — those come from the Service Worker bridge on Web and from the host-posted native toast on Windows Desktop. When the manual override disagrees with detection the page says so.
+
+<details>
+<summary>Alert language, Desktop window raising, and reset</summary>
+
+- **Alert language**: follow the UI / Simplified Chinese / English — governs the alert copy and the `🔔 …` title marker;
+- **Desktop window raising**: on Windows the host route does the native activation, on macOS / Linux the `dsh://open` deep link does; raising back a minimized or covered window is measured to work on Windows and Linux (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised));
+- **Reset settings**: restores every switch and sound setting to the factory defaults (external push targets and chosen custom audio files are kept).
+
+</details>
+
+## After the page closes: host-side fallback and the same-origin relay
 
 Both live in the host process (`lib/host-fallback.js`, `lib/relay.js`, optional modules inside the package) and both are off by default: with no config the host registers the raise-window route and nothing else, so behaviour is identical before and after the upgrade. They are configured in the profile's patch layer, not on the Settings page — they make the host act on the page's behalf, they are not browser preferences; the Settings page only reports the state it probed.
 
@@ -289,19 +307,6 @@ Credentials stay in the host: the page cannot read them, and they are never echo
 
 </details>
 
-#### Runtime & diagnostics
-
-The last block inside Advanced. The page protocol is detected automatically to tell Web from Desktop (DSH Desktop, `dsh-app://`); override it by hand if detection is wrong — on Windows a toast click goes through the host route for native raising, on macOS / Linux through the `dsh://open` deep link (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised)), and the raise path itself carries no quick-decision buttons — those come from the Service Worker bridge on Web and from the host-posted native toast on Windows Desktop. When the manual override disagrees with detection the page says so.
-
-<details>
-<summary>Alert language, Desktop window raising, and reset</summary>
-
-- **Alert language**: follow the UI / Simplified Chinese / English — governs the alert copy and the `🔔 …` title marker;
-- **Desktop window raising**: on Windows the host route does the native activation, on macOS / Linux the `dsh://open` deep link does; raising back a minimized or covered window is measured to work on Windows and Linux (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised));
-- **Reset settings**: restores every switch and sound setting to the factory defaults (external push targets and chosen custom audio files are kept).
-
-</details>
-
 ## Alert channels
 
 | Channel | What it does |
@@ -374,6 +379,7 @@ That header is only a "this came from the page" marker, not the defence — a DN
 The cases where it will not raise are the same ones listed under [Known limitations](#known-limitations) (elevated window, another virtual desktop, a foreground repeatedly stolen, a window hidden to the tray with `SW_HIDE`); they all answer `202` truthfully and the conversation switch still happens.
 
 </details>
+
 ### How macOS Desktop raises system notifications
 
 On macOS Desktop (`dsh-app://app`) the page's own `new Notification()` never reaches the Notification Centre — nothing is shown and nothing throws (`Notification.permission` still reads `granted`). The plugin takes the host path there instead: the page POSTs `/__dsh-notify-me/mac-notify`, the host (`lib/mac-notify.js`) spawns the helper app in `macos/`, and that helper posts a real `UNUserNotificationCenter` notification.
@@ -400,8 +406,6 @@ The page's own `new Notification()` is not refused on Windows Desktop, but it ca
 
 Like the other routes, this one registers exactly one exact path and refuses everything else: anything but GET / POST is `405`, a non-loopback peer or an unlisted `Host` / `Origin` is `403`, a POST without the `x-dsh-notify-me-win: toast` header is `403`, and a body that is not a valid notification is `400`. The reply reports the delivery status only, never system information.
 
-
-
 ## Known limitations
 
 **Runtime prerequisites**
@@ -417,7 +421,7 @@ Like the other routes, this one registers exactly one exact path and refuses eve
 - Windows caps a toast tag at 64 characters, and Chromium hands the platform the whole `n#<origin>#<tag>` string — the desktop page's `dsh-app://app` alone takes 16. The plugin sizes each tag against the current `location.origin` and, when it does not fit, keeps a readable prefix and swaps the tail for a short hash, so a tag seen through `debug()` may be shortened; if the platform still refuses one, its message lands in `debug().lastToastReject` and the settings test button reports it instead of claiming the toast was sent.
 - On Desktop (Windows) a toast click can still fail to raise the window: when the target window is owned by a higher integrity level (elevated / UAC), sits on another virtual desktop, has its foreground repeatedly stolen by another process, or is hidden to the tray with `SW_HIDE`, the host script answers `FOCUSED=0` and the route answers `202`, with the conversation switch intact (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised)).
 - Desktop (macOS / Linux) toast clicks rely on the `dsh://open` deep link: when the system has no `x-scheme-handler/dsh` registration, or the shell has no `second-instance` / `open-url` handling, the window will not raise. Measured to work on Linux; macOS is untested.
-- macOS: alerts, sound, the title marker and toast-click navigation carry no platform assumptions and work as usual; but DSH Desktop (Electron) system notifications require the app to be signed — an unsigned build simply emits no notification — and whether the official macOS build meets that precondition is untested; notification button rendering on the macOS desktop host is likewise untested (the Windows desktop host now posts its approval toasts as native toasts, which do render buttons).
+- macOS Desktop: the page's own `new Notification()` never reaches the Notification Centre (`Notification.permission` reads `granted` yet nothing shows), so the plugin posts through a host-spawned helper — build it once with `bash macos/build.sh` (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)). Without the helper it falls back to the old behaviour, i.e. no system notification on Desktop. Approval buttons still do not render on the macOS desktop host; Windows Desktop posts a native toast with working buttons (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)).
 
 **Alert content and timing**
 
@@ -444,6 +448,9 @@ npm test                         # smoke-test (state machine) + host-route-test 
 npm pack --dry-run               # preview the published tarball
 ```
 
+<details>
+<summary>What each suite covers, and the manual raise check</summary>
+
 `smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + withdrawing leftover toasts on return + toast tag length handling + the page's host-bridge probe / heartbeat / release and the shape of `debug().hostBridge`. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
 
 The three new suites also ship their own fake `ctx`, need no local DSH and touch no network: `smoke/page-bridge-test.mjs` runs the page-bridge route — status shape, heartbeat and release, missing intent header `403`, cross-origin `403`, bad JSON `400`, oversized `413`, the `allowedOrigins`-derived `Host` (a simulated tunnel) being let through, and path collisions; `smoke/host-fallback-test.mjs` runs the host fallback — approval dedupe, `turn/end` throttling, subagent skip, no push on a fresh lease, a push after the lease expires, an immediate push after `alive:false`, language following the heartbeat, credentials re-read after a 401, and the health probe; `smoke/relay-route-test.mjs` runs the relay — the `GET` probe, `405`, cross-origin `403`, `413`, `400`, `503`, the `200` / `502` mapping and "retry exactly once on a 401".
@@ -460,6 +467,8 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # the last line 
 
 `cordis-host-test.mjs` borrows `@deepseek-ai/cordis` from a local DSH installation (it probes the global npm directory, `~/.dsh/profiles/web/node_modules` and the flat fallback `~/.dsh/profiles/node_modules` in turn); in a source checkout with no profile dependencies, point it there with `DSH_CORDIS_PATH=<checkout>/vendor/cordis/lib/index.js`.
 
+</details>
+
 ## Credits & how contributions land
 
 | Contributor | Contribution |
@@ -475,7 +484,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # the last line 
 | <a href="https://github.com/Donald-Yip"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Donald-Yip.png" width="40" height="40" alt="@Donald-Yip"></a> | [#18](https://github.com/chromoany/dsh-notify-me/issues/18): the report that a Windows notification tag over the 64-character cap made the platform silently reject the approval test toast |
 | <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20): the report that alerts for the open session showed a placeholder instead of the session title |
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22): the Linux `dsh://open` raise-path report and patch, which brought the deep link back on macOS / Linux in 1.14.4 |
-| <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25): the host-side fallback push and same-origin relay modules (optional, off by default), with tests and docs; [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30): the host fallback ignored the 「Forward to external targets」 switch (the heartbeat and pagehide now carry `external`), landing in 1.19.0 |
+| <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25): the host-side fallback push and same-origin relay modules (optional, off by default), with tests and docs; [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30): the host fallback ignored the "Forward to external targets" switch (the heartbeat and pagehide now carry `external`), landing in 1.19.0 |
 | <a href="https://github.com/ekexium"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ekexium.png" width="40" height="40" alt="@ekexium"></a> | [#23](https://github.com/chromoany/dsh-notify-me/issues/23): the per-conversation mute request (an on/off switch per session, persistence across restarts, a mark on the session row), supported since 1.16.0 |
 | <a href="https://github.com/AomiRaku"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AomiRaku.png" width="40" height="40" alt="@AomiRaku"></a> | [#26](https://github.com/chromoany/dsh-notify-me/issues/26): the report that the row's hover buttons were covering the title, asking for a switchable mute bell and a mute entry in the context menu — shipped in 1.18.0 |
 | <a href="https://github.com/Matthew-Laplace"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Matthew-Laplace.png" width="40" height="40" alt="@Matthew-Laplace"></a> | [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28): the `keepOnReturn` proposal and minimal patch (keep alerts after coming back to the page), plus the ask for a single "alert in the foreground too" preset — supported since 1.19.0 |
@@ -483,6 +492,21 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # the last line 
 | <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33): the report that Windows Desktop approval notifications carry no Approve / Reject buttons, with the source-level finding that Electron drops `actions` and Desktop cannot register a Service Worker — fixed in 1.19.0 |
 
 Attribution policy: external PRs are landed as maintainer commits — the original commit is not reused and no Co-authored-by trailer is added, so GitHub's contributors graph lists the maintainer only and contributors are credited above.
+
+## Star History
+
+<details>
+<summary>Show the Star History chart</summary>
+
+<a href="https://www.star-history.com/?repos=chromoany%2Fdsh-notify-me&type=timeline&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&legend=bottom-right" />
+ </picture>
+</a>
+
+</details>
 
 ## License
 

@@ -18,7 +18,7 @@
 
 </div>
 
-[安装](#安装) · [效果预览](#效果预览) · [配置](#在-dsh-设置里改配置) · [兼容性](#兼容性) · [已知限制](#已知限制) · [更新日志](CHANGELOG.md)
+[效果预览](#效果预览) · [安装](#安装) · [配置](#在-dsh-设置里改配置) · [兼容性](#兼容性) · [已知限制](#已知限制) · [更新日志](CHANGELOG.md)
 
 DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一直守着页面。
 
@@ -26,12 +26,7 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 - **后台回复完成时**：及时回来查看结果，点击通知可回到对应对话；提醒时机可选「仅后台 / 仅当前对话静默 / 总是提醒」。
 - **人走开但窗口没走**：窗口留在最前台、人却离开座位，超过 3 分钟没有输入也算离开，该提醒的照常提醒；收到的那条通知不会在你回来之前自己消失，一回到页面（点任务栏、Alt+Tab、点通知都算）就收起（想让它在回到页面后继续留着，打开「回到页面也保留提醒」）。
 - **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher 或自己的 Webhook。
-- **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[高级设置](#高级设置)里的「页面关闭后：宿主侧兜底与同源中继」）。
-
-> **macOS 桌面端（DSH Desktop）** 的系统通知由宿主拉起的小助手 `DSH Notify.app` 发出，需先执行一次 `bash macos/build.sh` 并在系统设置里允许它发通知（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。
-
-> 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮依赖 Service Worker，Web 端由页面自己的通知提供；Windows 桌面端由宿主发原生 Toast，同样带按钮；macOS 桌面端的通知仍不带按钮，点通知回到对话里裁决。开启宿主侧兜底后，页面关闭仍能收到外部推送——本地通知与审批按钮仍要页面在。
-
+- **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[页面关闭后：宿主侧兜底与同源中继](#页面关闭后宿主侧兜底与同源中继)）。
 
 ## 效果预览
 
@@ -47,6 +42,10 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 只截插件自己的面板（真实组件，与宿主同款深色主题），不带 DSH 左侧导航栏；每行说明在鼠标停在标题文字上时才出现，所以这里只看到标题。
 
 </details>
+
+> **macOS 桌面端（DSH Desktop）** 的系统通知由宿主拉起的小助手 `DSH Notify.app` 发出，需先执行一次 `bash macos/build.sh` 并在系统设置里允许它发通知（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。
+
+> 页面或桌面应用需保持运行（后台 / 最小化可以）；系统通知需要通知权限。审批按钮在 Web 与 Windows 桌面端可用，macOS 桌面端与没有 Service Worker 的页面点通知回对话里裁决（见[提醒渠道](#提醒渠道)）。开启宿主侧兜底后，页面关闭仍能收到外部推送——本地通知与审批按钮仍要页面在。
 
 ## 安装
 
@@ -75,9 +74,12 @@ dsh plugin --profile web add dsh-notify-me
 2. 打开 **设置 → 通知提醒**，确认出现该分区及底部插件版本号，保持「启用提醒」「提示音」开启。
 3. 点击设置页的「测试『回复完成』」按钮：应出现一条测试通知，并按当前音效设置播放声音。这个本地测试不会转发到外部通知端点，也不受「窗口在前台时也提醒」开关限制。
 
-Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。Windows 桌面端由宿主发原生 Toast，同样带按钮（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）；macOS 桌面端拿不到 Service Worker、原生助手也不带按钮，这条测试只发一条普通通知——真实审批的提醒同理，点它回到对话里裁决。
+Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。Windows 桌面端由宿主发原生 Toast，同样带按钮；macOS 桌面端只发普通通知（渠道差异见[提醒渠道](#提醒渠道)）。
 
-**控制台验证（可选）** — 支持 DevTools 的环境也可执行：
+<details>
+<summary>控制台验证（可选）</summary>
+
+支持 DevTools 的环境也可执行：
 
 ```js
 window.__dshNotifyMe.test("done")        // 「完成」示例
@@ -85,6 +87,8 @@ window.__dshNotifyMe.test("attention")   // 「需要你」示例
 window.__dshNotifyMe.test("approval")    // Web 桥可用、或 Windows 桌面宿主原生 Toast 时带「同意 / 拒绝」按钮；macOS 桌面与无桥环境只发普通通知
 window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge、原生通道看 macNative / winNative 与各自 last；切回页面后收通知看 toastsLive / toastsWithdrawn / lastToastWithdrawAt（还挂着几条 / 累计收起几条 / 最后一次的时间）
 ```
+
+</details>
 
 没有测试通知时，先检查：通知权限是否被拒绝（在页面上点一下 → 选「允许」；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
 
@@ -198,7 +202,20 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 </details>
 
-#### 页面关闭后：宿主侧兜底与同源中继
+#### 运行环境与诊断
+
+在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——Windows 桌面点通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深链（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；抬窗通道本身不带快捷裁决按钮——按钮来自 Web 的 Service Worker 桥，或 Windows 桌面端的宿主原生 Toast。手动覆盖与自动识别不一致时，设置页会明示检测结果。
+
+<details>
+<summary>通知语言、桌面端抬窗与恢复默认</summary>
+
+- **通知语言**：跟随界面 / 简体中文 / English——决定通知文字与 `🔔 …` 标题标记使用的语言；
+- **桌面端抬窗**：Windows 走宿主路由做原生激活、macOS / Linux 走 `dsh://open` 深链；最小化、被别的窗口盖住的窗口在 Windows 与 Linux 上都实测能抬回来（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；
+- **恢复默认设置**：把所有开关与音效设置还原成出厂值（不动外部推送目标和已选的自定义音频文件）。
+
+</details>
+
+## 页面关闭后：宿主侧兜底与同源中继
 
 这两块能力住在宿主进程里（`lib/host-fallback.js`、`lib/relay.js`，都是包内的可选模块），默认关：没有配置时宿主只注册抬窗那一条路由，升级前后行为一致。它们的配置写在 profile 的 patch 层，不在设置页里——它们让宿主替页面干活，不是浏览器偏好；设置页只如实显示探测到的状态。
 
@@ -290,19 +307,6 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 </details>
 
-#### 运行环境与诊断
-
-在「高级设置」最后一块。默认自动识别当前是 Web 端还是桌面端（DSH Desktop，`dsh-app://`）；识别不准时可手动指定——Windows 桌面点通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深链（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；抬窗通道本身不带快捷裁决按钮——按钮来自 Web 的 Service Worker 桥，或 Windows 桌面端的宿主原生 Toast。手动覆盖与自动识别不一致时，设置页会明示检测结果。
-
-<details>
-<summary>通知语言、桌面端抬窗与恢复默认</summary>
-
-- **通知语言**：跟随界面 / 简体中文 / English——决定通知文字与 `🔔 …` 标题标记使用的语言；
-- **桌面端抬窗**：Windows 走宿主路由做原生激活、macOS / Linux 走 `dsh://open` 深链；最小化、被别的窗口盖住的窗口在 Windows 与 Linux 上都实测能抬回来（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；
-- **恢复默认设置**：把所有开关与音效设置还原成出厂值（不动外部推送目标和已选的自定义音频文件）。
-
-</details>
-
 ## 提醒渠道
 
 | 渠道 | 表现 |
@@ -375,6 +379,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 抬不起来的几种场合与[已知限制](#已知限制)里列的一致（提权窗口、另一虚拟桌面、前台被反复抢走、`SW_HIDE` 托盘隐藏），一律如实回 `202`、对话照常切。
 
 </details>
+
 ### macOS 桌面端怎么发系统通知
 
 页面里的 `new Notification()` 在 macOS 的 DSH Desktop（`dsh-app://app`）上进不了通知中心——不弹，也不报错（`Notification.permission` 照样是 `granted`）。插件在这一平台上改走宿主：页面 POST `/__dsh-notify-me/mac-notify`，宿主（`lib/mac-notify.js`）拉起 `macos/` 下的小助手 `DSH Notify.app`，由它用 `UNUserNotificationCenter` 发一条真正的系统通知。
@@ -400,7 +405,6 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 - **自动消失与收起**：原生 Toast 归 `trackToast()` 记账，普通通知 5 秒、带按钮的审批 12 秒（「总是关闭 / 从不关闭」照旧），回到页面（`keepOnReturn` 关闭时）同样收起。
 
 路由只开一个 exact 路径，其余一律拒：非 GET / POST 回 `405`，非 loopback 或未放行的 `Host` / `Origin` 回 `403`，POST 缺 `x-dsh-notify-me-win: toast` 头回 `403`，请求体不合法回 `400`。响应只回报投递状态，不含系统信息。
-
 
 ## 已知限制
 
@@ -444,6 +448,9 @@ npm test                         # smoke-test（状态机）+ host-route-test（
 npm pack --dry-run               # 预览发布包
 ```
 
+<details>
+<summary>各测试套件覆盖范围与手动检查</summary>
+
 `smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」。
@@ -459,6 +466,8 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 ```
 
 `cordis-host-test.mjs` 会从本机 DSH 安装借 `@deepseek-ai/cordis`（依次探测 npm 全局目录、`~/.dsh/profiles/web/node_modules` 与 `~/.dsh/profiles/node_modules` 平铺回退目录）；源码 checkout 里没有 profile 依赖时，用 `DSH_CORDIS_PATH=<checkout>/vendor/cordis/lib/index.js` 指定即可。
+
+</details>
 
 ## 致谢与贡献须知
 
@@ -486,6 +495,9 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 
 ## Star History
 
+<details>
+<summary>展开 Star History 图表</summary>
+
 <a href="https://www.star-history.com/?repos=chromoany%2Fdsh-notify-me&type=timeline&legend=bottom-right">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&theme=dark&legend=bottom-right" />
@@ -493,6 +505,8 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=chromoany/dsh-notify-me&type=date&legend=bottom-right" />
  </picture>
 </a>
+
+</details>
 
 ## License
 
