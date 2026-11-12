@@ -420,6 +420,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 - **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到「DeepSeek Harness」这个 AUMID 下——与 DSH 自己的通知同级，走同一套系统通知设置。
 - **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。
+- **中文用户名等非 ASCII profile**：处理器脚本按 UTF-16LE + BOM 写盘，动作目录在点击时才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——脚本正文因此全是 ASCII，不会再被 WSH 按系统 ANSI 代码页解码后把路径弄乱（此前每次点按钮都弹 `800A004C` 脚本错误，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修复。升级后重启桌面端即可，第一次发带按钮的 Toast 时会重写这份脚本，不用手动清旧文件。
 - **注册**：第一次发带按钮的 Toast 时在 `HKCU\Software\Classes\dsh-notify-me` 注册上面那个处理器（当前用户级，不需要管理员权限），并按 tag 记账到 `ToastNotificationManager.History`。token 单次、3 分钟有效；动作文件被取走后即删。
 - **不弹的场合**：非 Windows 桌面宿主、`winToast.enabled: false`、或 `powershell.exe` 不存在时，路由报 `enabled: false`（`501`），页面继续用自己那条不带按钮的通知，行为与改动前一致。
 - **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `winToast: { enabled: false }`，审批提醒回到页面自己的通知（无按钮）。
@@ -478,7 +479,7 @@ npm pack --dry-run               # 预览发布包
 
 `smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数（含 `--id` / `--sound` 与 `{remove:id}` 撤回）、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
 
-`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。
+`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式，且不烘入 profile 路径。
 
 改到 `lib/focus-window.ps1` 时（仅 Windows），另需手动跑一次：
 
@@ -512,6 +513,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/xty13114150041"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/xty13114150041.png" width="40" height="40" alt="@xty13114150041"></a> | [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32)：macOS 桌面端页面通知不响的排查与宿主助手方案（`lib/mac-notify.js` + `macos/`），1.19.0 起支持 |
 | <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：Windows 桌面端审批通知没有「同意 / 拒绝」按钮的反馈，以及 Electron 丢弃 `actions` / 桌面端注册不了 Service Worker 的源码级定位，1.19.0 起支持 |
 | <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中继自定义 JSON 请求体模板（`relay.bodyTemplate`），含测试与文档，1.20.0 起支持 |
+| <a href="https://github.com/AlbertDope"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AlbertDope.png" width="40" height="40" alt="@AlbertDope"></a> | [#36](https://github.com/chromoany/dsh-notify-me/issues/36)：Windows 中文用户名下审批按钮必弹 `800A004C` 的根因定位（WSH 按 ANSI 代码页解码处理器脚本）与修复验证，1.20.1 起修复 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 
