@@ -250,6 +250,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
       path: ''
       target: ''
       credentialsFile: ''
+      bodyTemplate: ''            # 可选：JSON 请求体模板，见「同源中继」
 ```
 
 逐键说明（括号内是默认值）：
@@ -290,6 +291,25 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 启用需要 `relay.enabled: true`、`relay.path`（必须是绝对路径）、`relay.target`（留空回落到 `gateway.target`）和 `relay.credentialsFile`（留空回落到 `gateway.credentialsFile`）。路径本身就是能力——知道它就能让宿主替你发一条通知，价值等同口令，所以建议带一段随机 token：`/__dsh-notify-me/relay/<32 hex token>`。
 
+`relay.bodyTemplate`（可选）给不接受 Apprise `{title, body, type}` 形状的网关用：写一段 JSON 模板，宿主按模板渲染请求体。占位符是 `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}`（取载荷里的 `sessionId`）`{{source}}` `{{version}}`，要写在 JSON 字符串里；代入的值先按 JSON 字符串转义，所以标题里的引号、换行不会把模板弄坏，载荷里没有的字段渲染成空串，模板里没写的字段不会出现在请求体里。
+
+模板在宿主启动时就校验：渲染结果不是 JSON 对象、或模板超过 16 KiB（按 UTF-8 字节算），整条中继不挂载，日志里留一行 warning 写明原因，状态回包与设置页也显示中继未启用——配错一次就能看见，不用等每条提醒都回 500。渲染后的请求体另有 256 KiB 上限（模板可以重复占位符放大体积），超了回 `500 {reason:'rendered-body-too-large'}` 且不发送。不写这个键时保持原来的 `{title, body, type:'info'}` 不变。
+
+例：把提醒推给自己的推送服务（下面以 MagicPush 风格接口为例，它要求 `channel_ids` + `title` + `content`，Bearer 令牌放在宿主的 0600 凭据文件里）：
+
+```yaml
+- id: notify-me
+  config:
+    relay:
+      enabled: true
+      path: '/__dsh-notify-me/relay/<32 hex token>'
+      target: 'https://push.example.com/api/v1/notifications/send'
+      credentialsFile: '/absolute/path/push-credentials.json'   # {"authorization":"Bearer fn_push_..."}
+      bodyTemplate: '{"channel_ids":["<channel-id>"],"title":"{{title}}","content":"{{text}}"}'
+```
+
+YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook」的地址填成同一个 `target`，请求会自动折叠到中继路由，凭据仍只留在宿主。
+
 用法：**设置 → 通知提醒 → 高级设置 → 外部推送** 里多出两行只读状态，「同源中继」一行显示 `已启用 · 地址：<origin><relay.path>`；把那个绝对地址填进同页「自定义 Webhook」目标的地址即可，页面不必知道凭据。
 
 不想改地址也行：**「自定义 Webhook」目标里如果填的是中继上游网关本身的地址，发送时会自动折叠到中继路由**。这类地址在浏览器里注定失败（上面三条 CORS 事实各堵一次，其中 `no-cors` 兜底还会被 Apprise 当成跨站请求直接 `403 Cross-site request rejected`），旧版把它记成 `unverified`——设置页显示「上次已送出（不可确认）」、测试按钮报「已送出不可确认」，**而手机一声不响**。折叠之后请求走同源、凭据由宿主补，回执就是网关的真实状态。折叠要同时满足：目标类型是「自定义」、URL 主机名等于 `relay.upstreamHost`、路径也等于 `relay.upstreamPath`、目标没配签名密钥（签名在页面算，中继带不过去）、且目标不是本页同源。主机名或路径有一项对不上就原样直发（一个网关常按路径分多个 notify key，只比主机名会把 A key 的提醒发到 B key 去），设置页会在会被折叠的目标下写一行说明。
@@ -299,8 +319,9 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 回包口径（页面据此把「已送出不可确认」变成可核对的状态）：
 
 - `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`：只读探针，不转发、不带凭据，但**和其它宿主入口走同一道闸门**——路径本身就是能力，不设闸门的探针会把「猜对了」告诉猜的人；拿它确认「这个进程挂的是不是我配的那条路径」；
-- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（页面载荷里的 `tag` 不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
+- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（配了 `relay.bodyTemplate` 时改为按模板渲染出的 JSON 对象；页面载荷里的 `tag` 一律不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
 - `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字符）＝转发成功；上游非 2xx 回 `502`，同为这一形状；
+- `500 {reason}`：模板配错（`invalid-body-template` / `template-too-large` / `rendered-body-too-large`）——前两种正常在宿主启动校验时就拦下了，这里只是运行期的兜底，且什么都不发；
 - `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝或缺少意图头）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常或网关回了 3xx——跳转不跟，因为跟过去会把 body 和 `Authorization` 重放到别处）。
 
 凭据只在宿主：页面拿不到它，它也不会回显在响应或日志里。`POST` 走与其它宿主入口同一道闸门，所以跨站页面或 DNS rebinding 的伪造来源即使猜到路径也会被拒。
@@ -453,7 +474,7 @@ npm pack --dry-run               # 预览发布包
 
 `smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
-新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」。
+新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」、`relay.bodyTemplate` 的模板渲染与 JSON 转义、坏模板启动即不注册、渲染体积上限。
 
 `smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数（含 `--id` / `--sound` 与 `{remove:id}` 撤回）、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
 
@@ -490,6 +511,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/Matthew-Laplace"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Matthew-Laplace.png" width="40" height="40" alt="@Matthew-Laplace"></a> | [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28)：`keepOnReturn`（回到页面也保留提醒）的提案与最小实现，以及「前台也提醒」一键预设的诉求，1.19.0 起支持 |
 | <a href="https://github.com/xty13114150041"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/xty13114150041.png" width="40" height="40" alt="@xty13114150041"></a> | [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32)：macOS 桌面端页面通知不响的排查与宿主助手方案（`lib/mac-notify.js` + `macos/`），1.19.0 起支持 |
 | <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：Windows 桌面端审批通知没有「同意 / 拒绝」按钮的反馈，以及 Electron 丢弃 `actions` / 桌面端注册不了 Service Worker 的源码级定位，1.19.0 起支持 |
+| <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中继自定义 JSON 请求体模板（`relay.bodyTemplate`），含测试与文档，1.20.0 起支持 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 

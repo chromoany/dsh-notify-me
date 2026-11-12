@@ -2,6 +2,25 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.20.0] — 2026-11-12
+
+同源中继可以按网关自己的字段形状发请求体了：`relay.bodyTemplate` 写一段 JSON 模板，宿主渲染后转发；模板配错在宿主启动时就拦下，不会让每条提醒都回 500。
+
+### 新增
+
+- **同源中继支持自定义 JSON 请求体模板**（配置键 `relay.bodyTemplate`，[#34](https://github.com/chromoany/dsh-notify-me/pull/34)，原提案 sakurakugu）：网关不接受 Apprise 的 `{title, body, type}` 形状时（自有推送服务、MagicPush 风格的 REST API 等），写一段 JSON 模板，宿主用事件字段渲染后转发。占位符为 `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}` `{{source}}` `{{version}}`，其中 `{{session}}` 取载荷的 `sessionId`，占位符要写在 JSON 字符串里；代入值先按 JSON 字符串转义，所以标题里的引号、换行不会把模板弄坏。不配置这个键时行为与 1.19.0 完全一致。
+- **模板在宿主启动时校验**：渲染结果不是 JSON 对象、或模板超过 16 KiB（UTF-8 字节），中继整条不挂载，日志留一行 warning 写明原因，状态回包与设置页也显示中继未启用——配错一次就能发现，而不是每条提醒都回 500。
+- **渲染后的请求体另有 256 KiB 上限**：模板可以重复占位符把 64 KiB 的载荷放大，所以渲染结果超过上限时回 `500 {reason:'rendered-body-too-large'}` 且不发送；运行期的 `invalid-body-template` / `template-too-large` 作为配置漂移的兜底保留。
+
+### 测试
+
+- `smoke/relay-route-test.mjs` 新增：模板字段渲染、标题引号与换行的 JSON 转义、凭据仍由宿主提供、模板请求体不添加 Apprise 的 `type`、坏模板启动即不注册（warning 写明原因）、超大模板同样拦下、重复占位符放大超过上限时回 500 且不发送。
+
+### 文档
+
+- README 中英补 `relay.bodyTemplate` 的配置示例、占位符与转义规则、启动校验与两级体积上限；POST 契约与回包口径同步。
+- `cordis.patch.yml` 的 relay 段补 `bodyTemplate` 行；致谢补 [#34](https://github.com/chromoany/dsh-notify-me/pull/34)（sakurakugu）；版本升到 1.20.0。
+
 ## [1.19.0] — 2026-11-09
 
 「回到页面也保留提醒」把 1.17.0 的收起动作交还给你；Windows 桌面端的审批通知终于带上真的「同意 / 拒绝」按钮，macOS 桌面端的系统通知改由宿主助手发出。同时收编 [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28) / [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30) / [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32) / [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：把「转发外部通知」总开关接到宿主兜底上，并修掉 macOS 原生通道的几个边界。

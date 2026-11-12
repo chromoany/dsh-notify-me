@@ -250,6 +250,7 @@ An override example for the profile (`~/.dsh/profiles/<profile>/cordis.patch.yml
       path: ''
       target: ''
       credentialsFile: ''
+      bodyTemplate: ''            # optional JSON template, see "Same-origin relay"
 ```
 
 Key by key (defaults in parentheses):
@@ -290,6 +291,25 @@ The page is left reporting "sent but unverifiable". The same-origin relay moves 
 
 Enabling it takes `relay.enabled: true`, an absolute `relay.path`, `relay.target` (empty falls back to `gateway.target`) and `relay.credentialsFile` (empty falls back to `gateway.credentialsFile`). The path is itself the capability — knowing it is enough to make the host send a notification for you, so it is worth as much as a password; keep a random token in it: `/__dsh-notify-me/relay/<32 hex token>`.
 
+`relay.bodyTemplate` (optional) is for a gateway that does not accept the Apprise `{title, body, type}` shape: write a JSON template and the host renders the request body from it. Placeholders are `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}` (which reads the payload's `sessionId`) `{{source}}` `{{version}}`, and they belong inside JSON strings; values are JSON-string-escaped, so a quote or a newline in a title cannot break the template, a field the event does not carry renders as the empty string, and a field the template does not name never appears in the body.
+
+The template is checked when the host boots: if it does not render to a JSON object, or the template is over 16 KiB (counted as UTF-8 bytes), the whole relay is not mounted, one warning line in the log names the reason, and both the status reply and the settings page show the relay as off — a misconfiguration shows up once instead of failing every alert with a 500. The rendered body has its own 256 KiB cap (a template may repeat placeholders and blow the body up); over it the route answers `500 {reason:'rendered-body-too-large'}` and sends nothing. Leaving the key empty keeps the original `{title, body, type:'info'}` payload unchanged.
+
+Example: push alerts to your own push service (a MagicPush-style API below — it wants `channel_ids` + `title` + `content`, with the Bearer token in the host's mode-0600 credentials file):
+
+```yaml
+- id: notify-me
+  config:
+    relay:
+      enabled: true
+      path: '/__dsh-notify-me/relay/<32 hex token>'
+      target: 'https://push.example.com/api/v1/notifications/send'
+      credentialsFile: '/absolute/path/push-credentials.json'   # {"authorization":"Bearer fn_push_..."}
+      bodyTemplate: '{"channel_ids":["<channel-id>"],"title":"{{title}}","content":"{{text}}"}'
+```
+
+The YAML single quotes keep the template as written; in the settings page point a **custom webhook** target at the same `target` and the request folds onto the relay route — the credential stays on the host either way.
+
 How to use it: **Settings → Notify me → Advanced → External push** gains two read-only rows, and the "Same-origin relay" one shows `Enabled · address: <origin><relay.path>`; paste that absolute address into the URL of a **custom webhook** target on the same page, and the page never has to know the credentials.
 
 You do not have to change the address either: **a "custom webhook" target that names the relay's own upstream gateway is folded onto the relay route when it is sent.** Such an address cannot work from a browser (the three CORS facts above block it, and the `no-cors` fallback is a *cross-site* POST that Apprise answers `403 Cross-site request rejected`), and older builds recorded that as `unverified` — the settings row read "last delivery sent-unverified" and the test button reported "sent-unverified", **while the phone stayed silent**. Folded, the request stays same-origin and the host adds the credential, so the verdict is the gateway's real status. Folding requires all of: the target is of type "custom", its URL's host equals `relay.upstreamHost`, its path equals `relay.upstreamPath`, it carries no signature secret (the signature is computed in the page and the relay cannot carry it), and it is not already same-origin with this page. If either the host or the path differs it is posted exactly as configured — one gateway usually serves several notify keys by path, so comparing the host alone would send key A's alert to key B; the settings page prints a note under any target that will be folded.
@@ -299,8 +319,9 @@ Behind a tunnel or reverse proxy the relay passes the same `Host` gate as the br
 What comes back (which is how the page turns "sent but unverifiable" into something checkable):
 
 - `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`: a read-only probe that forwards nothing and carries no credential, but it does go through **the same gate as the other host entry points** — the path itself is the capability, so an ungated probe would tell whoever guessed it that the guess was right; use it to confirm that this process mounted the path you configured;
-- `POST` → reads the body (64 KiB cap), requires a JSON object, maps it onto the gateway's `{title, body, type:'info'}` (the payload's `tag` is deliberately not forwarded: Apprise treats a tag as a service filter, and an unmatched one answers 424), and attaches `gateway.headers` plus the credentials; the request must carry the `x-dsh-notify-me-relay: relay` intent header, without it the answer is `403 {reason:'missing-intent'}` — a cross-site form post cannot set a custom header, and setting one costs a preflight the gateway always fails;
+- `POST` → reads the body (64 KiB cap), requires a JSON object, maps it onto the gateway's `{title, body, type:'info'}` (or onto a rendered `relay.bodyTemplate` JSON object when one is configured; the payload's `tag` is deliberately never forwarded: Apprise treats a tag as a service filter, and an unmatched one answers 424), and attaches `gateway.headers` plus the credentials; the request must carry the `x-dsh-notify-me-relay: relay` intent header, without it the answer is `403 {reason:'missing-intent'}` — a cross-site form post cannot set a custom header, and setting one costs a preflight the gateway always fails;
 - `200 {ok, upstreamStatus, upstreamBody}` (with `upstreamBody` at most 500 characters) — the forward succeeded; a non-2xx from the gateway answers `502` in the same shape;
+- `500 {reason}`: a template that cannot be used (`invalid-body-template` / `template-too-large` / `rendered-body-too-large`) — the first two are normally caught at boot; this is the runtime backstop, and nothing is sent;
 - `400` (bad or empty JSON body), `413` (body over the cap), `405` (wrong method), `403` (refused by the gate, or a missing intent header), `503` (a credentials file is configured but cannot be read), `502 {reason:'upstream-error'}` (the upstream call itself failed, or the gateway answered 3xx — redirects are not followed, because following one would replay the body and the `Authorization` header somewhere else).
 
 Credentials stay in the host: the page cannot read them, and they are never echoed into a response or a log line. The `POST` goes through the same gate as the other host entry points, so a forged caller (a cross-site page, a DNS-rebinding page) is refused even if it learns the path.
@@ -453,7 +474,7 @@ npm pack --dry-run               # preview the published tarball
 
 `smoke/smoke-test.cjs` is the offline state-machine suite: three host generations + master switch + zh/en cases + the quick-decision bridge (worker half included) + idle detection and toast self-dismiss + withdrawing leftover toasts on return + toast tag length handling + the page's host-bridge probe / heartbeat / release and the shape of `debug().hostBridge`. `smoke/host-route-test.mjs` needs no local DSH and runs the `lib/index.js` route, its probe and the 403/405/501 gate on every platform.
 
-The three new suites also ship their own fake `ctx`, need no local DSH and touch no network: `smoke/page-bridge-test.mjs` runs the page-bridge route — status shape, heartbeat and release, missing intent header `403`, cross-origin `403`, bad JSON `400`, oversized `413`, the `allowedOrigins`-derived `Host` (a simulated tunnel) being let through, and path collisions; `smoke/host-fallback-test.mjs` runs the host fallback — approval dedupe, `turn/end` throttling, subagent skip, no push on a fresh lease, a push after the lease expires, an immediate push after `alive:false`, language following the heartbeat, credentials re-read after a 401, and the health probe; `smoke/relay-route-test.mjs` runs the relay — the `GET` probe, `405`, cross-origin `403`, `413`, `400`, `503`, the `200` / `502` mapping and "retry exactly once on a 401".
+The three new suites also ship their own fake `ctx`, need no local DSH and touch no network: `smoke/page-bridge-test.mjs` runs the page-bridge route — status shape, heartbeat and release, missing intent header `403`, cross-origin `403`, bad JSON `400`, oversized `413`, the `allowedOrigins`-derived `Host` (a simulated tunnel) being let through, and path collisions; `smoke/host-fallback-test.mjs` runs the host fallback — approval dedupe, `turn/end` throttling, subagent skip, no push on a fresh lease, a push after the lease expires, an immediate push after `alive:false`, language following the heartbeat, credentials re-read after a 401, and the health probe; `smoke/relay-route-test.mjs` runs the relay — the `GET` probe, `405`, cross-origin `403`, `413`, `400`, `503`, the `200` / `502` mapping and "retry exactly once on a 401", `relay.bodyTemplate` rendering and JSON escaping, a broken template registering no route at boot, and the rendered-size cap.
 
 `smoke/mac-notify-test.mjs` runs the macOS notification route: registered only on the macOS desktop host, the probe, the `405` / `403` / `501` / `400` refusals, the arguments handed to the helper, and the click hand-off being taken exactly once. It fakes the platform and Electron version, needs no real helper, and runs on every platform.
 
@@ -490,6 +511,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # the last line 
 | <a href="https://github.com/Matthew-Laplace"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Matthew-Laplace.png" width="40" height="40" alt="@Matthew-Laplace"></a> | [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28): the `keepOnReturn` proposal and minimal patch (keep alerts after coming back to the page), plus the ask for a single "alert in the foreground too" preset — supported since 1.19.0 |
 | <a href="https://github.com/xty13114150041"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/xty13114150041.png" width="40" height="40" alt="@xty13114150041"></a> | [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32): the macOS Desktop "notifications never arrive" investigation and the host-helper approach (`lib/mac-notify.js` + `macos/`) — supported since 1.19.0 |
 | <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33): the report that Windows Desktop approval notifications carry no Approve / Reject buttons, with the source-level finding that Electron drops `actions` and Desktop cannot register a Service Worker — fixed in 1.19.0 |
+| <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34): the custom JSON body template for the same-origin relay (`relay.bodyTemplate`), with tests and docs — supported since 1.20.0 |
 
 Attribution policy: external PRs are landed as maintainer commits — the original commit is not reused and no Co-authored-by trailer is added, so GitHub's contributors graph lists the maintainer only and contributors are credited above.
 

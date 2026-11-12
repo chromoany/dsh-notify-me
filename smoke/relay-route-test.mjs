@@ -224,6 +224,75 @@ try {
     globalThis.fetch = realFetch;
   }
 
+  // 3b) A `bodyTemplate` replaces the Apprise shape with the gateway's own
+  // schema (an own push service with different field names). Placeholder values
+  // are JSON-escaped, so quotes and newlines in a title cannot break the body.
+  {
+    const calls = captureFetch(() => ({ status: 200, text: '{"ok":true}' }));
+    const relay = bootRelay({
+      target: TARGET,
+      credentialsFile: '',
+      headers: { authorization: 'Bearer fn_push_test' },
+      bodyTemplate: JSON.stringify({
+        channel_ids: ['01a1c71d-fd93-731a-ad0e-e72fd39cf629'],
+        title: '{{title}}',
+        content: '{{text}}',
+      }),
+    });
+    const posted = await call(relay.route(RELAY), { method: 'POST', body: eventBody({ title: 'say "hi"\nnow' }) });
+    assert(posted.status === 200 && posted.body.ok === true,
+      'a templated delivery answers 200 (got ' + posted.status + ' ' + JSON.stringify(posted.body) + ')');
+    const forwarded = JSON.parse(calls[0].body);
+    assert(Array.isArray(forwarded.channel_ids) && forwarded.channel_ids[0] === '01a1c71d-fd93-731a-ad0e-e72fd39cf629',
+      'the template keeps its own fields, got ' + JSON.stringify(forwarded));
+    assert(forwarded.title === 'say "hi"\nnow',
+      'quotes and newlines survive JSON escaping, got ' + JSON.stringify(forwarded.title));
+    assert(forwarded.content === 'DSH · 回复完成 · atlas\natlas\n你刚才问：check the parser',
+      'the content placeholder renders the full text, got ' + JSON.stringify(forwarded.content));
+    assert(forwarded.type === undefined, 'the Apprise type field is not added to a templated body');
+    assert(calls[0].headers.authorization === 'Bearer fn_push_test',
+      'the credential still comes from the host side, got ' + calls[0].headers.authorization);
+    globalThis.fetch = realFetch;
+  }
+
+  // 3c) A template that cannot render a JSON object fails at boot, not on every
+  // alert: no route is registered, one warning names the reason, and the status
+  // reply (which reads relay.active) does not claim the relay is on.
+  {
+    captureFetch();
+    const relay = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: '{"title": "{{title}}"' });
+    assert(relay.routes.filter((r) => r.path === RELAY).length === 0,
+      'a malformed bodyTemplate registers no route');
+    assert(relay.warnings.length === 1 && relay.warnings[0].includes('invalid-body-template'),
+      'and warns once with the reason, got ' + JSON.stringify(relay.warnings));
+    globalThis.fetch = realFetch;
+
+    const big = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: '{"t":"' + 'x'.repeat(17 * 1024) + '"}' });
+    assert(big.routes.filter((r) => r.path === RELAY).length === 0,
+      'a bodyTemplate over 16 KiB registers no route');
+    assert(big.warnings.length === 1 && big.warnings[0].includes('template-too-large'),
+      'and warns once with the size reason, got ' + JSON.stringify(big.warnings));
+    globalThis.fetch = realFetch;
+  }
+
+  // 3d) The template cap bounds the template, not the rendered body: a template
+  // that repeats `{{text}}` is refused once the rendered body would exceed the
+  // 256 KiB cap, instead of handing the gateway a body that grew out of one
+  // 60 KiB event.
+  {
+    const calls = captureFetch();
+    const relay = bootRelay({
+      target: TARGET,
+      credentialsFile: '',
+      bodyTemplate: JSON.stringify({ chunks: Array(12).fill('{{text}}') }),
+    });
+    const posted = await call(relay.route(RELAY), { method: 'POST', body: eventBody({ text: 'x'.repeat(60 * 1024) }) });
+    assert(posted.status === 500 && posted.body.reason === 'rendered-body-too-large',
+      'an amplified templated body is refused (got ' + posted.status + ' ' + JSON.stringify(posted.body) + ')');
+    assert(calls.length === 0, 'and nothing is sent (got ' + calls.length + ')');
+    globalThis.fetch = realFetch;
+  }
+
   // 4) Fallbacks that make the route usable by any custom target: a missing
   // title, and a payload that only carries the rendered text.
   {

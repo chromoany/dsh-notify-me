@@ -84,6 +84,7 @@
           path: ''              # exact route, e.g. /__dsh-notify-me/relay/<32 hex token>
           target: ''
           credentialsFile: ''
+          bodyTemplate: ''      # optional JSON template, see "Same-origin relay"
         # Native Windows approval toasts with real Approve / Reject buttons. On
         # by default whenever the host runs the Windows desktop shell: the host
         # posts the toast through WinRT and registers a HKCU protocol handler on
