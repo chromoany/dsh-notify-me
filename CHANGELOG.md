@@ -2,6 +2,16 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [Unreleased]
+
+### 新增
+
+- **同源中继支持自定义请求体模板**（`relay.bodyTemplate`）：网关不接受 Apprise 的 `{title, body, type}` 形状时（自有推送服务、MagicPush 风格的 REST API 等），写一段 JSON 模板，宿主渲染后转发。占位符为 `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}` `{{source}}` `{{version}}`，值按 JSON 字符串转义后代入；渲染结果必须是 JSON 对象（否则回 `500 {reason:'invalid-body-template'}` 且不发送，模板上限 16 KiB）。不配置这个键时行为与 1.19.0 完全一致。
+
+### 测试
+
+- `smoke/relay-route-test.mjs` 新增：模板字段渲染、标题里引号与换行的 JSON 转义、凭据仍由宿主提供、非法模板回 500 且不发送。
+
 ## [1.19.0] — 2026-11-09
 
 「回到页面也保留提醒」把 1.17.0 的收起动作交还给你；Windows 桌面端的审批通知终于带上真的「同意 / 拒绝」按钮，macOS 桌面端的系统通知改由宿主助手发出。同时收编 [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28) / [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30) / [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32) / [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：把「转发外部通知」总开关接到宿主兜底上，并修掉 macOS 原生通道的几个边界。

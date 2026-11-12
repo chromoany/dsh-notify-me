@@ -250,6 +250,7 @@ An override example for the profile (`~/.dsh/profiles/<profile>/cordis.patch.yml
       path: ''
       target: ''
       credentialsFile: ''
+      bodyTemplate: ''            # optional JSON template, see "Same-origin relay"
 ```
 
 Key by key (defaults in parentheses):
@@ -290,6 +291,23 @@ The page is left reporting "sent but unverifiable". The same-origin relay moves 
 
 Enabling it takes `relay.enabled: true`, an absolute `relay.path`, `relay.target` (empty falls back to `gateway.target`) and `relay.credentialsFile` (empty falls back to `gateway.credentialsFile`). The path is itself the capability — knowing it is enough to make the host send a notification for you, so it is worth as much as a password; keep a random token in it: `/__dsh-notify-me/relay/<32 hex token>`.
 
+`relay.bodyTemplate` (optional) is for a gateway that does not accept the Apprise `{title, body, type}` shape: write a JSON template and the host renders the request body from it. Placeholders are `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}` `{{source}}` `{{version}}`. Values are JSON-string-escaped, so a quote or a newline in a title cannot break the template; the rendered result must be a JSON object, otherwise the route answers `500 {reason:'invalid-body-template'}` and sends nothing (templates are capped at 16 KiB, over that answers `template-too-large`). Leaving it empty keeps the original `{title, body, type:'info'}` payload unchanged.
+
+Example: push alerts to your own push service (a MagicPush-style API below — it wants `channel_ids` + `title` + `content`, with the Bearer token in the host's mode-0600 credentials file):
+
+```yaml
+- id: notify-me
+  config:
+    relay:
+      enabled: true
+      path: '/__dsh-notify-me/relay/<32 hex token>'
+      target: 'https://push.example.com/api/v1/notifications/send'
+      credentialsFile: '~/.dsh/push-credentials.json'   # {"authorization":"Bearer fn_push_..."}
+      bodyTemplate: '{"channel_ids":["<channel-id>"],"title":"{{title}}","content":"{{text}}"}'
+```
+
+The YAML single quotes keep the template as written; in the settings page point a **custom webhook** target at the same `target` and the request folds onto the relay route — the credential stays on the host either way.
+
 How to use it: **Settings → Notify me → Advanced → External push** gains two read-only rows, and the "Same-origin relay" one shows `Enabled · address: <origin><relay.path>`; paste that absolute address into the URL of a **custom webhook** target on the same page, and the page never has to know the credentials.
 
 You do not have to change the address either: **a "custom webhook" target that names the relay's own upstream gateway is folded onto the relay route when it is sent.** Such an address cannot work from a browser (the three CORS facts above block it, and the `no-cors` fallback is a *cross-site* POST that Apprise answers `403 Cross-site request rejected`), and older builds recorded that as `unverified` — the settings row read "last delivery sent-unverified" and the test button reported "sent-unverified", **while the phone stayed silent**. Folded, the request stays same-origin and the host adds the credential, so the verdict is the gateway's real status. Folding requires all of: the target is of type "custom", its URL's host equals `relay.upstreamHost`, its path equals `relay.upstreamPath`, it carries no signature secret (the signature is computed in the page and the relay cannot carry it), and it is not already same-origin with this page. If either the host or the path differs it is posted exactly as configured — one gateway usually serves several notify keys by path, so comparing the host alone would send key A's alert to key B; the settings page prints a note under any target that will be folded.
@@ -299,7 +317,7 @@ Behind a tunnel or reverse proxy the relay passes the same `Host` gate as the br
 What comes back (which is how the page turns "sent but unverifiable" into something checkable):
 
 - `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`: a read-only probe that forwards nothing and carries no credential, but it does go through **the same gate as the other host entry points** — the path itself is the capability, so an ungated probe would tell whoever guessed it that the guess was right; use it to confirm that this process mounted the path you configured;
-- `POST` → reads the body (64 KiB cap), requires a JSON object, maps it onto the gateway's `{title, body, type:'info'}` (the payload's `tag` is deliberately not forwarded: Apprise treats a tag as a service filter, and an unmatched one answers 424), and attaches `gateway.headers` plus the credentials; the request must carry the `x-dsh-notify-me-relay: relay` intent header, without it the answer is `403 {reason:'missing-intent'}` — a cross-site form post cannot set a custom header, and setting one costs a preflight the gateway always fails;
+- `POST` → reads the body (64 KiB cap), requires a JSON object, maps it onto the gateway's `{title, body, type:'info'}` (or onto a rendered `relay.bodyTemplate` JSON object when one is configured; the payload's `tag` is deliberately not forwarded: Apprise treats a tag as a service filter, and an unmatched one answers 424), and attaches `gateway.headers` plus the credentials; the request must carry the `x-dsh-notify-me-relay: relay` intent header, without it the answer is `403 {reason:'missing-intent'}` — a cross-site form post cannot set a custom header, and setting one costs a preflight the gateway always fails;
 - `200 {ok, upstreamStatus, upstreamBody}` (with `upstreamBody` at most 500 characters) — the forward succeeded; a non-2xx from the gateway answers `502` in the same shape;
 - `400` (bad or empty JSON body), `413` (body over the cap), `405` (wrong method), `403` (refused by the gate, or a missing intent header), `503` (a credentials file is configured but cannot be read), `502 {reason:'upstream-error'}` (the upstream call itself failed, or the gateway answered 3xx — redirects are not followed, because following one would replay the body and the `Authorization` header somewhere else).
 

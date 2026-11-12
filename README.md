@@ -250,6 +250,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
       path: ''
       target: ''
       credentialsFile: ''
+      bodyTemplate: ''            # 可选：JSON 模板，见「同源中继」
 ```
 
 逐键说明（括号内是默认值）：
@@ -290,6 +291,23 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 启用需要 `relay.enabled: true`、`relay.path`（必须是绝对路径）、`relay.target`（留空回落到 `gateway.target`）和 `relay.credentialsFile`（留空回落到 `gateway.credentialsFile`）。路径本身就是能力——知道它就能让宿主替你发一条通知，价值等同口令，所以建议带一段随机 token：`/__dsh-notify-me/relay/<32 hex token>`。
 
+`relay.bodyTemplate`（可选）用于网关不接受 Apprise 的 `{title, body, type}` 形状时：写一段 JSON 模板，宿主用它渲染请求体，占位符为 `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}` `{{source}}` `{{version}}`。值按 JSON 字符串转义后代入，所以标题里的引号、换行不会把模板弄坏；模板渲染后必须是 JSON 对象，否则回 `500 {reason:'invalid-body-template'}` 且不发送（模板上限 16 KiB，超了回 `template-too-large`）。不写这个键时保持原来的 `{title, body, type:'info'}` 不变。
+
+例：把提醒推给自己的推送服务（下面以 MagicPush 风格的接口为例，它要求 `channel_ids` + `title` + `content`，Bearer 令牌放在宿主的 0600 凭据文件里）：
+
+```yaml
+- id: notify-me
+  config:
+    relay:
+      enabled: true
+      path: '/__dsh-notify-me/relay/<32 hex token>'
+      target: 'https://push.example.com/api/v1/notifications/send'
+      credentialsFile: '~/.dsh/push-credentials.json'   # {"authorization":"Bearer fn_push_..."}
+      bodyTemplate: '{"channel_ids":["<channel-id>"],"title":"{{title}}","content":"{{text}}"}'
+```
+
+YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook」的地址填成同一个 `target`，请求会自动折叠到中继路由，凭据仍只留在宿主。
+
 用法：**设置 → 通知提醒 → 高级设置 → 外部推送** 里多出两行只读状态，「同源中继」一行显示 `已启用 · 地址：<origin><relay.path>`；把那个绝对地址填进同页「自定义 Webhook」目标的地址即可，页面不必知道凭据。
 
 不想改地址也行：**「自定义 Webhook」目标里如果填的是中继上游网关本身的地址，发送时会自动折叠到中继路由**。这类地址在浏览器里注定失败（上面三条 CORS 事实各堵一次，其中 `no-cors` 兜底还会被 Apprise 当成跨站请求直接 `403 Cross-site request rejected`），旧版把它记成 `unverified`——设置页显示「上次已送出（不可确认）」、测试按钮报「已送出不可确认」，**而手机一声不响**。折叠之后请求走同源、凭据由宿主补，回执就是网关的真实状态。折叠要同时满足：目标类型是「自定义」、URL 主机名等于 `relay.upstreamHost`、路径也等于 `relay.upstreamPath`、目标没配签名密钥（签名在页面算，中继带不过去）、且目标不是本页同源。主机名或路径有一项对不上就原样直发（一个网关常按路径分多个 notify key，只比主机名会把 A key 的提醒发到 B key 去），设置页会在会被折叠的目标下写一行说明。
@@ -299,7 +317,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 回包口径（页面据此把「已送出不可确认」变成可核对的状态）：
 
 - `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`：只读探针，不转发、不带凭据，但**和其它宿主入口走同一道闸门**——路径本身就是能力，不设闸门的探针会把「猜对了」告诉猜的人；拿它确认「这个进程挂的是不是我配的那条路径」；
-- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（页面载荷里的 `tag` 不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
+- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（配了 `relay.bodyTemplate` 时改为按模板渲染的 JSON 对象；页面载荷里的 `tag` 一律不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
 - `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字符）＝转发成功；上游非 2xx 回 `502`，同为这一形状；
 - `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝或缺少意图头）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常或网关回了 3xx——跳转不跟，因为跟过去会把 body 和 `Authorization` 重放到别处）。
 

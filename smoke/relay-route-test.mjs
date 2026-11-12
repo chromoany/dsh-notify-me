@@ -224,6 +224,49 @@ try {
     globalThis.fetch = realFetch;
   }
 
+  // 3b) A `bodyTemplate` replaces the Apprise shape with the gateway's own
+  // schema (an own push service with different field names). Placeholder values
+  // are JSON-escaped, so quotes and newlines in a title cannot break the body.
+  {
+    const calls = captureFetch(() => ({ status: 200, text: '{"ok":true}' }));
+    const relay = bootRelay({
+      target: TARGET,
+      credentialsFile: '',
+      headers: { authorization: 'Bearer fn_push_test' },
+      bodyTemplate: JSON.stringify({
+        channel_ids: ['01a1c71d-fd93-731a-ad0e-e72fd39cf629'],
+        title: '{{title}}',
+        content: '{{text}}',
+      }),
+    });
+    const posted = await call(relay.route(RELAY), { method: 'POST', body: eventBody({ title: 'say "hi"\nnow' }) });
+    assert(posted.status === 200 && posted.body.ok === true,
+      'a templated delivery answers 200 (got ' + posted.status + ' ' + JSON.stringify(posted.body) + ')');
+    const forwarded = JSON.parse(calls[0].body);
+    assert(Array.isArray(forwarded.channel_ids) && forwarded.channel_ids[0] === '01a1c71d-fd93-731a-ad0e-e72fd39cf629',
+      'the template keeps its own fields, got ' + JSON.stringify(forwarded));
+    assert(forwarded.title === 'say "hi"\nnow',
+      'quotes and newlines survive JSON escaping, got ' + JSON.stringify(forwarded.title));
+    assert(forwarded.content === 'DSH · 回复完成 · atlas\natlas\n你刚才问：check the parser',
+      'the content placeholder renders the full text, got ' + JSON.stringify(forwarded.content));
+    assert(forwarded.type === undefined, 'the Apprise type field is not added to a templated body');
+    assert(calls[0].headers.authorization === 'Bearer fn_push_test',
+      'the credential still comes from the host side, got ' + calls[0].headers.authorization);
+    globalThis.fetch = realFetch;
+  }
+
+  // 3c) A template that does not render to a JSON object is refused before
+  // anything is sent: a configuration error is reported, not forwarded.
+  {
+    const calls = captureFetch();
+    const relay = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: '{"title": "{{title}}"' });
+    const refused = await call(relay.route(RELAY), { method: 'POST', body: eventBody() });
+    assert(refused.status === 500 && refused.body.reason === 'invalid-body-template',
+      'a malformed template answers 500 invalid-body-template (got ' + refused.status + ' ' + JSON.stringify(refused.body) + ')');
+    assert(calls.length === 0, 'a malformed template sends nothing (got ' + calls.length + ')');
+    globalThis.fetch = realFetch;
+  }
+
   // 4) Fallbacks that make the route usable by any custom target: a missing
   // title, and a payload that only carries the rendered text.
   {
