@@ -5,7 +5,8 @@
 // PowerShell helper cannot reasonably run in CI, so spawn/exec are injected:
 // what is pinned here is the route contract (405/403/501/400, GET actions,
 // POST send/remove), the decoded toast payload, the HKCU protocol registration,
-// and the token rules — single use, bound to one approval key, expiring.
+// the encoding of the generated VBS handler, and the token rules — single use,
+// bound to one approval key, expiring.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,11 +21,15 @@ const win = await import(pathToFileURL(path.join(ROOT, 'lib', 'win-toast.js')).h
 assert(win.WIN_TOAST_ROUTE === '/__dsh-notify-me/win-toast', 'WIN_TOAST_ROUTE is the path the page calls');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-notify-me-win-'));
+// mountWinToast derives its directories from %LOCALAPPDATA% on Windows; point
+// that at the scratch dir so the test never touches the real profile directory.
+const realLocalAppData = process.env.LOCALAPPDATA;
+process.env.LOCALAPPDATA = tmp;
 const psPath = path.join(tmp, 'powershell.exe');
 const scriptPath = path.join(tmp, 'win-toast.ps1');
 fs.writeFileSync(psPath, '');
 fs.writeFileSync(scriptPath, '');
-const actionsDir = path.join(tmp, 'actions');
+const actionsDir = path.join(tmp, 'dsh-notify-me', 'actions');
 
 const spawned = [];
 const execCalls = [];
@@ -61,7 +66,6 @@ function mount(config = {}, deps = {}) {
   win.mountWinToast(ctx, config, { bindHost: undefined, allowedOrigins: [] }, undefined, {
     spawn: fakeSpawn,
     execFile: fakeExec,
-    dir: tmp,
     psPath: psPath,
     scriptPath: scriptPath,
     aumid: 'test.aumid',
@@ -153,9 +157,15 @@ try {
   assert(execCalls.length === 3, 'first approval registers the protocol with three reg.exe calls');
   assert(execCalls[0].file === 'reg' && execCalls[0].args.join(' ').includes('HKCU\\Software\\Classes\\dsh-notify-me'),
     'the protocol is registered under HKCU\\Software\\Classes');
-  const handlerVbs = path.join(tmp, 'notify-handler.vbs');
+  const handlerVbs = path.join(tmp, 'dsh-notify-me', 'notify-handler.vbs');
   assert(fs.existsSync(handlerVbs), 'the protocol handler script is written');
-  assert(fs.readFileSync(handlerVbs, 'utf8').includes(actionsDir), 'the handler writes into the actions directory');
+  const vbsBytes = fs.readFileSync(handlerVbs);
+  assert(vbsBytes[0] === 0xff && vbsBytes[1] === 0xfe, 'the handler script carries a UTF-16LE BOM');
+  const vbsText = vbsBytes.subarray(2).toString('utf16le');
+  assert(/^[\x00-\x7f]*$/.test(vbsText), 'the handler script is pure ASCII, so a non-ASCII profile path cannot be garbled');
+  assert(vbsText.includes('sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\\dsh-notify-me\\actions"'),
+    'the actions directory is resolved from %LOCALAPPDATA% at click time');
+  assert(!vbsText.includes(tmp), 'no profile path is baked into the handler script');
 
   // 3b. Approve click: single use, bound to the approval key.
   writeAction('a1.txt', 'dsh-notify-me://approve?token=' + sentBody.token);
@@ -194,6 +204,8 @@ try {
   assert(spawned.length === 1 && spawned[0].args.includes('-RemoveTag') && spawned[0].args.includes(sentBody.id),
     'the remove spawns -RemoveTag for the history tag');
 } finally {
+  if (realLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+  else process.env.LOCALAPPDATA = realLocalAppData;
   Object.defineProperty(process, 'platform', realPlatform);
   if (realElectron === undefined) delete process.versions.electron;
   else Object.defineProperty(process.versions, 'electron', { value: realElectron, configurable: true, writable: true });

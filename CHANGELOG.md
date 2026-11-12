@@ -2,6 +2,18 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.20.1] — 2026-11-13
+
+Windows 中文用户名下点审批通知的「同意 / 拒绝」不再弹脚本错误：协议处理器改成纯 ASCII + UTF-16LE BOM 落盘。
+
+### 修复
+
+- **非 ASCII 用户名下点通知按钮必弹 800A004C**（[#36](https://github.com/chromoany/dsh-notify-me/issues/36)）：`notify-handler.vbs` 原来按 UTF-8 无 BOM 写入，且把 `C:\Users\<用户名>\AppData\Local\dsh-notify-me\actions` 整个绝对路径烘进脚本。WSH 用系统 ANSI 代码页（中文是 CP936）解码这种文件，中文用户名被按双字节拆开、路径里的反斜杠被吃掉，第 8 行 `FolderExists` 找不到目录，于是每次点按钮都弹 Windows Script Host 错误框，动作写不进 actions 目录，DSH 也不会被唤回。现在脚本里只写 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\dsh-notify-me\actions"`，点击时才解析路径，脚本正文保持纯 ASCII；文件本身同时改成 UTF-16LE + BOM 写入，将来真有非 ASCII 进脚本也不会被按 ANSI 解码。
+
+### 测试
+
+- `smoke/win-toast-test.mjs` 原来用 UTF-8 回读脚本并断言包含临时目录路径，恰好把编码问题盖住；现在断言脚本带 UTF-16LE BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式、不烘入任何 profile 路径。测试把 `LOCALAPPDATA` 指向临时目录，走的是生产分支。
+
 ## [1.20.0] — 2026-11-12
 
 同源中继可以按网关自己的字段形状发请求体了：`relay.bodyTemplate` 写一段 JSON 模板，宿主渲染后转发；模板配错在宿主启动时就拦下，不会让每条提醒都回 500。
