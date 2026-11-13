@@ -13,7 +13,7 @@
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#安装)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
-[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--rc.1%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#兼容性)
+[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--rc.2%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#兼容性)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 </div>
@@ -343,7 +343,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 ## 兼容性
 
-已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.1` 上真正激活，最近的桌面端 `0.2.2-rc.1` 也在其中（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
+已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.2` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.2` 与桌面端当前打包的 `0.2.2-rc.1`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
 
 ## 控制台高级配置
 
