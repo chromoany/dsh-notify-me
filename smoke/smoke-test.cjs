@@ -1789,6 +1789,75 @@ async function desktopRaiseChannel() {
     + 'hostEnv overrides both ways, and refusals or dead routes are non-fatal');
 }
 
+// ── macOS native toast: collect a click even while DSH is already frontmost ──
+// Clicking a banner raises DSH with dsh://open; when the app is already the
+// frontmost one that activates nothing, so the page never receives a focus
+// event and the focus-only read in onPageFocus() cannot see the host's click
+// file. The macOS channel therefore polls the host while a native toast is
+// outstanding, mirroring startWinPoll() for Windows approval toasts. This case
+// boots the macOS desktop, raises a native attention toast for a background
+// session, and answers the next probe with the click the helper would have
+// written — without ever firing a window focus event.
+async function macNativeClickPoll() {
+  console.log('\n— macOS native toast: a frontmost click is collected by the poll —');
+  const MAC_ROUTE = '/__dsh-notify-me/mac-notify';
+  const state = { click: null, gets: 0, posts: 0 };
+  const stub = (url, opts) => {
+    const u = String(url);
+    const method = (opts && opts.method) || 'GET';
+    if (u.indexOf(MAC_ROUTE) !== -1) {
+      if (method === 'GET') {
+        state.gets += 1;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, enabled: true, click: state.click }) });
+      }
+      state.posts += 1;
+      // A {remove} POST withdraws a toast; it is not a click. Only a real post
+      // arms the click the next probe in the poll below answers with.
+      let body = {};
+      try { body = opts && opts.body ? JSON.parse(opts.body) : {}; } catch (e) { body = {}; }
+      if (!body || !body.remove) state.click = { sessionId: 's2', at: Date.now() };
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, detail: 'OK' }) });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+  };
+  const b = bootBundle({
+    extend(sandbox) {
+      sandbox.location = { origin: 'dsh-app://app', protocol: 'dsh-app:' };
+      sandbox.navigator = { ...(sandbox.navigator || {}), userAgent: MAC_UA };
+      sandbox.fetch = stub;
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  await sleep(40); // let the boot-time mac probe settle
+  assert(b.win.__dshNotifyMe.debug().macNative === true,
+    'the helper route is reported enabled, got ' + JSON.stringify(b.win.__dshNotifyMe.debug().macNative));
+
+  // A background session raises an attention toast through the helper. The
+  // page stays visible and focused — the state that produces the bug — and no
+  // focus event is delivered after this point.
+  host.setList({ ids: ['s1', 's2'], byId: {
+    s1: { displayTitle: '当前会话', retainedBy: { mainView: 1 } },
+    s2: { displayTitle: '后台任务', retainedBy: {} },
+  }, phase: 'ready' });
+  host.notifyList();
+  host.setStatus(new Map([['s2', statusRow(question('question:mac-poll', { sessionId: 's2' }))]]));
+  host.notifyStatus();
+  assert(state.posts === 1, 'the attention alert went out through the helper, got ' + state.posts);
+
+  // No setWindowFocus() here: the poll is the only trigger.
+  await sleep(1200);
+  assert(host.opened.indexOf('s2') !== -1,
+    'the poll selected the alerted session without a focus event, opened=' + JSON.stringify(host.opened));
+  const getsAtClick = state.gets;
+  await sleep(1200);
+  assert(state.gets === getsAtClick,
+    'the poll stops after the click is consumed, got ' + state.gets + ' vs ' + getsAtClick);
+
+  for (const c of [...host.cleanups]) c();
+  console.log('macOS click poll OK: a frontmost click switches via the poll, then the poll stops');
+}
+
 // ── alert sound source: built-in cue / picked file / system sound ──────────
 // The cue is the one alert surface with no coverage at all: the harness leaves
 // AudioContext undefined, so every other case silently takes the "no audio
@@ -4271,6 +4340,7 @@ function mutedSessionsUi() {
   await completionUnreadChannel();
   await quickActionsHost();
   await desktopRaiseChannel();
+  await macNativeClickPoll();
   await soundSources();
   uniqueToastTags();
   toastTagLimits();
