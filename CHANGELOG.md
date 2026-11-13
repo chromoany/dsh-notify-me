@@ -2,6 +2,12 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [Unreleased]
+
+### 修复
+
+- **macOS 原生通知在 DSH 已在前台时点击不切会话**：助手的点击文件只在页面重新获得焦点时被读取，而 DSH 本来就处于前台时 `dsh://open` 不会产生新的激活，页面收不到 `focus`，文件就留在临时目录里，直到你下次切走再回来才补跳一次。macOS 通道现在会在通知挂出后、页面处于前台时每秒探测一次宿主（最多 120 秒），点击后 1 秒内完成切换，读到点击即停；窗口不在前台时不轮询，仍由 `focus` 事件处理。Windows 端的 `startWinPoll` 一直有同样的处理，这次补齐 macOS 的缺口。`smoke/smoke-test.cjs` 新增用例：模拟前台点击，只靠轮询切到目标会话，并断言点击后轮询停止。
+
 ## [1.20.1] — 2026-11-13
 
 Windows 中文用户名下点审批通知的「同意 / 拒绝」不再弹脚本错误：协议处理器改成纯 ASCII + UTF-16LE BOM 落盘。
