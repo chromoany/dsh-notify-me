@@ -216,7 +216,6 @@ public class FocusNative
 
     $candidates = @()
     foreach ($w in $allWindows) {
-        if (-not $w.Visible) { continue }
         if ($w.HasOwner) { continue }
         if ($w.ToolWindow) { continue }
         $titleMatch = ($w.Title -like '*DeepSeek*')
@@ -231,6 +230,11 @@ public class FocusNative
             if ([int]$w.Pid -ne $ProcessId) { continue }
             $isProcMatch = $true
         }
+        # A window hidden with SW_HIDE (the tray toggle) is still the window the
+        # user wants back. Keep it only when it belongs to the DSH process, so a
+        # hidden window that merely mentions DeepSeek in its title is not shown
+        # to the user (issue #40).
+        if (-not $w.Visible -and -not $isProcMatch) { continue }
         $isClassTarget = ($w.ClassName -eq [FocusNative]::TARGET_CLASS)
         $candidates += [pscustomobject]@{
             Hwnd          = $w.Hwnd
@@ -239,6 +243,7 @@ public class FocusNative
             Title         = $w.Title
             Area          = [long]$w.Area
             Iconic        = [bool]$w.Iconic
+            Visible       = [bool]$w.Visible
             IsClassTarget = [bool]$isClassTarget
             IsProcMatch   = [bool]$isProcMatch
         }
@@ -250,6 +255,7 @@ public class FocusNative
     } else {
         $sortSpec = @(
             @{ Expression = { [int]$_.IsProcMatch }; Descending = $true }
+            @{ Expression = { [int]$_.Visible }; Descending = $true }
             @{ Expression = { [int]$_.IsClassTarget }; Descending = $true }
             @{ Expression = { [long]$_.Area }; Descending = $true }
         )
@@ -257,18 +263,24 @@ public class FocusNative
         $idx = 0
         foreach ($c in $ranked) {
             $idx++
-            Out-Line ("DETAIL: candidate #{0} hwnd=0x{1:X} pid={2} class={3} area={4} iconic={5} procMatch={6} title={7}" -f `
-                $idx, $c.Hwnd.ToInt64(), $c.Pid, $c.ClassName, $c.Area, $c.Iconic, $c.IsProcMatch, (Short-Text $c.Title 70))
+            Out-Line ("DETAIL: candidate #{0} hwnd=0x{1:X} pid={2} class={3} area={4} iconic={5} visible={6} procMatch={7} title={8}" -f `
+                $idx, $c.Hwnd.ToInt64(), $c.Pid, $c.ClassName, $c.Area, $c.Iconic, $c.Visible, $c.IsProcMatch, (Short-Text $c.Title 70))
         }
 
         $chosen = $ranked[0]
         $reason = 'largest area among the remaining candidates'
         if ($chosen.IsClassTarget) { $reason = 'preferred class Chrome_WidgetWin_1, largest area among those' }
         if (-not $chosen.IsProcMatch) { $reason = 'title match only (no process-name match), largest area among those' }
-        Out-Line ("DETAIL: selected hwnd=0x{0:X} pid={1} class={2} area={3} ({4})" -f `
-            $chosen.Hwnd.ToInt64(), $chosen.Pid, $chosen.ClassName, $chosen.Area, $reason)
+        if (-not $chosen.Visible) { $reason = 'tray-hidden DSH window, ' + $reason }
+        Out-Line ("DETAIL: selected hwnd=0x{0:X} pid={1} class={2} area={3} visible={4} ({5})" -f `
+            $chosen.Hwnd.ToInt64(), $chosen.Pid, $chosen.ClassName, $chosen.Area, $chosen.Visible, $reason)
 
         $hwnd = [IntPtr]$chosen.Hwnd
+        if (-not $chosen.Visible) {
+            Out-Line 'DETAIL: step 0: window is tray-hidden, ShowWindow(SW_SHOW)'
+            [void][FocusNative]::ShowWindow($hwnd, [FocusNative]::SW_SHOW)
+            Start-Sleep -Milliseconds 50
+        }
         $fg0 = [FocusNative]::GetForegroundWindow()
         $iconic0 = [FocusNative]::IsIconic($hwnd)
         Out-Line ("DETAIL: initial foreground=0x{0:X} iconic={1}" -f $fg0.ToInt64(), $iconic0)

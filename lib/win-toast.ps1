@@ -45,12 +45,15 @@ if ($payload.approveToken) {
     $actions = '<actions><action content="' + (XmlEscape $payload.approveText) + '" activationType="protocol" arguments="' + $approveArgs + '"/><action content="' + (XmlEscape $payload.rejectText) + '" activationType="protocol" arguments="' + $rejectArgs + '"/></actions>'
 }
 
-# Body click: raise DSH. With a session id it goes through our protocol handler
-# so the page can switch to that conversation; without one, straight to dsh://open.
+# Body click: always go through our own protocol handler. The host records the
+# click for the page, which raises the window through the host route (the only
+# way that works on Windows) and switches to the session when there is one.
+# dsh://open used to be the launch target with no session; it never raised a
+# minimized or tray-hidden window (issue #40).
 if ($payload.session) {
     $launch = ' launch="dsh-notify-me://open?session=' + [Uri]::EscapeDataString($payload.session) + '" activationType="protocol"'
 } else {
-    $launch = ' launch="dsh://open" activationType="protocol"'
+    $launch = ' launch="dsh-notify-me://open" activationType="protocol"'
 }
 
 $audio = ""

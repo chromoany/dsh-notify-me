@@ -19,6 +19,12 @@ function assert(cond, msg) { if (!cond) throw new Error('ASSERT FAILED: ' + msg)
 
 const win = await import(pathToFileURL(path.join(ROOT, 'lib', 'win-toast.js')).href);
 assert(win.WIN_TOAST_ROUTE === '/__dsh-notify-me/win-toast', 'WIN_TOAST_ROUTE is the path the page calls');
+// The toast body click must always come back through our protocol handler: the
+// helper's dsh://open launch is dead on Windows, and the page's host-route raise
+// is what brings a minimized or tray-hidden window back (issue #40).
+const toastPs1 = fs.readFileSync(path.join(ROOT, 'lib', 'win-toast.ps1'), 'utf8');
+assert(!toastPs1.includes('launch="dsh://open"'), 'the toast body never launches dsh://open');
+assert(toastPs1.includes('launch="dsh-notify-me://open"'), 'the toast body launches our own protocol');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-notify-me-win-'));
 // mountWinToast derives its directories from %LOCALAPPDATA% on Windows; point
@@ -187,6 +193,14 @@ try {
   const opened = JSON.parse((await call(handler, 'GET')).body);
   assert(opened.actions.length === 1 && opened.actions[0].action === 'open' && opened.actions[0].sessionId === 'sess-9',
     'a body click delivers an open action with its session');
+  // A body click without a session is still a raise request; the page must see
+  // it (issue #40: it used to be dropped here and only dsh://open tried to wake
+  // the window, which never worked).
+  writeAction('a4b.txt', 'dsh-notify-me://open');
+  const openedNoSession = JSON.parse((await call(handler, 'GET')).body);
+  assert(openedNoSession.actions.length === 1 && openedNoSession.actions[0].action === 'open'
+    && openedNoSession.actions[0].sessionId === '',
+    'a no-session body click keeps an open action with no session');
 
   // 3e. Expiry: a token older than the TTL never becomes a decision.
   let clock = 1000;

@@ -210,7 +210,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 <summary>通知语言、桌面端抬窗与恢复默认</summary>
 
 - **通知语言**：跟随界面 / 简体中文 / English——决定通知文字与 `🔔 …` 标题标记使用的语言；
-- **桌面端抬窗**：Windows 走宿主路由做原生激活、macOS / Linux 走 `dsh://open` 深链；最小化、被别的窗口盖住的窗口在 Windows 与 Linux 上都实测能抬回来（见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；
+- **桌面端抬窗**：Windows 走宿主路由做原生激活、macOS / Linux 走 `dsh://open` 深链；最小化、被别的窗口盖住的窗口在 Windows 与 Linux 上都实测能抬回来，Windows 上 `SW_HIDE` 到托盘的窗口也会先 `SW_SHOW` 再抬（1.21.0 起，见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）；
 - **恢复默认设置**：把所有开关与音效设置还原成出厂值（不动外部推送目标和已选的自定义音频文件）。
 
 </details>
@@ -387,7 +387,7 @@ DSH Desktop 是一层 Electron 壳，页面跑在 `dsh-app://app` 下：DOM 的 
 <details>
 <summary>展开路由、激活顺序、实测数据与安全闸门</summary>
 
-Windows 的宿主路由：壳把 `dsh-app://app` 下除静态资源以外的所有路径原样转发给宿主 HTTP server（带 origin 校验、注入宿主 cookie），所以上面那个 POST 是同源请求，没有 CORS 问题；宿主半（`lib/index.js`）本来就跑在 Electron 主进程的子进程里，`process.ppid` 就是主窗口所属的浏览器进程。点通知时：页面 POST → 宿主起一次 `powershell.exe` 跑 `lib/focus-window.ps1 -ProcessId <ppid>` → 脚本枚举该 pid 下可见、无 owner、非 toolwindow 的顶层窗口（优先类名 `Chrome_WidgetWin_1`，再按 `GetWindowRect` 面积取最大）→ 自适应激活 → 比对 `GetForegroundWindow()` 打印 `FOCUSED=1|0` → 宿主回 `200` / `202`。
+Windows 的宿主路由：壳把 `dsh-app://app` 下除静态资源以外的所有路径原样转发给宿主 HTTP server（带 origin 校验、注入宿主 cookie），所以上面那个 POST 是同源请求，没有 CORS 问题；宿主半（`lib/index.js`）本来就跑在 Electron 主进程的子进程里，`process.ppid` 就是主窗口所属的浏览器进程。点通知时：页面 POST → 宿主起一次 `powershell.exe` 跑 `lib/focus-window.ps1 -ProcessId <ppid>` → 脚本枚举该 pid 下无 owner、非 toolwindow 的顶层窗口（可见的优先；被 `SW_HIDE` 藏到托盘的 DSH 主窗也保留，优先于同进程的可见辅助窗口，选中后先 `ShowWindow(SW_SHOW)`）→ 自适应激活 → 比对 `GetForegroundWindow()` 打印 `FOCUSED=1|0` → 宿主回 `200` / `202`。
 
 Windows 的激活顺序是实的：已经在前台就什么都不做（最常见的情况，零闪烁）；最小化了先 `SW_RESTORE`；然后合成一次 ALT 按键（`keybd_event` 按下抬起）给本线程前台权限，再 `SetForegroundWindow`；这一串都不行才退到 `SW_MINIMIZE` + `SW_RESTORE` 兜底。单独调 `SetForegroundWindow` 会被前台锁直接拒，按调用算、跟 `ForegroundLockTimeout` 无关；这也重新解释了 1.5.2 那套深链「时灵时不灵」——能抬起来的那些次，多半是系统在通知被点击时自己激活了应用。
 
@@ -397,7 +397,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 那个头只是「这是页面发来的」标记，不是防线——DNS rebinding 的恶意页对目标地址而言是同源的，能带任意自定义头、也不触发预检。真正的闸门是三层：对端地址必须是 loopback，或恰好是监听器自己绑定的那个 IP；`Host` 必须是 loopback 名（`127.0.0.1` / `localhost` / `[::1]`，可带端口）或同一个绑定地址，因为壳转发时 `host` 已被删掉、由 fetch 按它拨号的 URL 重填，而 rebinding 的页面 Host 仍是攻击者域名；带了 `Origin` 就必须和 `Host` 同源。任一条不符回 `403`，`reason` 分别是 `bad-remote` / `bad-host` / `cross-origin`。`GET` 只回 `{ok, route, enabled, desktop, platform}`，装完可以先用浏览器打开确认路由在不在。400 毫秒内的重复调用合并成一次，脚本超过 8 秒没回话就 kill 掉按失败处理。
 
-抬不起来的几种场合与[已知限制](#已知限制)里列的一致（提权窗口、另一虚拟桌面、前台被反复抢走、`SW_HIDE` 托盘隐藏），一律如实回 `202`、对话照常切。
+抬不起来的几种场合与[已知限制](#已知限制)里列的一致（提权窗口、另一虚拟桌面、前台被反复抢走），一律如实回 `202`、对话照常切。`SW_HIDE` 到托盘的隐藏主窗原来直接回 `202`，1.21.0 起先 `SW_SHOW` 再走同一套激活步骤（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
 </details>
 
@@ -407,7 +407,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 - **一次性准备**：`bash macos/build.sh` 编译出 `macos/DSH Notify.app`（需要 Xcode Command Line Tools，几秒钟）。产物在 `.gitignore` 里，不进仓库也不进 npm 包。首次弹通知时在「系统设置 → 通知 → DSH Notify」里允许。
 - **走哪条路是自动的**：宿主只在「macOS + 桌面壳（Electron 二进制）+ 助手已编译」三个条件都满足时注册这条路由；任一不满足，`GET` 探测报 `enabled: false`，页面继续用自己原来的通知，行为与改动前一致。`dsh web`（浏览器）永远走不到这条路由。
-- **点通知回到对应对话**：小助手把会话 id 写进临时目录的 `dsh-notify-me-click.json` 并打开 `dsh://open` 抬窗；页面重新获得焦点时 `GET` 一次取走这个 id、切到对应对话，取走后即清掉，不会重复跳转。`autoFocus` 关掉时只抬窗不切会话。
+- **点通知回到对应对话**：小助手把会话 id 写进临时目录的 `dsh-notify-me-click.json` 并打开 `dsh://open` 抬窗；页面重新获得焦点时 `GET` 一次取走这个 id、切到对应对话，取走后即清掉，不会重复跳转。DSH 本来就处于前台时 `dsh://open` 不产生新的激活，页面收不到 `focus`，所以通知挂出后、页面在前台时还会每秒探测一次宿主（最多 120 秒），点击后 1 秒内完成切换，读到点击即停；窗口不在前台时不轮询。`autoFocus` 关掉时只抬窗不切会话。
 - **提示音**：设置里选「系统通知音」时交给 macOS，其余音效模式仍由页面自己合成，不会两声叠在一起。
 - **通知上仍然没有「同意 / 拒绝」按钮**：macOS 的通知动作要求注册通知类别，助手不碰审批状态，裁决仍在对话里做。
 - **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `macNotify: { enabled: false }`；或删掉 `macos/DSH Notify.app`，路由会退回 `enabled: false`。
@@ -420,6 +420,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 - **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到「DeepSeek Harness」这个 AUMID 下——与 DSH 自己的通知同级，走同一套系统通知设置。
 - **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。
+- **点正文也会抬窗**：正文点击统一走 `dsh-notify-me://open`（有会话时带 `?session=`，没有会话也保留为一次纯抬窗），不再把 `dsh://open` 当 Windows 抬窗手段——那条深链拉不起最小化窗口，更拉不起 `SW_HIDE` 到托盘的窗口。等待审批期间页面每 1.5 秒取一次动作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切会话；托盘隐藏的窗口由 `focus-window.ps1` 先 `SW_SHOW` 再激活（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - **中文用户名等非 ASCII profile**：处理器脚本按 UTF-16LE + BOM 写盘，动作目录在点击时才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——脚本正文因此全是 ASCII，不会再被 WSH 按系统 ANSI 代码页解码后把路径弄乱（此前每次点按钮都弹 `800A004C` 脚本错误，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修复。升级后重启桌面端即可，第一次发带按钮的 Toast 时会重写这份脚本，不用手动清旧文件。
 - **注册**：第一次发带按钮的 Toast 时在 `HKCU\Software\Classes\dsh-notify-me` 注册上面那个处理器（当前用户级，不需要管理员权限），并按 tag 记账到 `ToastNotificationManager.History`。token 单次、3 分钟有效；动作文件被取走后即删。
 - **不弹的场合**：非 Windows 桌面宿主、`winToast.enabled: false`、或 `powershell.exe` 不存在时，路由报 `enabled: false`（`501`），页面继续用自己那条不带按钮的通知，行为与改动前一致。
@@ -441,7 +442,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 - 快捷裁决按钮要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 这类局域网地址不行；**桌面端（`dsh-app://`）已实测无法注册 Service Worker**（宿主未开放 `allowServiceWorkers` 特权）。因此 Windows 桌面端的审批按钮改由宿主发原生 Toast（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)），macOS 桌面端仍无按钮、点通知回对话裁决。宿主不渲染通知按钮时，`debug()` 的 `bridge` 字段会说明原因，其余功能不受影响。
 - Windows 的系统通知标签上限 64 字符，而 Chromium 交给平台的是 `n#<origin>#<tag>` 整串——桌面页面 `dsh-app://app` 一项就占去 16 个。插件按当前 `location.origin` 算剩余预算，超长时保留可读前缀、尾部换成短哈希，所以 `debug()` 里看到的标签可能被截短；平台仍然拒发时，原文记在 `debug().lastToastReject`，设置页的测试按钮也会如实报出来，不再「提示已发送但什么都没弹」。
-- 桌面端（Windows）点通知后窗口仍可能抬不起来：目标窗口属于更高完整性级别（提权 / UAC）、在另一个虚拟桌面、前台被别的进程反复抢回去，或窗口被 `SW_HIDE` 隐藏到托盘时，宿主脚本回 `FOCUSED=0`、路由回 `202`，对话照常切（详见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）。
+- 桌面端（Windows）点通知后窗口仍可能抬不起来：目标窗口属于更高完整性级别（提权 / UAC）、在另一个虚拟桌面、或前台被别的进程反复抢回去时，宿主脚本回 `FOCUSED=0`、路由回 `202`，对话照常切（详见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）。`SW_HIDE` 到托盘的隐藏窗口 1.21.0 起先 `SW_SHOW` 再抬，不再属于这一条（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - 桌面端（macOS / Linux）点通知依赖 `dsh://open` 深链：系统未注册 `x-scheme-handler/dsh`、或壳没有 `second-instance` / `open-url` 处理时抬不起来；Linux 上已实测正常，macOS 未实测。
 - macOS 桌面端：页面自带的 `new Notification()` 进不了通知中心（`Notification.permission` 报 `granted` 却什么也不弹），所以插件改由宿主拉起助手发通知，需要先 `bash macos/build.sh`（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）。助手未编译时退回原行为，即桌面端弹不出系统通知。审批按钮在 macOS 桌面宿主上仍然不渲染；Windows 桌面端改由宿主发原生 Toast，按钮可用（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）。
 
@@ -473,13 +474,13 @@ npm pack --dry-run               # 预览发布包
 <details>
 <summary>各测试套件覆盖范围与手动检查</summary>
 
-`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
+`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状，外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」、`relay.bodyTemplate` 的模板渲染与 JSON 转义、坏模板启动即不注册、渲染体积上限。
 
 `smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数（含 `--id` / `--sound` 与 `{remove:id}` 撤回）、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
 
-`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式，且不烘入 profile 路径。
+`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式、不烘入 profile 路径，且正文点击只发 `dsh-notify-me://open`（不得再出现 `dsh://open`）；`dsh-notify-me://open` 不带 session 时仍解析为一次纯抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
 改到 `lib/focus-window.ps1` 时（仅 Windows），另需手动跑一次：
 

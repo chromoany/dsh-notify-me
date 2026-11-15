@@ -2,6 +2,26 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.0] — 2026-11-16
+
+点桌面通知的正文现在真能把 DSH 从最小化和托盘里拉回来；macOS 在 DSH 已经处于前台时点原生通知也会立即切到对应会话。
+
+### 修复
+
+- **Windows 原生审批 Toast 点正文不提窗**（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）：正文点击原来回的是 `dsh://open` 深链——Windows 上这条深链既拉不起最小化窗口，更拉不起 `SW_HIDE` 到托盘的窗口（1.14.0 就因此把整条深链删掉，1.19.0 的原生 Toast 又把它请回来）。现在正文点击统一回 `dsh-notify-me://open`（有会话时带 `?session=`），协议处理器写动作文件后照旧尝试激活；页面侧 `applyWinAction()` 收到 `open` 先 POST 宿主 focus 路由抬窗、再切会话，无会话的正文点击也保留为一次纯抬窗（`lib/win-toast.js` 不再把无 session 的 open 丢掉）。`lib/focus-window.ps1` 同时不再过滤 `IsWindowVisible=false` 的 DSH 主窗：托盘隐藏的 `Chrome_WidgetWin_1` 先 `ShowWindow(SW_SHOW)` 再走原有的 Alt / foreground 步骤，优先隐藏主窗而不是同进程的可见辅助窗口，DETAIL 记 `step 0` 与 `tray-hidden`。
+- **macOS 原生通知在 DSH 已在前台时点击不切会话**（[#38](https://github.com/chromoany/dsh-notify-me/pull/38)，TianqiCai）：助手的点击文件只在页面重新获得焦点时被读取，而 DSH 本来就处于前台时 `dsh://open` 不会产生新的激活，页面收不到 `focus`，文件就留在临时目录里，直到你下次切走再回来才补跳一次。macOS 通道现在会在通知挂出后、页面处于前台时每秒探测一次宿主（最多 120 秒），点击后 1 秒内完成切换，读到点击即停；窗口不在前台时不轮询，仍由 `focus` 事件处理。Windows 端的 `startWinPoll` 一直有同样的处理，这次补齐 macOS 的缺口。
+- **Windows 审批轮询不随插件销毁停止**：`startWinPoll` 的 1.5 秒 interval 原来只在待审批动作消失后自行结束，插件卸载时仍会跑满 180 秒。现在补了 `stopWinPoll()`，并和 macOS 轮询一起挂到插件卸载清理里。
+
+### 测试
+
+- `smoke/win-toast-test.mjs` 新增静态断言：`win-toast.ps1` 正文不得再出现 `launch="dsh://open"`，必须出现 `launch="dsh-notify-me://open"`；新增 `dsh-notify-me://open`（无 session）解析为 `{ action: 'open', sessionId: '' }` 的用例，钉住「无会话正文点击仍是一次抬窗请求」。
+- `smoke/smoke-test.cjs` 新增两条用例：`winNativeToastClick()` 在 Windows 桌面壳里发一条原生审批 Toast，塞回 `open` 动作后断言页面只 POST 一次 focus 路由才切到被提醒的会话（`raiseLast === 'focused'`），无 session 的 `open` 只抬窗不切；`macNativeClickPoll()`（来自 [#38](https://github.com/chromoany/dsh-notify-me/pull/38)）模拟 macOS 前台点击，只靠 1 秒轮询切到目标会话并断言点击后轮询停止。
+
+### 文档
+
+- README 中英同步：抬窗候选不再要求窗口可见，托盘隐藏窗口先 `SW_SHOW`；Windows 原生 Toast 的正文点击改为自家协议 + 页面轮询抬窗；「已知限制」里移除托盘隐藏（`SW_HIDE`）这一条，并按实测更新 Windows 仍可能抬不起的场合。
+- `docs/listing.md` 版本号升到 1.21.0。
+
 ## [1.20.1] — 2026-11-13
 
 Windows 中文用户名下点审批通知的「同意 / 拒绝」不再弹脚本错误：协议处理器改成纯 ASCII + UTF-16LE BOM 落盘。

@@ -1789,6 +1789,164 @@ async function desktopRaiseChannel() {
     + 'hostEnv overrides both ways, and refusals or dead routes are non-fatal');
 }
 
+// ── macOS native toast: collect a click even while DSH is already frontmost ──
+// Clicking a banner raises DSH with dsh://open; when the app is already the
+// frontmost one that activates nothing, so the page never receives a focus
+// event and the focus-only read in onPageFocus() cannot see the host's click
+// file. The macOS channel therefore polls the host while a native toast is
+// outstanding, mirroring startWinPoll() for Windows approval toasts. This case
+// boots the macOS desktop, raises a native attention toast for a background
+// session, and answers the next probe with the click the helper would have
+// written — without ever firing a window focus event.
+async function macNativeClickPoll() {
+  console.log('\n— macOS native toast: a frontmost click is collected by the poll —');
+  const MAC_ROUTE = '/__dsh-notify-me/mac-notify';
+  const state = { click: null, gets: 0, posts: 0 };
+  const stub = (url, opts) => {
+    const u = String(url);
+    const method = (opts && opts.method) || 'GET';
+    if (u.indexOf(MAC_ROUTE) !== -1) {
+      if (method === 'GET') {
+        state.gets += 1;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, enabled: true, click: state.click }) });
+      }
+      state.posts += 1;
+      // A {remove} POST withdraws a toast; it is not a click. Only a real post
+      // arms the click the next probe in the poll below answers with.
+      let body = {};
+      try { body = opts && opts.body ? JSON.parse(opts.body) : {}; } catch (e) { body = {}; }
+      if (!body || !body.remove) state.click = { sessionId: 's2', at: Date.now() };
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, detail: 'OK' }) });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+  };
+  const b = bootBundle({
+    extend(sandbox) {
+      sandbox.location = { origin: 'dsh-app://app', protocol: 'dsh-app:' };
+      sandbox.navigator = { ...(sandbox.navigator || {}), userAgent: MAC_UA };
+      sandbox.fetch = stub;
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  await sleep(40); // let the boot-time mac probe settle
+  assert(b.win.__dshNotifyMe.debug().macNative === true,
+    'the helper route is reported enabled, got ' + JSON.stringify(b.win.__dshNotifyMe.debug().macNative));
+
+  // A background session raises an attention toast through the helper. The
+  // page stays visible and focused — the state that produces the bug — and no
+  // focus event is delivered after this point.
+  host.setList({ ids: ['s1', 's2'], byId: {
+    s1: { displayTitle: '当前会话', retainedBy: { mainView: 1 } },
+    s2: { displayTitle: '后台任务', retainedBy: {} },
+  }, phase: 'ready' });
+  host.notifyList();
+  host.setStatus(new Map([['s2', statusRow(question('question:mac-poll', { sessionId: 's2' }))]]));
+  host.notifyStatus();
+  assert(state.posts === 1, 'the attention alert went out through the helper, got ' + state.posts);
+
+  // No setWindowFocus() here: the poll is the only trigger.
+  await sleep(1200);
+  assert(host.opened.indexOf('s2') !== -1,
+    'the poll selected the alerted session without a focus event, opened=' + JSON.stringify(host.opened));
+  const getsAtClick = state.gets;
+  await sleep(1200);
+  assert(state.gets === getsAtClick,
+    'the poll stops after the click is consumed, got ' + state.gets + ' vs ' + getsAtClick);
+
+  for (const c of [...host.cleanups]) c();
+  console.log('macOS click poll OK: a frontmost click switches via the poll, then the poll stops');
+}
+
+// ── Windows native approval toast: a body click raises the window ───────────
+// The body click is recorded by the HKCU protocol handler, which then launches
+// dsh://open; that launch cannot raise a minimized or tray-hidden window on
+// Windows (issue #40). While an approval is open the page polls the host, so the
+// click comes back as an open action and must go through the host focus route —
+// the only channel that actually brings the window forward.
+async function winNativeToastClick() {
+  console.log('\n— Windows native approval toast: a body click raises the window —');
+  const WIN_ROUTE = '/__dsh-notify-me/win-toast';
+  const state = { actions: [], gets: 0, posts: 0, raises: 0 };
+  const reply = (status, body) => Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  });
+  const stub = (url, opts) => {
+    const u = String(url);
+    const method = (opts && opts.method) || 'GET';
+    if (u.indexOf(WIN_ROUTE) !== -1) {
+      if (method === 'GET') {
+        state.gets += 1;
+        const actions = state.actions;
+        state.actions = [];
+        return reply(200, { ok: true, enabled: true, actions });
+      }
+      state.posts += 1;
+      return reply(200, { ok: true, enabled: true, id: 'h1', token: 'tok-1' });
+    }
+    if (u.indexOf(FOCUS_ROUTE) !== -1) {
+      state.raises += 1;
+      return reply(200, { ok: true, focused: true, platform: 'win32' });
+    }
+    return reply(404, { ok: false });
+  };
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox) {
+      sandbox.location = { origin: 'dsh-app://app', protocol: 'dsh-app:' };
+      sandbox.navigator = { ...(sandbox.navigator || {}), userAgent: WINDOWS_UA };
+      sandbox.fetch = stub;
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  await sleep(40); // let the boot probe learn that the host can post native toasts
+  assert(b.win.__dshNotifyMe.debug().winNative === true,
+    'the host route is reported enabled, got ' + JSON.stringify(b.win.__dshNotifyMe.debug().winNative));
+
+  // The window is minimized to the tray: the page is hidden, and the approval
+  // lands as a native toast instead of a Notification object.
+  b.doc.hidden = true;
+  b.doc.visibilityState = 'hidden';
+  host.setList({
+    ids: ['s1', 's2'],
+    byId: { s1: { displayTitle: '当前会话', retainedBy: { mainView: 1 } }, s2: { displayTitle: '后台任务', retainedBy: {} } },
+    phase: 'ready',
+  });
+  host.notifyList();
+  host.setStatus(new Map([['s2', statusRow(approval('approval:win:1', {
+    sessionId: 's2',
+    answer: () => Promise.resolve({ decision: 'allowed-once' }),
+  }))]]));
+  host.notifyStatus();
+  assert(state.posts === 1, 'the approval went out as one native toast, got ' + state.posts);
+
+  // The user clicks the toast body. The protocol handler recorded it; the next
+  // poll must hand it to the page, which raises through the host route before
+  // switching the alerted session.
+  state.actions.push({ action: 'open', sessionId: 's2' });
+  await sleep(1800);
+  assert(state.raises === 1, 'the body click posts to the focus route once, got ' + state.raises);
+  assert(host.opened.indexOf('s2') !== -1,
+    'the click still switches the alerted session, opened=' + JSON.stringify(host.opened));
+  assert(b.win.__dshNotifyMe.debug().raiseLast === 'focused',
+    'debug() records the raise verdict, got ' + b.win.__dshNotifyMe.debug().raiseLast);
+
+  // A body click without a session is still a raise request; there is simply no
+  // conversation to select.
+  const openedBefore = host.opened.length;
+  state.actions.push({ action: 'open', sessionId: '' });
+  await sleep(1800);
+  assert(state.raises === 2, 'a no-session body click also raises, got ' + state.raises);
+  assert(host.opened.length === openedBefore,
+    'a no-session body click selects nothing, opened=' + JSON.stringify(host.opened));
+
+  for (const c of [...host.cleanups]) c();
+  console.log('Windows native toast OK: a body click raises via the host route, with or without a session');
+}
+
 // ── alert sound source: built-in cue / picked file / system sound ──────────
 // The cue is the one alert surface with no coverage at all: the harness leaves
 // AudioContext undefined, so every other case silently takes the "no audio
@@ -4271,6 +4429,8 @@ function mutedSessionsUi() {
   await completionUnreadChannel();
   await quickActionsHost();
   await desktopRaiseChannel();
+  await macNativeClickPoll();
+  await winNativeToastClick();
   await soundSources();
   uniqueToastTags();
   toastTagLimits();
