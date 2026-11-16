@@ -83,6 +83,7 @@ function mount(config = {}, deps = {}, shared = { bindHost: undefined, allowedOr
     psPath: psPath,
     scriptPath: scriptPath,
     aumid: 'test.aumid',
+    osBuild: 26200,
     ...deps,
   });
   return routes;
@@ -273,10 +274,25 @@ try {
   const plain = mount({}, { aumid: '' }); // '' falls back to the module default
   const plainSent = JSON.parse((await post(plain[0].handler, { title: 'DSH waiting for input', body: 'session: bash', tag: 'q-1' })).body);
   assert(plainSent.ok === true && plainSent.token === '', 'a toast without an approval key carries no token');
+  const plainSpawned = spawned.length;
   const plainRegs = execCalls.slice(-6).map((c) => c.args.join(' '));
   assert(plainRegs.some((line) => line.includes('HKCU\\Software\\Classes\\AppUserModelId\\' + win.AUMID)),
     'without an injected AUMID the registration writes the plugin-owned one');
   assert(!plainRegs.some((line) => line.includes('electron.app')), 'the DSH shell AUMID is never registered here');
+
+  // 3i. Windows 10: the route stays mounted (so debug() can say why) but the
+  // helper never claims to be usable — posting would only yield buttons whose
+  // clicks Windows 10 drops (issue #41).
+  const regsBeforeTen = execCalls.length;
+  const tenRoutes = mount({}, { osBuild: 19045 });
+  assert(tenRoutes.length === 1, 'the route still answers on Windows 10');
+  const tenProbe = JSON.parse((await call(tenRoutes[0].handler, 'GET')).body);
+  assert(tenProbe.ok === true && tenProbe.enabled === false && tenProbe.reason === 'windows-10',
+    'a Windows 10 helper reports enabled:false and the reason');
+  const tenPost = await post(tenRoutes[0].handler, { title: 't', approvalKey: 'approval:sess-1:1' });
+  assert(tenPost.status === 501 && JSON.parse(tenPost.body).reason === 'windows-10', 'Windows 10 refuses to post');
+  assert(execCalls.length === regsBeforeTen && spawned.length === plainSpawned,
+    'Windows 10 registers nothing and posts no toast');
 } finally {
   if (realLocalAppData === undefined) delete process.env.LOCALAPPDATA;
   else process.env.LOCALAPPDATA = realLocalAppData;
@@ -286,4 +302,4 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-console.log('win toast route OK: desktop gate, 405/403/501/400, payload, HKCU protocol + app identity, tokens (single-use/TTL), remove');
+console.log('win toast route OK: desktop gate, 405/403/501/400, payload, HKCU protocol + app identity, Windows 10 gate, tokens (single-use/TTL), remove');

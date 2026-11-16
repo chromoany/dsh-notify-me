@@ -45,7 +45,7 @@ Just the plugin's own panel (the real component, on the same dark theme as the h
 
 > **macOS Desktop (DSH Desktop)** raises its system notifications through a small host-spawned helper, `DSH Notify.app`: build it once with `bash macos/build.sh` and allow it in System Settings (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)).
 
-> The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons work on Web and Windows Desktop; macOS Desktop and pages without a Service Worker get a plain notification — click it and decide in the conversation (see [Alert channels](#alert-channels)). With host-side fallback enabled you still get external push once the page is closed — local toasts and the approval buttons still need the page.
+> The page or desktop app has to stay running (background / minimized is fine); system notifications need notification permission. Approval buttons work on Web and Windows 11 Desktop; macOS Desktop, Windows 10 and pages without a Service Worker get a plain notification — click it and decide in the conversation (see [Alert channels](#alert-channels)). With host-side fallback enabled you still get external push once the page is closed — local toasts and the approval buttons still need the page.
 
 ## Installation
 
@@ -74,7 +74,7 @@ The Electron application manages the `desktop` profile. Do not change the Web co
 2. Open **Settings → Notify me**. Confirm that the section and the plugin version at its foot appear, and leave "Enable reminders" and "Sound" on.
 3. Click **Test "reply finished"** on the settings page. A test notification should appear and play a sound according to your current sound settings. This local test is not forwarded to any external endpoint, and the "also alert while the window is in front" switch does not apply to it.
 
-Web users can also test the approval buttons, which then appear on the notification. Windows Desktop posts a native toast through the host and carries the same buttons; macOS Desktop sends a plain notification (the differences are in [Alert channels](#alert-channels)).
+Web users can also test the approval buttons, which then appear on the notification. Windows 11 Desktop posts a native toast through the host and carries the same buttons (Windows 10 posts no buttoned toast — see [below](#how-windows-desktop-raises-buttoned-notifications)); macOS Desktop sends a plain notification (the differences are in [Alert channels](#alert-channels)).
 
 <details>
 <summary>Optional console check</summary>
@@ -84,7 +84,7 @@ In environments with DevTools, you can also run:
 ```js
 window.__dshNotifyMe.test("done")        // "reply finished" sample
 window.__dshNotifyMe.test("attention")   // "needs you" sample
-window.__dshNotifyMe.test("approval")    // Approve / Reject when the bridge is available (Web) or through the Windows desktop host's native toast; a plain notification otherwise (macOS Desktop, or no Service Worker)
+window.__dshNotifyMe.test("approval")    // Approve / Reject when the bridge is available (Web) or through the Windows 11 desktop host's native toast; a plain notification otherwise (macOS Desktop, or no Service Worker)
 window.__dshNotifyMe.debug()             // bridge ("active" = buttons work), raiseChannel, the last raise attempt in raiseLast, a refused toast's platform message in lastToastReject, configStored for whether the settings really persisted, hostBridge for host coordination, and the native channels in macNative / macNativeLast and winNative / winNativeLast; after coming back to the page, toastsLive / toastsWithdrawn / lastToastWithdrawAt show what is still tracked, how many were withdrawn, and when that last happened
 ```
 
@@ -106,7 +106,7 @@ dsh-notify-me decouples **supervision** from **sitting in front of the screen**:
 | 🔔 Input needed | Alerts even in the foreground; the conversation on screen keeps only a title marker |
 | ✅ Reply finished | Alerts while the page is hidden / backgrounded (or "quiet for the open one" / "always") |
 
-**Input needed** covers approval requests, plan review, and questions (`ask_user_question`). The approve / reject quick decision works where a notification can carry buttons: Web through the Service Worker bridge, Windows Desktop through the host-posted native toast. macOS Desktop and pages without a Service Worker get a plain notification — click it and decide in the conversation (see [Known limitations](#known-limitations)).
+**Input needed** covers approval requests, plan review, and questions (`ask_user_question`). The approve / reject quick decision works where a notification can carry buttons: Web through the Service Worker bridge, Windows 11 Desktop through the host-posted native toast (Windows 10 cannot dispatch toast activations, so it falls back to the page's own notification). macOS Desktop and pages without a Service Worker get a plain notification — click it and decide in the conversation (see [Known limitations](#known-limitations)).
 
 **Reply finished** also covers background sessions. A finished but unread session keeps the `✅ Reply finished ·` title marker until opened. Title markers are independent of the alert policy.
 
@@ -122,7 +122,7 @@ Open **Settings → Notify me**. The page lays out three blocks — how you get 
 
 - **Enable reminders** — master switch: off means no toasts, no sound, and the tab title is left alone;
 - **Sound / Volume** — the switch toggles directly; the volume slider is folded into that row and revealed by clicking the title (▸ becomes ▾). What it actually plays is decided by Advanced → Alert sound source;
-- **Decide approvals from the toast** (on by default) — approvals carry Approve / Reject, one click settles the request without switching back. Web gets a system notification with buttons; Windows Desktop gets a native toast posted by the host, with the same two buttons; macOS Desktop `dsh-app://` cannot register a Service Worker and its native helper carries no buttons, so there you click the notification and decide in the conversation. The line under "Try it" states truthfully whether the current environment can provide buttons.
+- **Decide approvals from the toast** (on by default) — approvals carry Approve / Reject, one click settles the request without switching back. Web gets a system notification with buttons; Windows 11 Desktop gets a native toast posted by the host, with the same two buttons; Windows 10 cannot dispatch toast activations, so approvals stay in the page or the overlay there; macOS Desktop `dsh-app://` cannot register a Service Worker and its native helper carries no buttons, so there you click the notification and decide in the conversation. The line under "Try it" states truthfully whether the current environment can provide buttons.
 
 ### When to alert
 
@@ -332,7 +332,7 @@ Credentials stay in the host: the page cannot read them, and they are never echo
 
 | Channel | What it does |
 | --- | --- |
-| System notification | Through the browser into the Windows / macOS / Linux notification centre; clicking it returns to the conversation it came from. On macOS Desktop the host spawns `DSH Notify.app` to post it (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)); on Windows Desktop the host posts a native approval toast that carries Approve / Reject (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)). Web can carry Approve / Reject too |
+| System notification | Through the browser into the Windows / macOS / Linux notification centre; clicking it returns to the conversation it came from. On macOS Desktop the host spawns `DSH Notify.app` to post it (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)); on Windows 11 Desktop the host posts a native approval toast that carries Approve / Reject (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)). Web can carry Approve / Reject too |
 | Sound | WebAudio cue by default, with different patterns for "needs you" and "done"; swap in a custom audio file, or hand the sound over to the system notification sound |
 | Tab title | `🔔 Action needed · …` / `✅ Reply finished · …`, following the alert language; gone once you open that session, and both markers can be up at the same time |
 | External push (optional, default off) | Forwards the same alert to Discord / Bark / Gotify / Feishu / ServerChan / WxPusher / a custom webhook |
@@ -425,7 +425,8 @@ The page's own `new Notification()` is not refused on Windows Desktop, but it ca
 - **The body click raises too**: a body click now always goes through `dsh-notify-me://open` (with `?session=` when there is a conversation, and still kept as a plain raise request when there is none) instead of treating `dsh://open` as the Windows raising mechanism — that deep link neither restores a minimized window nor a window hidden to the tray with `SW_HIDE`. While an approval is pending the page probes every 1.5 s; an `open` action first POSTs the host focus route to raise the window and only then switches the conversation, with tray-hidden windows shown first by `focus-window.ps1` ([#40](https://github.com/chromoany/dsh-notify-me/issues/40)).
 - **Non-ASCII user names**: the handler script is written as UTF-16LE with a BOM and resolves its action directory from `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` at click time, so its body stays pure ASCII — WSH can no longer decode it in the system ANSI code page and mangle the path (which made every button click fail with an `800A004C` script error, [#36](https://github.com/chromoany/dsh-notify-me/issues/36)); fixed in 1.20.1. An upgrade needs only a restart: the first buttoned toast after it rewrites the script, and no manual cleanup is required.
 - **Registration**: before the first toast, `HKCU\Software\Classes\AppUserModelId\dsh-notify-me` is written (`DisplayName` for the toast header, `CustomActivator` pointing at a CLSID) and that CLSID is created as an empty stub with no `LocalServer32` — an unpackaged app without a COM activator is what makes Windows dispatch the `activationType="protocol"` clicks from the XML. The toast is then booked into `ToastNotificationManager.History` by tag. Both are current-user and need no admin rights. Tokens are single-use and valid for 3 minutes; an action file is deleted once taken.
-- **When it does not post**: outside the Windows desktop host, with `winToast.enabled: false`, or without `powershell.exe`, the route reports `enabled: false` (`501`) and the page keeps its own buttonless notification — the same behaviour as before this change.
+- **No buttons on Windows 10**: Windows 10 (build < 22000) lacks the Windows 11 code path that dispatches protocol activations from the XML without a COM activator — the fix landed only in the post-18967 preview branch and never reached the 19041 / 19045 servicing branch ([microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)). Verified on 19045: with our own AUMID, the empty CLSID stub and a matching Start Menu shortcut all in place, clicking a button or the body still only dismissed the toast ([#41](https://github.com/chromoany/dsh-notify-me/issues/41)). Since 1.21.3 no native toast is posted on build < 22000: the route answers `enabled: false` with `reason: "windows-10"`, and approval alerts fall back to the page's own notification and overlay — better no button than a button that does nothing.
+- **When it does not post**: outside the Windows desktop host, with `winToast.enabled: false`, without `powershell.exe` (`reason` is `disabled` / `helper-missing`), or on Windows 10 (previous bullet), the route reports `enabled: false` (`501`) and the page keeps its own buttonless notification — the same behaviour as before this change.
 - **Turning it off**: add `winToast: { enabled: false }` to the `notify-me` entry in the profile's patch layer; approval alerts go back to the page's own notification, without buttons.
 - **Auto-dismiss and withdrawal**: native toasts are tracked by `trackToast()`: a plain toast closes after 5 s, a buttoned approval after 12 s ("always close" / "never close" still apply), and they are withdrawn when you come back to the page unless "keep alerts when you come back" is on.
 

@@ -2,6 +2,19 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.3] — 2026-11-16
+
+Windows 10 上不再发带按钮的原生审批 Toast：那里的系统通知派发不了协议激活，按钮只会把通知收掉。
+
+### 修复
+
+- **Windows 10 的审批 Toast 按钮按了没反应**（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）：1.21.2 把 Toast 挪到插件自己的 AUMID 下，解决了「借用 DSH 的 AUMID、点击被它的 COM 激活器截走」；但报告人在 Windows 10 Pro 22H2（19045.6466）上复测，通知抬头已经是「DSH Notify Me」、按钮依旧只 dismiss、动作目录 40 ms 轮询 15 分钟一个文件都没有。四组对照实验把这层钉死：① 协议处理器换成先写日志再转发的 VBS，点按钮日志一行都没有；② `Start-Process 'dsh-notify-me://approve?token=TEST'` 立刻写日志、动作文件落盘（协议、注册表、wscript、处理器全都正常）；③ 补一个带 `System.AppUserModel.ID = dsh-notify-me` 的开始菜单快捷方式（IPropertyStore 回读确认），仍 0 派发；④ 再删掉 `CustomActivator` 与空 CLSID 存根、只留 `DisplayName` + 快捷方式，仍 0 派发。根因是 Windows 10 没有 Windows 11 那条「未打包应用不实现 COM 激活器时，按 XML 把 `activationType="protocol"` 的点击派发出去」的实现：同一份官方文档承诺的这条替代路线，实际修复只落在 build 18967 之后的预览分支，没进 19041 / 19045 的服务分支（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)，帖中原文：修复在 build 18967，赶不上 18363 的更新）。正文点击走的也是同一条协议激活，同样不会派发——这也解释了 1.21.0 之前「点正文不抬窗」在 Win10 上一并失灵。现在按系统 build 分流：`< 22000` 时路由直接报 `enabled: false`、`reason: "windows-10"`，不发原生 Toast、不写注册表、也不取动作，页面回到自己那条不带按钮的通知，审批仍在页面或浮层里裁决；`debug().winNative.last` 会显示 `off:windows-10`。构造不出 build 号的非常规环境保持原行为（照发）。
+- **设置页的说明文案跟着分流**：中英两条 `quickActionsHint` 改成「Windows 11 由宿主发带按钮的原生通知；Windows 10 的系统通知无法派发按钮点击」。
+
+### 测试
+
+- `smoke/win-toast-test.mjs`：新增 Windows 10 用例（`osBuild: 19045`）——路由仍只注册一条、`GET` 回 `ok: true` / `enabled: false` / `reason: "windows-10"` 且 `actions` 为空、`POST` 回 `501` 同一个 reason，并断言这一路既不写注册表也不 spawn PowerShell；`mount()` 默认注入 `osBuild: 26200`，Windows 11 的既有用例不受影响。
+
 ## [1.21.2] — 2026-11-16
 
 Windows 原生审批通知的「同意 / 拒绝」按钮现在真会把决定送回页面，而不是只把通知收掉。
