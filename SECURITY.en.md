@@ -10,9 +10,16 @@ Please do not report security issues through public issues. Use GitHub's private
 
 Include the plugin version, the DSH version and runtime (web or desktop), reproduction steps, and the impact the issue allows. Remove external push URLs, access tokens, session titles, and message text before attaching logs or `debug()` output.
 
-## Version scope
+## Supported versions
 
-Only the latest published release (currently 1.14.x) is accepted. For older builds, upgrade and retest first. Issues in the host or the Electron shell belong to the upstream project.
+Only problems on the latest published release are handled: upgrade to the [latest release](https://github.com/chromoany/dsh-notify-me/releases/latest), and report if it still reproduces. Check your build with `npm ls dsh-notify-me`, or read the `version` field in the plugin's `debug()` output.
+
+| Version | Supported |
+| --- | --- |
+| whatever npm's `latest` dist-tag points at | ✅ |
+| any older release | ❌ upgrade and retest first |
+
+Problems in the host or the Electron shell belong to the upstream project.
 
 ## Data the plugin handles
 
