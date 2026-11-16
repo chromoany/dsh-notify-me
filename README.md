@@ -13,7 +13,7 @@
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#安装)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
-[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--rc.2%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#兼容性)
+[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--rc.3%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#兼容性)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 </div>
@@ -141,7 +141,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 - **后台的判定**：切到别的应用、被别的窗口盖住、最小化都算；窗口一直留在前台但 3 分钟没有任何键鼠输入同样算，`idleMinutes: 0` 退回只看窗口。
 - **「当前对话不弹通知」何时补发**：窗口转到后台或闲置超时后照常提醒；若你已处理掉就作废。
 - **「回复完成」三档**：「仅后台」＝不在看页面才提醒；「仅当前对话静默」＝屏幕上那条静默、别的对话照常提醒，多开对话时有用；「总是提醒」＝从不静默。老配置里的「窗口在前台时也提醒『回复完成』」开关自动迁移到这一项。
-- **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。**打开「回到页面也保留提醒」后，回到页面这一条也不再收起**，通知留到你点掉或点「关闭」，系统通知样式设成「持续」时会一直挂在屏幕上。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止（仅 Web 端的 Service Worker 通知如此）；macOS 桌面端画不出按钮的审批通知、以及 Windows 桌面端带按钮的原生审批 Toast，都按 12 秒收。宿主发出的原生通知（Windows 原生 Toast、macOS 通知中心）同样归这套记账管：人不在时同样不撤，回到页面同样收起（该开关打开时也保留），「总是关闭 / 从不关闭」也管得到它们。
+- **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。**打开「回到页面也保留提醒」后，回到页面这一条也不再收起**，通知留到你点掉或点「关闭」，系统通知样式设成「持续」时会一直挂在屏幕上。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止（仅 Web 端的 Service Worker 通知如此）；macOS 桌面端画不出按钮的审批通知、以及 Windows 11 桌面端带按钮的原生审批 Toast，都按 12 秒收。宿主发出的原生通知（Windows 原生 Toast、macOS 通知中心）同样归这套记账管：人不在时同样不撤，回到页面同样收起（该开关打开时也保留），「总是关闭 / 从不关闭」也管得到它们。
 - **点击通知的兜底**：桌面端抬不起来时只切对话，原因记在 `debug().raiseLast` 里；关掉这一项后点通知不做任何事。
 
 </details>
@@ -343,7 +343,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 ## 兼容性
 
-已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.2` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.2` 与桌面端当前打包的 `0.2.2-rc.1`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
+已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.2` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。桌面端当前打包的 `0.2.2-rc.3` 由 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人实测：1.21.2 在 rc.3 上把原生 Toast 发了出来（通知抬头是插件自有 AUMID 的 `DSH Notify Me`），客户端与宿主两半都正常挂载；1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
 
 ## 控制台高级配置
 
@@ -369,12 +369,12 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 ### 快捷裁决怎么走通的
 
-Web 端带「同意 / 拒绝」按钮的通知只能由 Service Worker 弹出（往 `new Notification()` 里传 `actions` 会直接抛 `TypeError`），所以 bundle 的同一份文件再注册成一个只干转信的 worker，把「点了哪个按钮」带回页面；Windows 桌面端改由宿主发原生 Toast，按钮同样是「同意 / 拒绝」。**裁决仍在页面里发生**，调的是审批面板里「允许一次 / 拒绝」用的同一个 `PendingApproval.answer('allowed-once' | 'rejected')`——「同意」就是「允许一次」，不多放行任何东西。
+Web 端带「同意 / 拒绝」按钮的通知只能由 Service Worker 弹出（往 `new Notification()` 里传 `actions` 会直接抛 `TypeError`），所以 bundle 的同一份文件再注册成一个只干转信的 worker，把「点了哪个按钮」带回页面；Windows 11 桌面端改由宿主发原生 Toast，按钮同样是「同意 / 拒绝」。**裁决仍在页面里发生**，调的是审批面板里「允许一次 / 拒绝」用的同一个 `PendingApproval.answer('allowed-once' | 'rejected')`——「同意」就是「允许一次」，不多放行任何东西。
 
 <details>
 <summary>展开按钮通知的记账与调窗口</summary>
 
-每条按钮通知按交互 key 记账，一次只认领一条等待；请求被页面里答掉、或被新请求顶替之后，残留通知上的按钮再点也不会误裁，只是安静地关掉。Web 端带按钮的通知不设自动撤回，等你点按钮或把请求答掉才消失；普通通知 5 秒自收，macOS 桌面端没有按钮的审批通知与 Windows 桌面端带按钮的原生审批 Toast 都 12 秒自收。「通知自动消失」选「从不关闭」时，这两类都不因到点而收；三种设置都只管定时器那一次关闭，你回到页面时残留的通知一律收起（「回到页面也保留提醒」打开时不收起）。没来得及点就回页面里裁决，对话里的审批一直等着你。
+每条按钮通知按交互 key 记账，一次只认领一条等待；请求被页面里答掉、或被新请求顶替之后，残留通知上的按钮再点也不会误裁，只是安静地关掉。Web 端带按钮的通知不设自动撤回，等你点按钮或把请求答掉才消失；普通通知 5 秒自收，macOS 桌面端没有按钮的审批通知与 Windows 11 桌面端带按钮的原生审批 Toast 都 12 秒自收。「通知自动消失」选「从不关闭」时，这两类都不因到点而收；三种设置都只管定时器那一次关闭，你回到页面时残留的通知一律收起（「回到页面也保留提醒」打开时不收起）。没来得及点就回页面里裁决，对话里的审批一直等着你。
 
 点正文的「调窗口 + 切对话」也归 worker 这半侧调度：`client.focus()` 只调起一个窗口（优先当前可见的），也只让那个窗口切对话——多个 DSH 标签页不会互相抢焦点或一起乱切。
 
@@ -418,7 +418,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 ### Windows 桌面端怎么发带按钮的通知
 
-页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast。
+页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast。**Windows 10 是例外**：那边的系统通知派发不了协议激活，1.21.3 起不再走这条通道，审批提醒留在页面或浮层里（原因见下）。
 
 - **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到插件自己的 AUMID `dsh-notify-me` 下，走同一套系统通知设置。**不能借 DSH 的 AUMID**：那个 AUMID 挂着 COM Toast 激活器，Windows 会把每次点击都交给 DSH 本体，Toast 上的协议按钮永远等不到派发（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
 - **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。这条链路要求 Toast 挂在自己的 AUMID 下，否则点击会被别的应用的激活器截走。
@@ -444,6 +444,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 **平台差异**
 
 - 快捷裁决按钮要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 这类局域网地址不行；**桌面端（`dsh-app://`）已实测无法注册 Service Worker**（宿主未开放 `allowServiceWorkers` 特权）。因此 Windows 11 桌面端的审批按钮改由宿主发原生 Toast（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)），macOS 桌面端仍无按钮、点通知回对话裁决。宿主不渲染通知按钮时，`debug()` 的 `bridge` 字段会说明原因，其余功能不受影响。
+- **Windows 10 没有原生审批按钮**：Windows 10（build < 22000）的系统通知不派发 `activationType="protocol"` 的点击，插件在那边不发带按钮的原生 Toast（路由 `reason` 报 `windows-10`），审批仍在页面或浮层里裁决（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.3 起）。
 - Windows 的系统通知标签上限 64 字符，而 Chromium 交给平台的是 `n#<origin>#<tag>` 整串——桌面页面 `dsh-app://app` 一项就占去 16 个。插件按当前 `location.origin` 算剩余预算，超长时保留可读前缀、尾部换成短哈希，所以 `debug()` 里看到的标签可能被截短；平台仍然拒发时，原文记在 `debug().lastToastReject`，设置页的测试按钮也会如实报出来，不再「提示已发送但什么都没弹」。
 - 桌面端（Windows）点通知后窗口仍可能抬不起来：目标窗口属于更高完整性级别（提权 / UAC）、在另一个虚拟桌面、或前台被别的进程反复抢回去时，宿主脚本回 `FOCUSED=0`、路由回 `202`，对话照常切（详见[桌面端怎么抬窗的](#桌面端怎么抬窗的)）。`SW_HIDE` 到托盘的隐藏窗口 1.21.0 起先 `SW_SHOW` 再抬，不再属于这一条（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - 桌面端（macOS / Linux）点通知依赖 `dsh://open` 深链：系统未注册 `x-scheme-handler/dsh`、或壳没有 `second-instance` / `open-url` 处理时抬不起来；Linux 上已实测正常，macOS 未实测。
@@ -483,7 +484,7 @@ npm pack --dry-run               # 预览发布包
 
 `smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数（含 `--id` / `--sound` 与 `{remove:id}` 撤回）、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
 
-`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、`HKCU\Software\Classes\dsh-notify-me` 的三条注册命令、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式、不烘入 profile 路径，且正文点击只发 `dsh-notify-me://open`（不得再出现 `dsh://open`）；`dsh-notify-me://open` 不带 session 时仍解析为一次纯抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
+`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、首次发 Toast 前的六条注册命令（`HKCU\Software\Classes\dsh-notify-me` 的三条协议键、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 与 `CustomActivator`、以及只建不写 `LocalServer32` 的空 `CLSID\{…}` 存根）、Windows 10 门控下既不写注册表也不发 Toast、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式、不烘入 profile 路径，且正文点击只发 `dsh-notify-me://open`（不得再出现 `dsh://open`）；`dsh-notify-me://open` 不带 session 时仍解析为一次纯抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
 改到 `lib/focus-window.ps1` 时（仅 Windows），另需手动跑一次：
 

@@ -2,7 +2,7 @@
 
 逐版本适配记录见 [package.json](../package.json) 的 `dsh.compatibility.dshReleases`；宿主（`0.2.1-rc.2` 及之后）的安装门控只读 `peerDependencies` 与 `engines`，**不再读取这个字段**，所以它只是一份给人看的记录，不构成门禁。
 
-已逐版实测**真正激活**于 `0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.1`、`0.1.5-rc.2`、`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.4`、`0.2.1-rc.5`、`0.2.2-alpha.2`、`0.2.2-rc.1` 与 `0.2.2-rc.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js&rev=…` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.1.1-rc.2` 到 `0.2.2-rc.2` 的插件条目照旧兼容，换回旧宿主也不需要改配置；`1.9.0` 的界面重排没有引入新的宿主 API，设置页页眉的铃铛是插件自己画的 SVG（`docs/brand/`）。
+已逐版实测**真正激活**于 `0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.1`、`0.1.5-rc.2`、`0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.4`、`0.2.1-rc.5`、`0.2.2-alpha.2`、`0.2.2-rc.1` 与 `0.2.2-rc.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js&rev=…` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.2.2-rc.3` 没有另做我方隔离验证，只有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 报告人的实测：DSH `0.2.2-rc.3` 上跑插件 1.21.2，客户端半在页面里起来并向宿主 POST 了 Toast，宿主半真的起了 `powershell.exe`、把通知发到自有 AUMID（抬头 `DSH Notify Me`）——注入目标、依赖解析与两条宿主路由都在；1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API。`0.1.1-rc.2` 到 `0.2.2-rc.2` 的插件条目照旧兼容，换回旧宿主也不需要改配置；`1.9.0` 的界面重排没有引入新的宿主 API，设置页页眉的铃铛是插件自己画的 SVG（`docs/brand/`）。
 
 <details>
 <summary>展开宿主代际的形状差异与两个已知坑</summary>
@@ -13,7 +13,7 @@
 | --- | --- | --- | --- |
 | `≤ 0.1.2-alpha.1` | 控制器快照的 `pending[]` | 快照 `current` | `sessions.open()` |
 | `0.1.2-alpha.2 .. 0.1.6-alpha.1` | `uiSession.pendingInteractions` | 快照 `current` | `sessions.open()` |
-| `≥ 0.1.6-alpha.2`（含 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-alpha.2`、`0.2.2-rc.1`、`0.2.2-rc.2`） | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
+| `≥ 0.1.6-alpha.2`（含 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-alpha.2`、`0.2.2-rc.1`、`0.2.2-rc.2`、`0.2.2-rc.3`） | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
 
 区间仅作示意：插件按 store 形状自动选源（`sessionStatus` 存在即走新路），版本号只是各形状的出现边界。`peerDependencies` 范围决定 npm 的 peer 提示——`0.2.1-rc.2`、`0.2.2-alpha.2`、`0.2.2-rc.1` 与 `0.2.2-rc.2` 都落在 `>=0.2.0-rc.1 <0.3.0-0` 里，不需要豁免。
 

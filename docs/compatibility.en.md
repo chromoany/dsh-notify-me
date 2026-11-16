@@ -2,7 +2,7 @@
 
 Per-release adaptation records live in [package.json](../package.json) under `dsh.compatibility.dshReleases`; hosts from `0.2.1-rc.2` on gate installation on `peerDependencies` and `engines` only and no longer read that field, so it is a human-readable record, not a gate.
 
-Every release was tested to **actually activate**: `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.4`, `0.2.1-rc.5`, `0.2.2-alpha.2`, `0.2.2-rc.1` and `0.2.2-rc.2` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js&rev=…` serves a build containing the new code, and the "Notify me" section appears in Settings). Plugin entries stay compatible from `0.1.1-rc.2` through `0.2.2-rc.2`, and stepping back to an older host needs no config change; the `1.9.0` settings redesign added no new host API, and the bell in the settings page header is the plugin's own SVG (`docs/brand/`).
+Every release was tested to **actually activate**: `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.4`, `0.2.1-rc.5`, `0.2.2-alpha.2`, `0.2.2-rc.1` and `0.2.2-rc.2` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js&rev=…` serves a build containing the new code, and the "Notify me" section appears in Settings). `0.2.2-rc.3` got no isolated re-run of our own — the only evidence is the reporter of [#41](https://github.com/chromoany/dsh-notify-me/issues/41) running plugin 1.21.2 on DSH `0.2.2-rc.3`: the client half came up in the page and POSTed a toast, the host half really spawned `powershell.exe` and posted the notification under the plugin's own AUMID (header `DSH Notify Me`) — injection targets, dependency resolution and both host routes all work; 1.21.3 only adds the Windows 10 build gate and touches no host API. Plugin entries stay compatible from `0.1.1-rc.2` through `0.2.2-rc.2`, and stepping back to an older host needs no config change; the `1.9.0` settings redesign added no new host API, and the bell in the settings page header is the plugin's own SVG (`docs/brand/`).
 
 <details>
 <summary>Host-generation shape differences and two known traps</summary>
@@ -13,7 +13,7 @@ The plugin picks its interaction source per host generation; the table below mar
 | --- | --- | --- | --- |
 | `<= 0.1.2-alpha.1` | controller snapshot `pending[]` | snapshot `current` | `sessions.open()` |
 | `0.1.2-alpha.2 .. 0.1.6-alpha.1` | `uiSession.pendingInteractions` | snapshot `current` | `sessions.open()` |
-| `>= 0.1.6-alpha.2` (incl. `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-alpha.2`, `0.2.2-rc.1`, `0.2.2-rc.2`) | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
+| `>= 0.1.6-alpha.2` (incl. `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-alpha.2`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`) | `uiSession.sessionStatus` | `retainedBy.mainView` | `uiWorkspace.openSession()` |
 
 The ranges are illustrative: the plugin picks its source by store shape (whenever `sessionStatus` exists it takes the new path), and the version numbers only mark where each shape appeared. The `peerDependencies` range shapes npm's peer warning — `0.2.1-rc.2`, `0.2.2-alpha.2`, `0.2.2-rc.1` and `0.2.2-rc.2` all fall inside `>=0.2.0-rc.1 <0.3.0-0`, so no exemption is needed.
 
