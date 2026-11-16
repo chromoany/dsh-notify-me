@@ -4,9 +4,12 @@
 #   powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File win-toast.ps1 \
 #       -Base64 <base64 JSON payload> [-RemoveTag <history tag>]
 #
-# The toast itself needs no registration: the AUMID is the one the DSH desktop
-# shell already owns (it shows the update prompt). Approval buttons use
-# protocol activation, so the click leaves the app and comes back through the
+# The toast is posted under dsh-notify-me's own AUMID: lib/win-toast.js
+# registers it (a DisplayName plus a stub CustomActivator with no LocalServer32)
+# before the first toast goes out. Borrowing the DSH shell's AUMID instead made
+# Windows route every activation to DSH's COM activator, which silently dropped
+# it — the buttons only dismissed the toast (issue #41). Approval buttons and
+# the body both use protocol activation, so the click comes back through the
 # dsh-notify-me:// handler registered in HKCU (see lib/win-toast.js).
 
 param(

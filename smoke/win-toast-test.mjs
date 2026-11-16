@@ -4,8 +4,9 @@
 // that environment (a `win32` platform and an `electron` version string). The
 // PowerShell helper cannot reasonably run in CI, so spawn/exec are injected:
 // what is pinned here is the route contract (405/403/501/400, GET actions,
-// POST send/remove), the decoded toast payload, the HKCU protocol registration,
-// the encoding of the generated VBS handler, and the token rules — single use,
+// POST send/remove), the decoded toast payload, the HKCU registrations (the
+// protocol handler, the plugin's own AUMID and its empty activator CLSID), the
+// encoding of the generated VBS handler, and the token rules — single use,
 // bound to one approval key, expiring.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,6 +20,13 @@ function assert(cond, msg) { if (!cond) throw new Error('ASSERT FAILED: ' + msg)
 
 const win = await import(pathToFileURL(path.join(ROOT, 'lib', 'win-toast.js')).href);
 assert(win.WIN_TOAST_ROUTE === '/__dsh-notify-me/win-toast', 'WIN_TOAST_ROUTE is the path the page calls');
+// The toast must not borrow the DSH shell's AUMID: that AUMID has a COM toast
+// activator registered, so Windows handed every activation to DSH and the
+// protocol handler never ran — the buttons only dismissed the toast (issue #41).
+assert(win.AUMID === 'dsh-notify-me', "the toast posts under the plugin's own AUMID");
+assert(win.AUMID !== 'electron.app.DeepSeek Harness', 'never under the DSH shell AUMID');
+assert(/^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/.test(win.ACTIVATOR_CLSID),
+  'the activator stub is a full CLSID');
 // The toast body click must always come back through our protocol handler: the
 // helper's dsh://open launch is dead on Windows, and the page's host-route raise
 // is what brings a minimized or tray-hidden window back (issue #40).
@@ -160,9 +168,17 @@ try {
   assert(payload.approveText === '同意' && payload.rejectText === '拒绝', 'button labels reach the helper');
   assert(payload.sound === false, 'the sound flag is off unless the cue is system');
 
-  assert(execCalls.length === 3, 'first approval registers the protocol with three reg.exe calls');
-  assert(execCalls[0].file === 'reg' && execCalls[0].args.join(' ').includes('HKCU\\Software\\Classes\\dsh-notify-me'),
+  assert(execCalls.length === 6, 'the first toast registers the protocol, the AUMID and the activator stub');
+  const regs = execCalls.map((c) => c.args.join(' '));
+  assert(execCalls[0].file === 'reg' && regs[0].includes('HKCU\\Software\\Classes\\dsh-notify-me'),
     'the protocol is registered under HKCU\\Software\\Classes');
+  assert(regs[3].includes('HKCU\\Software\\Classes\\AppUserModelId\\test.aumid') && regs[3].includes('DisplayName'),
+    'the toast AUMID gets the display name the notification header shows');
+  assert(regs[4].includes('\\test.aumid') && regs[4].includes('CustomActivator') && regs[4].includes(win.ACTIVATOR_CLSID),
+    'the AUMID names the activator stub');
+  assert(regs[5] === 'add HKCU\\Software\\Classes\\CLSID\\' + win.ACTIVATOR_CLSID + ' /f',
+    'the activator CLSID is created empty: with no LocalServer32 Windows dispatches the protocol (issue #41)');
+  assert(!regs.some((line) => line.includes('LocalServer32')), 'no COM server is installed');
   const handlerVbs = path.join(tmp, 'dsh-notify-me', 'notify-handler.vbs');
   assert(fs.existsSync(handlerVbs), 'the protocol handler script is written');
   const vbsBytes = fs.readFileSync(handlerVbs);
@@ -181,6 +197,15 @@ try {
   assert(JSON.parse((await call(handler, 'GET')).body).actions.length === 0, 'the action is delivered once');
   writeAction('a2.txt', 'dsh-notify-me://approve?token=' + sentBody.token);
   assert(JSON.parse((await call(handler, 'GET')).body).actions.length === 0, 'a used token is dead');
+  // Windows rewrites a protocol URI that has no path before handing it to the
+  // handler: dsh-notify-me://approve?token=… arrives as approve/?token=… (seen
+  // on Windows 11 26200 with a real toast click). The decision must survive it.
+  const rewritten = JSON.parse((await post(handler, { ...APPROVAL, tag: 'tag-4' })).body);
+  writeAction('a2b.txt', 'dsh-notify-me://approve/?token=' + rewritten.token);
+  const normalized = JSON.parse((await call(handler, 'GET')).body);
+  assert(normalized.actions.length === 1 && normalized.actions[0].action === 'approve'
+    && normalized.actions[0].key === 'approval:sess-1:1',
+    'a shell-normalized action URL (slash before the query) still delivers the decision');
 
   // 3c. Reject click.
   const second = JSON.parse((await post(handler, { ...APPROVAL, tag: 'tag-2' })).body);
@@ -242,6 +267,16 @@ try {
   assert(removed.status === 200, 'a remove answers 200');
   assert(spawned.length === 1 && spawned[0].args.includes('-RemoveTag') && spawned[0].args.includes(sentBody.id),
     'the remove spawns -RemoveTag for the history tag');
+  // 3h. A toast without buttons registers the app identity first too: its body
+  // click comes back through the same protocol, and Windows only dispatches it
+  // for an AUMID that does not answer to a COM activator.
+  const plain = mount({}, { aumid: '' }); // '' falls back to the module default
+  const plainSent = JSON.parse((await post(plain[0].handler, { title: 'DSH waiting for input', body: 'session: bash', tag: 'q-1' })).body);
+  assert(plainSent.ok === true && plainSent.token === '', 'a toast without an approval key carries no token');
+  const plainRegs = execCalls.slice(-6).map((c) => c.args.join(' '));
+  assert(plainRegs.some((line) => line.includes('HKCU\\Software\\Classes\\AppUserModelId\\' + win.AUMID)),
+    'without an injected AUMID the registration writes the plugin-owned one');
+  assert(!plainRegs.some((line) => line.includes('electron.app')), 'the DSH shell AUMID is never registered here');
 } finally {
   if (realLocalAppData === undefined) delete process.env.LOCALAPPDATA;
   else process.env.LOCALAPPDATA = realLocalAppData;
@@ -251,4 +286,4 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-console.log('win toast route OK: desktop gate, 405/403/501/400, payload, HKCU protocol, tokens (single-use/TTL), remove');
+console.log('win toast route OK: desktop gate, 405/403/501/400, payload, HKCU protocol + app identity, tokens (single-use/TTL), remove');

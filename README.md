@@ -420,11 +420,11 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast。
 
-- **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到「DeepSeek Harness」这个 AUMID 下——与 DSH 自己的通知同级，走同一套系统通知设置。
-- **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。
+- **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到插件自己的 AUMID `dsh-notify-me` 下，走同一套系统通知设置。**不能借 DSH 的 AUMID**：那个 AUMID 挂着 COM Toast 激活器，Windows 会把每次点击都交给 DSH 本体，Toast 上的协议按钮永远等不到派发（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
+- **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。这条链路要求 Toast 挂在自己的 AUMID 下，否则点击会被别的应用的激活器截走。
 - **点正文也会抬窗**：正文点击统一走 `dsh-notify-me://open`（有会话时带 `?session=`，没有会话也保留为一次纯抬窗），不再把 `dsh://open` 当 Windows 抬窗手段——那条深链拉不起最小化窗口，更拉不起 `SW_HIDE` 到托盘的窗口。等待审批期间页面每 1.5 秒取一次动作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切会话；托盘隐藏的窗口由 `focus-window.ps1` 先 `SW_SHOW` 再激活（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - **中文用户名等非 ASCII profile**：处理器脚本按 UTF-16LE + BOM 写盘，动作目录在点击时才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——脚本正文因此全是 ASCII，不会再被 WSH 按系统 ANSI 代码页解码后把路径弄乱（此前每次点按钮都弹 `800A004C` 脚本错误，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修复。升级后重启桌面端即可，第一次发带按钮的 Toast 时会重写这份脚本，不用手动清旧文件。
-- **注册**：第一次发带按钮的 Toast 时在 `HKCU\Software\Classes\dsh-notify-me` 注册上面那个处理器（当前用户级，不需要管理员权限），并按 tag 记账到 `ToastNotificationManager.History`。token 单次、3 分钟有效；动作文件被取走后即删。
+- **注册**：第一次发 Toast 前写 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬头，`CustomActivator` = 一个 CLSID），CLSID 只建空的存根、不注册 `LocalServer32`——未打包应用不实现 COM 激活器时，Windows 才会按 XML 把 `activationType="protocol"` 的点击派发出去；随后按 tag 记账到 `ToastNotificationManager.History`。两者都是当前用户级，不需要管理员权限。token 单次、3 分钟有效；动作文件被取走后即删。
 - **不弹的场合**：非 Windows 桌面宿主、`winToast.enabled: false`、或 `powershell.exe` 不存在时，路由报 `enabled: false`（`501`），页面继续用自己那条不带按钮的通知，行为与改动前一致。
 - **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `winToast: { enabled: false }`，审批提醒回到页面自己的通知（无按钮）。
 - **自动消失与收起**：原生 Toast 归 `trackToast()` 记账，普通通知 5 秒、带按钮的审批 12 秒（「总是关闭 / 从不关闭」照旧），回到页面（`keepOnReturn` 关闭时）同样收起。

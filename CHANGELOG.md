@@ -2,6 +2,19 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.2] — 2026-11-16
+
+Windows 原生审批通知的「同意 / 拒绝」按钮现在真会把决定送回页面，而不是只把通知收掉。
+
+### 修复
+
+- **Windows 审批 Toast 的按钮点了只 dismiss、没有决定**（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）：Toast 原来借用 DSH 桌面壳的 AUMID（`electron.app.DeepSeek Harness`），而这个 AUMID 在注册表里挂着一个 COM Toast 激活器（`HKCU\Software\Classes\CLSID\{…}\LocalServer32` 指向 DSH 主程序）。Windows 对这种 AUMID 一律把激活交给那个 COM 服务——正文点击和按钮都一样——Toast XML 里的 `activationType="protocol"` 根本不参与派发；DSH 那一侧没有对应的 Notification 对象，按 Electron 自己的处理（[electron/electron#51330](https://github.com/electron/electron/pull/51330)）把动作参数丢掉。于是协议处理器一次都没跑过：通知被 dismiss，动作目录里没有文件，`approval/decided` 也不会出现。现在 Toast 改发到插件自己的 AUMID `dsh-notify-me`：首次发送前写 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` 是通知抬头，`CustomActivator` 指一个 CLSID），CLSID 只建一个空的存根、不注册 `LocalServer32`——微软文档里「不实现 COM 激活器」的替代路线，代价是 Toast 上的输入框与 in-process 激活不可用，这两样本插件都没用。当前用户级注册，不需要管理员权限；旧版借 DSH AUMID 发出去的 Toast 留在操作中心没有影响，token 本来就是单次且 3 分钟过期。真机验证（Windows 11 26200 / DSH 0.2.2-rc.3）：按本改动注册自有 AUMID 与空存根后，用真实的 `lib/win-toast.ps1` 发一条审批通知，点「同意」，协议处理器收到的就是 `dsh-notify-me://approve/?token=<那条通知的 approveToken>`（Windows 会在无路径的 URI 里补一个 `/`，解析已按这个形式处理）；正文点击同样会派发。
+- **在页面里答复后原生 Toast 仍留在操作中心**：`decidePending()` 原来只关 Service Worker 那条通知，不管原生 Toast，于是操作中心里会留一条按钮已失效（token 已被消费）的通知。现在不是从 Toast 上点下来的答复，会按 tag 把原生 Toast 一起撤回。
+
+### 测试
+
+- `smoke/win-toast-test.mjs`：HKCU 注册命令从 3 条扩到 6 条（协议 3 条 + AUMID 的 `DisplayName` / `CustomActivator` + 空 CLSID 存根），断言默认 AUMID 是插件自己的、不是 DSH 的，且不带按钮的 Toast 也会先注册身份；另加一条归一化用例——Windows 会把无路径的 URI 改写成 `dsh-notify-me://approve/?token=…` 再交给处理器，这个形式同样要解析成决定。
+
 ## [1.21.1] — 2026-11-16
 
 宿主 HTTP 路由补齐 DSH 的访问准入：浏览器里打开的网页不能再借着对本机回环的访问直接调用插件的路由。
