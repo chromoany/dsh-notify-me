@@ -157,6 +157,36 @@ const preflight = await callRoute({
 assert(preflight.status === 405,
   'a preflight is answered 405 and never with CORS headers (got ' + preflight.status + ')');
 
+// The composition's connection fence runs before the payload when the host
+// exposes it: the call is DSH's own `requestRejection` (Host/Origin fence plus
+// browser authentication), and its status is relayed verbatim. It runs after the
+// method check, exactly where the plugin gate it replaces used to sit. A host
+// without the service (the stand-in above, older DSH, the tests) falls back to
+// the plugin gate that the cases above pin.
+const seeing = [];
+ctx.get = (name) => name === 'connection' ? {
+  requestRejection(req) {
+    seeing.push(req.method);
+    if (req.headers['x-test-forbidden']) return 403;
+    if (req.headers['x-test-unauthorized']) return 401;
+    return undefined;
+  },
+} : undefined;
+const deniedUntrusted = await callRoute({ method: 'GET', headers: { 'x-test-forbidden': '1' } });
+assert(deniedUntrusted.status === 403 && deniedUntrusted.body && deniedUntrusted.body.reason === 'untrusted',
+  'a connection 403 is relayed as untrusted (got ' + deniedUntrusted.status + ' ' + JSON.stringify(deniedUntrusted.body) + ')');
+const deniedUnauthenticated = await callRoute({ method: 'GET', headers: { 'x-test-unauthorized': '1' } });
+assert(deniedUnauthenticated.status === 401 && deniedUnauthenticated.body && deniedUnauthenticated.body.reason === 'unauthenticated',
+  'a connection 401 is relayed as unauthenticated (got ' + deniedUnauthenticated.status + ' ' + JSON.stringify(deniedUnauthenticated.body) + ')');
+const admittedProbe = await callRoute({ method: 'GET' });
+assert(admittedProbe.status === 200,
+  'an admitted request continues to the route probe (got ' + admittedProbe.status + ')');
+assert(seeing.length === 3, 'every request consults connection.requestRejection first (saw ' + seeing.length + ')');
+const admittedForeign = await callRoute({ method: 'POST', headers: { host: 'evil.example' } });
+assert(admittedForeign.status === 403 && admittedForeign.body && admittedForeign.body.reason === 'bad-host',
+  'the plugin gate still runs after admission (got ' + admittedForeign.status + ' ' + JSON.stringify(admittedForeign.body) + ')');
+console.log('host route admission OK: connection 401/403 relayed, admitted requests still gated');
+
 // Point the route at a stand-in script: this is the test hook that turns the
 // desktop path on inside a plain Node process.
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-notify-me-focus-'));

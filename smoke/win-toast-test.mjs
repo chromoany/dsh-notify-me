@@ -63,13 +63,13 @@ function decodePayload(call) {
   return JSON.parse(Buffer.from(call.args[at + 1], 'base64').toString('utf8'));
 }
 
-function mount(config = {}, deps = {}) {
+function mount(config = {}, deps = {}, shared = { bindHost: undefined, allowedOrigins: [] }) {
   const routes = [];
   const ctx = {
     effect(fn) { fn(); return () => {}; },
     webServer: { register(route) { routes.push(route); return () => {}; } },
   };
-  win.mountWinToast(ctx, config, { bindHost: undefined, allowedOrigins: [] }, undefined, {
+  win.mountWinToast(ctx, config, shared, undefined, {
     spawn: fakeSpawn,
     execFile: fakeExec,
     psPath: psPath,
@@ -210,6 +210,31 @@ try {
   clock += 3 * 60 * 1000 + 1;
   writeAction('a5.txt', 'dsh-notify-me://approve?token=' + aged.token);
   assert(JSON.parse((await call(clocked[0].handler, 'GET')).body).actions.length === 0, 'an expired token is ignored');
+
+  // 3g. The composition's admission fence runs first when the host exposes its
+  // connection service: an unauthenticated browser session never reaches the
+  // action files or the toast helper, and an admitted request still gets the
+  // plugin's own loopback gate.
+  let admissionCalls = 0;
+  const fenced = mount({}, {}, {
+    bindHost: undefined,
+    allowedOrigins: [],
+    connection: () => ({
+      requestRejection(req) {
+        admissionCalls += 1;
+        return req.headers['x-test-deny'] ? 401 : undefined;
+      },
+    }),
+  });
+  assert(fenced.length === 1, 'fenced mount registers the toast route');
+  const fencedDenied = await call(fenced[0].handler, 'GET', { 'x-test-deny': '1' });
+  assert(fencedDenied.status === 401 && JSON.parse(fencedDenied.body).reason === 'unauthenticated',
+    'a connection 401 is relayed before the toast route answers');
+  const fencedProbe = JSON.parse((await call(fenced[0].handler, 'GET')).body);
+  assert(fencedProbe.ok === true && admissionCalls === 2, 'an admitted probe answers normally after one admission call');
+  const fencedPeer = await call(fenced[0].handler, 'GET', {}, undefined, '10.0.0.9');
+  assert(fencedPeer.status === 403 && JSON.parse(fencedPeer.body).reason === 'bad-remote',
+    'the plugin gate still refuses a non-loopback peer after admission');
 
   // 3f. Removal: withdraw by page tag, resolved to the history tag.
   spawned.length = 0;

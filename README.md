@@ -397,6 +397,8 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 那个头只是「这是页面发来的」标记，不是防线——DNS rebinding 的恶意页对目标地址而言是同源的，能带任意自定义头、也不触发预检。真正的闸门是三层：对端地址必须是 loopback，或恰好是监听器自己绑定的那个 IP；`Host` 必须是 loopback 名（`127.0.0.1` / `localhost` / `[::1]`，可带端口）或同一个绑定地址，因为壳转发时 `host` 已被删掉、由 fetch 按它拨号的 URL 重填，而 rebinding 的页面 Host 仍是攻击者域名；带了 `Origin` 就必须和 `Host` 同源。任一条不符回 `403`，`reason` 分别是 `bad-remote` / `bad-host` / `cross-origin`。`GET` 只回 `{ok, route, enabled, desktop, platform}`，装完可以先用浏览器打开确认路由在不在。400 毫秒内的重复调用合并成一次，脚本超过 8 秒没回话就 kill 掉按失败处理。
 
+这六条宿主路由（focus、macOS 通知、Windows Toast、页面桥接、host-fallback 健康探针、同源中继）现在还共用一层 DSH 准入：宿主若提供 `connection` 服务，handler 会先调 `connection.requestRejection(req)`——DSH 自己的路由也走这里，包含 Host / Origin 围栏和浏览器登录态校验；它返回 401 / 403 就原样转发（`reason` 为 `unauthenticated` / `untrusted`），通过后才轮到上面这套插件自己的闸门。宿主没有这个服务（旧版 DSH、纯 Node、离线测试）时跳过前者、退回插件闸门，行为与之前相同。这一层收在 `lib/page-bridge.js` 的 `guardRequest()` 里。
+
 抬不起来的几种场合与[已知限制](#已知限制)里列的一致（提权窗口、另一虚拟桌面、前台被反复抢走），一律如实回 `202`、对话照常切。`SW_HIDE` 到托盘的隐藏主窗原来直接回 `202`，1.21.0 起先 `SW_SHOW` 再走同一套激活步骤（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
 </details>

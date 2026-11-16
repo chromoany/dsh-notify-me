@@ -2,6 +2,19 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.1] — 2026-11-16
+
+宿主 HTTP 路由补齐 DSH 的访问准入：浏览器里打开的网页不能再借着对本机回环的访问直接调用插件的路由。
+
+### 修复
+
+- **宿主 HTTP 路由缺少 DSH 的 Host / Origin 准入**：focus、macOS 通知、Windows Toast、页面桥接、host-fallback 健康探针、同源中继这六条 `webServer.register` 路由原来只由插件自己的 `gateRequest` 把守；DSH 对这张路由表之外的路由不做围栏，所以浏览器里打开的网页可以按地址调用它们。现在每条 handler 都先调宿主的 `connection.requestRejection(req)`（DSH 自己的路由同款：Host / Origin 围栏 + 浏览器登录态），401 / 403 原样回（`reason` 为 `unauthenticated` / `untrusted`），放行后再过原有 `gateRequest`；宿主不提供 `connection` 服务（旧版 DSH、纯 Node、离线测试）时退回原逻辑，行为不变。这一层收在 `lib/page-bridge.js` 新增的 `guardRequest()` 里，六条路由共用。
+
+### 测试
+
+- `smoke/host-route-test.mjs`：新增 admission 用例——假 `connection` 返回 403 → `untrusted`、返回 401 → `unauthenticated`、放行后仍被插件自己的 `Host` 闸门拒绝，并断言每个请求都先问 `requestRejection`。
+- `smoke/win-toast-test.mjs`：新增 3g 用例——带 deny 头 → 401 `unauthenticated`、正常 `GET` 仍 200、非回环 peer 仍 403 `bad-remote`（admission 之后插件闸门继续生效）。
+
 ## [1.21.0] — 2026-11-16
 
 点桌面通知的正文现在真能把 DSH 从最小化和托盘里拉回来；macOS 在 DSH 已经处于前台时点原生通知也会立即切到对应会话。
