@@ -521,6 +521,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/AlbertDope"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AlbertDope.png" width="40" height="40" alt="@AlbertDope"></a> | [#36](https://github.com/chromoany/dsh-notify-me/issues/36)：Windows 中文用户名下审批按钮必弹 `800A004C` 的根因定位（WSH 按 ANSI 代码页解码处理器脚本）与修复验证，1.20.1 起修复 |
 | <a href="https://github.com/TianqiCai"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/TianqiCai.png" width="40" height="40" alt="@TianqiCai"></a> | [#38](https://github.com/chromoany/dsh-notify-me/pull/38)：macOS 已在前台时点通知不切会话的修复（1 秒轮询），含冒烟测试，1.21.0 起收编 |
 | <a href="https://github.com/MVennn"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/MVennn.png" width="40" height="40" alt="@MVennn"></a> | [#40](https://github.com/chromoany/dsh-notify-me/issues/40)：Windows 原生审批 Toast 点正文不唤醒最小化/托盘窗口的报障与定位，1.21.0 起修复 |
+| <a href="https://github.com/fgql"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/fgql.png" width="40" height="40" alt="@fgql"></a> | [#41](https://github.com/chromoany/dsh-notify-me/issues/41)：Windows 桌面端审批 Toast 的「同意 / 拒绝」只 dismiss、不派发协议激活的报障；四组对照实验把断点逐层收到「点击被 AUMID 的 COM 激活器截走」与「Windows 10 没有存根激活器的协议派发」两层，1.21.2 / 1.21.3 起修复 |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 
