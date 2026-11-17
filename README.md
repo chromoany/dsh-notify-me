@@ -2,6 +2,8 @@
 
 <img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/brand/header.jpg" width="100%" alt="仓库头图：深色桌面上亮起的铃铛标志，标题 dsh-notify-me，副标题 Step away. Stay informed.">
 
+<h1 align="center">dsh-notify-me</h1>
+
 **离开 DSH 页面，也能及时知道何时需要回来。**
 
 简体中文 | [English](README.en.md)
@@ -85,7 +87,7 @@ Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。Windows
 window.__dshNotifyMe.test("done")        // 「完成」示例
 window.__dshNotifyMe.test("attention")   // 「需要你」示例
 window.__dshNotifyMe.test("approval")    // Web 桥可用、或 Windows 桌面宿主原生 Toast 时带「同意 / 拒绝」按钮；macOS 桌面与无桥环境只发普通通知
-window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge、原生通道看 macNative / winNative 与各自 last；切回页面后收通知看 toastsLive / toastsWithdrawn / lastToastWithdrawAt（还挂着几条 / 累计收起几条 / 最后一次的时间）
+window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮可用）、抬窗通道 raiseChannel、最近一次尝试 raiseLast、平台拒发原文 lastToastReject、设置是否真存下来 configStored、宿主协调看 hostBridge、原生通道看 macNative / macNativeLast、winNative / winNativeLast；切回页面后收通知看 toastsLive / toastsWithdrawn / lastToastWithdrawAt（还挂着几条 / 累计收起几条 / 最后一次的时间）
 ```
 
 </details>
