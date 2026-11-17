@@ -2,6 +2,20 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.4] — 2026-11-17
+
+桌面端抬窗失败时，窗口不再越抬越沉：兜底从「最小化 + 还原」换成一次不抢焦点的置顶脉冲。
+
+### 修复
+
+- **点通知后窗口恢复但没在前台，还被越推越低**（[#42](https://github.com/chromoany/dsh-notify-me/issues/42)）：1.14.0 起的抬窗顺序里，`SW_RESTORE` 与 ALT 抖动 + `SetForegroundWindow` 都过不了前台锁时，最后退到 `SW_MINIMIZE` + `SW_RESTORE`。这一对在「激活被允许」时确实把窗口带到最前，可恰恰在它被当作兜底的那种情况下——激活被拒——`SW_RESTORE` 只负责把窗口「显示」出来，Windows 随后按窗口记住的 z-order 位置放回：被压在底下时就还是底下。报告人在 Win10 19045 上采到的 z-order 从 2 掉到 11 / 13 / 15，其中 10.656 → 11.436 那一下（约 0.78 秒）正好对得上这一步（step 3 的 170 ms 等待 + step 4 的 70 + 60 ms 睡眠 + 280 ms 轮询）；再往后的下沉是别的窗口在前台活动时浮上来，不是脚本在重试——每次调用只顺序走一遍，宿主对 400 ms 内的重复请求还会合并，不存在「重试循环」。现在 step 4 改成**置顶脉冲**：`SetWindowPos(HWND_TOPMOST)` 亮 120 ms，再 `HWND_NOTOPMOST` 落回普通层；两个调用都带 `SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW`，键鼠焦点留在原处，窗口停在普通层最上面。同时删掉 `SW_MINIMIZE`，脚本里不再有任何最小化路径。
+- **跨进程的普通层抬窗本来就是个空操作**：`HWND_TOP` 那版在 Win11 26200 上实测——跨进程 `SetWindowPos(HWND_TOP, SWP_NOACTIVATE)` 返回 `True`、全局 z-order 一位没动，`BringWindowToTop` 同样无效；换成 `HWND_TOPMOST` 立刻到第 0 位，120 ms 后 `HWND_NOTOPMOST` 仍留在第 0 位、前台窗口没变。旧注释里「前台锁只拒激活、不拒 z-order 改变」这句对普通层并不成立，只有置顶层能穿过去，所以兜底必须走脉冲而不是一句 `HWND_TOP`。
+
+### 测试
+
+- `smoke/smoke-test.cjs`：新增一段静态断言——`lib/focus-window.ps1` 必须保持纯 ASCII（Windows PowerShell 5.1 安全）、不得再出现 `SW_MINIMIZE`、且 `SetWindowPos(..., HWND_TOPMOST, ...)` 必须排在 `SetWindowPos(..., HWND_NOTOPMOST, ...)` 之前，防止这条兜底被改回去。
+- 真机（Windows 11 26200，`powershell.exe` 5.1）：`focus-window.ps1` 端到端在普通窗口上仍是 `FOCUSED=1`、退出码 0；同一轮里对「属于另一个进程、被最大化窗口完全盖住」的目标窗口做 120 ms 置顶脉冲，全局 z-order 从第 2 位到第 0 位、前台窗口保持不变、窗口保持可见。
+
 ## [1.21.3] — 2026-11-16
 
 Windows 10 上不再发带按钮的原生审批 Toast：那里的系统通知派发不了协议激活，按钮只会把通知收掉。

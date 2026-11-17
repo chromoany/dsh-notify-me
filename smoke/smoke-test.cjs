@@ -1789,6 +1789,29 @@ async function desktopRaiseChannel() {
     + 'hostEnv overrides both ways, and refusals or dead routes are non-fatal');
 }
 
+// ── focus-window.ps1: no minimize fallback, raise via a topmost pulse (#42) ──
+// A non-activated SW_RESTORE only shows the window, and Windows puts it back at
+// its remembered z-order position - the bottom when it was buried - so the old
+// SW_MINIMIZE + SW_RESTORE fallback sank a refused raise instead of surfacing
+// it. The replacement is a short HWND_TOPMOST pulse that drops back to
+// HWND_NOTOPMOST: the window lands at the top of the normal band and the
+// keyboard focus stays where it was. Measured cross-process on Windows 11
+// 26200: a plain SetWindowPos(HWND_TOP) on another process's window is a no-op
+// (it returns true and the z-order does not change), while the pulse moves the
+// window to the top and leaves it there.
+{
+  const focusScript = fs.readFileSync(path.join(__dirname, '..', 'lib', 'focus-window.ps1'));
+  const focusText = focusScript.toString('utf8');
+  const nonAscii = focusScript.filter((b) => b > 127).length;
+  assert(nonAscii === 0, 'focus-window.ps1 stays ASCII for Windows PowerShell 5.1, got ' + nonAscii + ' high bytes');
+  assert(!focusText.includes('SW_MINIMIZE'), 'focus-window.ps1 no longer minimizes the window to raise it (#42)');
+  const raise = focusText.indexOf('SetWindowPos($hwnd, [FocusNative]::HWND_TOPMOST');
+  const drop = focusText.indexOf('SetWindowPos($hwnd, [FocusNative]::HWND_NOTOPMOST');
+  assert(raise !== -1, 'the refused-focus path raises with HWND_TOPMOST');
+  assert(drop !== -1 && drop > raise, 'the topmost pulse drops back to HWND_NOTOPMOST right after the raise');
+  console.log('focus-window.ps1 OK: no minimize/restore retry, ASCII only, raise is a topmost pulse (#42)');
+}
+
 // ── macOS native toast: collect a click even while DSH is already frontmost ──
 // Clicking a banner raises DSH with dsh://open; when the app is already the
 // frontmost one that activates nothing, so the page never receives a focus

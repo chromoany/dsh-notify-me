@@ -17,10 +17,17 @@
 #   1. already foreground -> done (no flicker for the common case)
 #   2. IsIconic -> ShowWindow(SW_RESTORE), then Alt tap + SetForegroundWindow
 #   3. Alt tap + SetForegroundWindow
-#   4. ShowWindow(SW_MINIMIZE) + ShowWindow(SW_RESTORE) + Alt tap + SetForegroundWindow
+#   4. HWND_TOPMOST pulse without activation: Windows ignores a plain HWND_TOP
+#      raise for another process's window, but honours a topmost change; dropping
+#      back to HWND_NOTOPMOST leaves the window at the top of the normal band, so
+#      a refused foreground lock still leaves it visible instead of buried
 #   5. final Alt tap + SetForegroundWindow
 # The Alt tap (keybd_event VK_MENU down/up) gives the calling thread foreground
 # permission so SetForegroundWindow is not refused by the foreground lock rule.
+# Never minimize: a non-activated SW_RESTORE only shows the window, and Windows
+# puts it back at its remembered z-order position - the bottom when it was
+# buried - so a minimize/restore "retry" sinks the window instead of raising it
+# (issue #42).
 #
 # ASCII only, UTF-8 without BOM (Windows PowerShell 5.1 safe).
 
@@ -82,6 +89,9 @@ public class FocusNative
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -114,8 +124,13 @@ public class FocusNative
     public const uint GW_OWNER = 4;
     public const int GWL_EXSTYLE = -20;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
-    public const int SW_MINIMIZE = 6;
     public const int SW_RESTORE = 9;
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_SHOWWINDOW = 0x0040;
+    public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
     public const byte VK_MENU = 0x12;
     public const uint KEYEVENTF_KEYUP = 0x0002;
     public const string TARGET_CLASS = "Chrome_WidgetWin_1";
@@ -325,14 +340,20 @@ public class FocusNative
                 $focused = Test-Foreground $hwnd 170
             }
             if (-not $focused) {
-                Out-Line 'DETAIL: step 4: ShowWindow(SW_MINIMIZE) + SW_RESTORE + Alt tap + SetForegroundWindow'
-                [void][FocusNative]::ShowWindow($hwnd, [FocusNative]::SW_MINIMIZE)
-                Start-Sleep -Milliseconds 70
-                Invoke-AltTap
-                [void][FocusNative]::ShowWindow($hwnd, [FocusNative]::SW_RESTORE)
+                # Surface the window without activating it. A plain HWND_TOP raise
+                # is ignored for another process's window, but the topmost band is
+                # honoured: pulse HWND_TOPMOST briefly, then drop back to
+                # HWND_NOTOPMOST, which leaves the window at the top of the normal
+                # band while the foreground lock keeps the keyboard focus where it
+                # was. A minimize/restore pair instead only shows the window and
+                # lets Windows restore its old (bottom) position - issue #42.
+                Out-Line 'DETAIL: step 4: SetWindowPos(HWND_TOPMOST) pulse without activation'
+                $raiseFlags = [FocusNative]::SWP_NOSIZE -bor [FocusNative]::SWP_NOMOVE -bor `
+                    [FocusNative]::SWP_NOACTIVATE -bor [FocusNative]::SWP_SHOWWINDOW
+                [void][FocusNative]::SetWindowPos($hwnd, [FocusNative]::HWND_TOPMOST, 0, 0, 0, 0, [uint32]$raiseFlags)
+                Start-Sleep -Milliseconds 120
+                [void][FocusNative]::SetWindowPos($hwnd, [FocusNative]::HWND_NOTOPMOST, 0, 0, 0, 0, [uint32]$raiseFlags)
                 Start-Sleep -Milliseconds 60
-                Invoke-AltForeground $hwnd
-                $focused = Test-Foreground $hwnd 280
             }
             if (-not $focused) {
                 Out-Line 'DETAIL: step 5: final Alt tap + SetForegroundWindow'
