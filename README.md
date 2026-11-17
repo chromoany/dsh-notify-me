@@ -343,7 +343,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 ## 兼容性
 
-已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.2` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.2`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。桌面端当前打包的 `0.2.2-rc.3` 由 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人实测：1.21.2 在 rc.3 上把原生 Toast 发了出来（通知抬头是插件自有 AUMID 的 `DSH Notify Me`），客户端与宿主两半都正常挂载；1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
+已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.3` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.3`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.2.2-rc.3` 这版在隔离宿主里除了上述四条，还实测了设置分区渲染与「启用提醒」开关往返、四条宿主路由的挂载，宿主日志零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人在同一版本上验过原生 Toast 与抬窗（1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API）。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
 
 ## 控制台高级配置
 
