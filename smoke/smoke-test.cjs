@@ -1970,6 +1970,38 @@ async function winNativeToastClick() {
   console.log('Windows native toast OK: a body click raises via the host route, with or without a session');
 }
 
+// ── #43: the page must not hold an output device it is not playing through ──
+// Firefox keeps an output device open for every *running* AudioContext, silent
+// or not, so a context created on the first click and never released pinned the
+// sink even with Sound off. These pin the shape of the release: no context while
+// muted, asleep once the cue has rung out, and a cue fired before the page ever
+// got activation dropped instead of queued on a frozen clock.
+{
+  const bodyOf = (name) => {
+    const start = SRC.indexOf('    function ' + name + '(');
+    assert(start !== -1, 'lib/client.js still defines ' + name + '()');
+    const next = SRC.indexOf('\n    function ', start + 1);
+    return SRC.slice(start, next === -1 ? undefined : next);
+  };
+  const unlock = bodyOf('unlockAudio');
+  const gate = unlock.indexOf('if (!config.sound) return;');
+  assert(gate !== -1, 'unlockAudio returns while Sound is off');
+  assert(gate < unlock.indexOf('new AC()'), 'the Sound gate runs before the context is created');
+  assert(unlock.indexOf('suspendAfterCue(0)') !== -1, 'a gesture that plays nothing puts the context straight back to sleep');
+  const toneBody = bodyOf('tone');
+  const stop = toneBody.indexOf('osc.stop(');
+  assert(stop !== -1, 'tone() still stops the oscillator');
+  assert(toneBody.indexOf('suspendAfterCue(') > stop, 'the cue arms its wake-back after the last oscillator');
+  assert(toneBody.indexOf('audioCtx.resume()') < stop, 'tone() wakes a sleeping context before scheduling');
+  const custom = bodyOf('playCustomSound');
+  assert(custom.indexOf('suspendAfterCue(') > custom.indexOf('var started = el.play();'),
+    'a picked file sleeps the context right after it starts: the element does not need the context');
+  assert(SRC.indexOf('    function suspendAfterCue(') !== -1, 'suspendAfterCue() exists');
+  assert(SRC.indexOf('patch({ sound: v }); if (v) unlockAudio();') !== -1,
+    'turning Sound on wakes the context in that same gesture');
+  console.log('audio context release OK: no context while muted, asleep between cues, no pile-up before activation (#43)');
+}
+
 // ── alert sound source: built-in cue / picked file / system sound ──────────
 // The cue is the one alert surface with no coverage at all: the harness leaves
 // AudioContext undefined, so every other case silently takes the "no audio
@@ -1995,8 +2027,11 @@ function makeAudioCapture() {
     stop() {}
   }
   class FakeAudioContext {
-    constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
-    resume() { return Promise.resolve(); }
+    constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; this.suspends = 0; }
+    resume() { this.state = 'running'; return Promise.resolve(); }
+    // The bundle parks the context between cues (#43); a real one drops the
+    // output device on suspend, so the fake has to change state the same way.
+    suspend() { this.suspends += 1; this.state = 'suspended'; return Promise.resolve(); }
     createOscillator() { const o = new FakeOsc(); tones.push(o); return o; }
     createGain() { return new FakeGain(); }
   }
@@ -2122,6 +2157,76 @@ async function soundSources() {
 
   for (const c of [...host.cleanups]) c();
   console.log('alert sound source OK: synth/system/custom dispatch, fallback, and reset all behave');
+}
+
+// ── #43: a cue fired before the page has activation must not be queued ──────
+// resume() settles asynchronously, and scheduling on a suspended context puts
+// the oscillator on a clock that is not moving: a page that never got a gesture
+// used to stack every cue and play the lot at the first click. The cue is now
+// scheduled only after the wake-up lands, and dropped when it is refused.
+async function audioSleepWake() {
+  console.log('\n— audio: dropped before activation, scheduled once awake —');
+  const tones = [];
+  const ctxs = [];
+  let refuse = false;
+  class SlowAudioContext {
+    constructor() {
+      this.state = 'suspended';
+      this.currentTime = 0;
+      this.destination = {};
+      this.resumes = 0;
+      this.suspends = 0;
+      ctxs.push(this);
+    }
+    resume() {
+      this.resumes += 1;
+      if (refuse) return Promise.reject(new Error('no sticky activation'));
+      this.state = 'running';
+      return Promise.resolve();
+    }
+    suspend() { this.suspends += 1; this.state = 'suspended'; return Promise.resolve(); }
+    createOscillator() {
+      const osc = { type: null, frequency: { value: 0 }, connect: (g) => g, start() {}, stop() {} };
+      tones.push(osc);
+      return osc;
+    }
+    createGain() {
+      return { gain: { steps: [], setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect: (d) => d };
+    }
+  }
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox, windowStub) { windowStub.AudioContext = SlowAudioContext; },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  const api = b.win.__dshNotifyMe;
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  // 1) refused wake-up: nothing gets scheduled, so nothing can pile up later.
+  refuse = true;
+  api.test('done');
+  await tick();
+  assert(tones.length === 0, 'a cue fired without activation is dropped, not queued, got ' + tones.length);
+  assert(ctxs.length === 1, 'the refused cue still created the one context first');
+  assert(ctxs[0].resumes > 0, 'it asked that context to wake up before giving up');
+
+  // 2) accepted wake-up: the pair is scheduled as soon as the context runs.
+  refuse = false;
+  api.test('done');
+  assert(tones.length === 0, 'nothing is scheduled synchronously on a suspended context, got ' + tones.length);
+  await tick();
+  assert(tones.length === 2, 'the "done" pair is scheduled once the wake-up lands, got ' + tones.length);
+
+  // 3) asleep-after-a-cue: a context that has run before is scheduled in order,
+  //    without waiting for another round trip just to be allowed to.
+  ctxs[0].state = 'suspended';
+  const before = tones.length;
+  api.test('done');
+  assert(tones.length === before + 2, 'a context already woken schedules without an extra round trip');
+
+  for (const c of [...host.cleanups]) c();
+  console.log('audio sleep/wake OK: dropped before activation, scheduled once awake');
 }
 
 // ── issue #15: repeated toasts must not share a tag ────────────────────────
@@ -4455,6 +4560,7 @@ function mutedSessionsUi() {
   await macNativeClickPoll();
   await winNativeToastClick();
   await soundSources();
+  await audioSleepWake();
   uniqueToastTags();
   toastTagLimits();
   settingsSoundRows();

@@ -2,6 +2,22 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.5] — 2026-11-19
+
+页面不再长期占着音频输出设备：提醒音关着时根本不建 AudioContext，开着时也是用前唤醒、响完睡回。
+
+### 修复
+
+- **关掉「提醒音」后页面仍然占着一个输出设备**（[#43](https://github.com/chromoany/dsh-notify-me/pull/43)）：AudioContext 在页面第一次点击 / 按键时就被创建，之后一直是 `running`。Firefox 对每个 running 的 AudioContext 都持有一个输出设备——哪怕一声都没出过——于是蓝牙耳机这类 sink 永远到不了 idle：`pw-cli i <sink>` 一直报 `running`，`wpctl status` 里那路来自 Firefox 的 playback stream 标着 `[active]`，把流销毁掉几秒内就转 idle。现在 `unlockAudio()` 第一句就是 `if (!config.sound) return;`，静音时连 context 都不建，设置页把开关打开时再补一次解锁。
+- **上下文只在出声前后醒着**：新增 `suspendAfterCue()`，`tone()` 排完这一声（末个振荡器 `osc.stop()` 之后再留 0.25 秒尾巴）、`playCustomSound()` 起播 250 ms 后各挂一次 `suspend()`；`cueEndTimer` 只留一个待执行的定时器，后到的提醒把它往后推而不是叠一堆定时器。「点过一次就有 context」不再等于「设备一直被占着」。
+- **解锁后没有声可出时立刻睡回去**：「提醒音」默认是开的，第一次点击就会把 context 唤醒成 `running`；以前它会一直亮到第一条提醒，后台挂一天的页面就占一天的设备。现在 `unlockAudio()` 末尾在没有待执行定时器时挂 `suspendAfterCue(0)`，同一 tick 里真有提醒则被 `tone()` 重新计时，不会把这一声截断。
+- **还没拿到激活就来的提醒不再堆积**：`resume()` 要等用户手势，之前会在暂停的 context 上照排振荡器，攒到第一次点击时一起爆出来。现在一条提醒整体交给 `withAudio(build)`：已确认能播就同步排；否则等唤醒落地再排，被拒就整条丢掉。`wakeAudio()` 让同一 tick 里的 `unlockAudio()` 与提醒共用同一次 `resume()`，避免第二个调用方看到 `state` 已被乐观改成 `running` 就抢先排单。
+
+### 测试
+
+- `smoke/smoke-test.cjs`：新增一段静态断言——静音门必须在 `new AC()` 之前、`tone()` 里的 `suspendAfterCue()` 必须在 `osc.stop()` 之后、设置行必须还是「先 `patch` 再解锁」；另加 `audioSleepWake()` 三个用例：被拒绝的唤醒丢掉整条提醒、答应的唤醒在 promise 落地后排出那一对、已经醒过又被睡下的 context 直接同步排。`FakeAudioContext` 补上 `suspend()` 与 `suspends` 计数。
+- `npm test` 八套件通过（`smoke-test.cjs` / `host-route-test.mjs` / `page-bridge-test.mjs` / `host-fallback-test.mjs` / `relay-route-test.mjs` / `cordis-host-test.mjs` / `mac-notify-test.mjs` / `win-toast-test.mjs`）。
+
 ## [1.21.4] — 2026-11-17
 
 桌面端抬窗失败时，窗口不再越抬越沉：兜底从「最小化 + 还原」换成一次不抢焦点的置顶脉冲。
@@ -575,10 +591,16 @@ Windows 中文用户名下点审批通知的「同意 / 拒绝」不再弹脚本
 - 说明文案同步：系统通知那行直说「桌面端这类通知没有按钮」，浮层那行直说「与上面二选一」；`bridgeOffDesktop` 改成指路——桌面端要按钮就切到浮层，并点明宿主缺 `allowServiceWorkers`。
 - `api.debug()` 新增 `channel` 字段。
 
+### 兼容性
+
+- 适配 `0.2.1-rc.2`（当前 npm latest）：隔离 `DSH_HOME` 起 `dsh web`，启动页 70 个条目里插件排第 59、`application` 批，三个注入目标都在它前面且解析正常；`/plugins/??dsh-notify-me/client.js&rev=…` 返回 1.7.0 构建（140,153 B）；无头 Chromium 载入页面后 `apply` 执行，`window.__dshNotifyMe.debug()` 报 `uiSession: bound`、来源 `sessionStatus`。宿主侧公共 store 与 `0.2.0-rc.2` 同形（`sessionStatus`、`retainedBy.mainView`、`uiWorkspace.openSession()`），**不需要改代码**。
+- `package.json` 的 `dsh.compatibility.dshReleases` 补 `0.2.1-rc.2`。`0.2.1-rc.2` 的宿主已不再读取该字段（安装门控只看 `peerDependencies` 与 `engines`），它现在只是给人看的记录。
+- README（中英）同步：徽章、实测版本句、代际表、两坑段落与已知限制都补上 `0.2.1-rc.2`。
+
 ### 测试
 
 - 冒烟：两个单选互斥的持久化、老配置迁移、切频道时图层清理、两种渠道各自只发一条、带按钮卡片 18 秒自收（用可控 `setTimeout` 捕获定时器）。
-- `npm test` 两套件（`smoke-test.cjs` / `cordis-host-test.mjs`）全过。
+- `npm test` 两套件（`smoke-test.cjs` / `cordis-host-test.mjs`）全过；另在 `0.2.1-rc.2` 的 cordis 4.0.5 上复核同一批用例。
 
 ## [1.9.5] — 2026-10-20
 
@@ -644,15 +666,6 @@ Windows 中文用户名下点审批通知的「同意 / 拒绝」不再弹脚本
 ### 测试
 
 - `npm test` 两套件通过；另用真 bundle + 合成宿主面板（`data-shortcut-modal="settings"`、`button.navCell > svg + span.navLabel`）在无头 Chromium 里验证：三行导航里只有「通知提醒」变成铃铛（`data-dnm-nav="1"`、三条 shape），另外两行保持齿轮，图标 class 未丢。
-## [Unreleased]
-
-### 兼容性
-- 适配 `0.2.1-rc.2`（当前 npm latest）：隔离 `DSH_HOME` 起 `dsh web`，启动页 70 个条目里插件排第 59、`application` 批，三个注入目标都在它前面且解析正常；`/plugins/??dsh-notify-me/client.js&rev=…` 返回 1.7.0 构建（140,153 B）；无头 Chromium 载入页面后 `apply` 执行，`window.__dshNotifyMe.debug()` 报 `uiSession: bound`、来源 `sessionStatus`。宿主侧公共 store 与 `0.2.0-rc.2` 同形（`sessionStatus`、`retainedBy.mainView`、`uiWorkspace.openSession()`），**不需要改代码**。
-- `package.json` 的 `dsh.compatibility.dshReleases` 补 `0.2.1-rc.2`。`0.2.1-rc.2` 的宿主已不再读取该字段（安装门控只看 `peerDependencies` 与 `engines`），它现在只是给人看的记录。
-- README（中英）同步：徽章、实测版本句、代际表、两坑段落与已知限制都补上 `0.2.1-rc.2`。
-
-### 测试
-- `npm test` 两套件在 0.2.1-rc.2 的 cordis 4.0.5 上通过（`smoke/smoke-test.cjs` 与真 cordis 腿 `smoke/cordis-host-test.mjs`）。
 
 ## [1.9.0] — 2026-10-20
 
