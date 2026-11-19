@@ -94,6 +94,8 @@ window.__dshNotifyMe.debug()             // 桥接看 bridge（active = 按钮�
 
 没有测试通知时，先检查：通知权限是否被拒绝（在页面上点一下 → 选「允许」；或地址栏锁 → 站点设置 → 通知 → 允许 → 刷新）、装完没重启 DSH、系统设置里浏览器通知被关。
 
+要是**设置里压根没有「通知提醒」这一栏**，控制台里 `window.__dshNotifyMe` 也是 `undefined`，那是客户端半身根本没加载——1.21.4 及更早在部分宿主上会这样，页面不会有任何报错（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)）。把插件升到 1.21.6 以上再重启 DSH 即可。
+
 ## 为什么需要它
 
 - **不开完整访问（`workspace-write` + ask）**：保留事前审批，但错过请求会让 agent 等待。
@@ -345,7 +347,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 ## 兼容性
 
-已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.5` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.2.2-rc.3` 这版在隔离宿主里除了上述四条，还实测了设置分区渲染与「启用提醒」开关往返、四条宿主路由的挂载，宿主日志零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人在同一版本上验过原生 Toast 与抬窗（1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API）。2026-11-19 又对当时的 `latest` `0.2.2-rc.5` 与前一版 `0.2.2-rc.4` 各跑了一轮隔离验证：两版都是 76 个启动条目、插件在 index 65、三个注入目标都排在它之前，无头 Edge 载入带 token 的真实页面后 `apply` 正常执行（`debug()` 报 `version: 1.21.5`、`uiSession: bound`，控制台零报错），宿主侧十项 API / 槽位与审批契约 `allowed-once` 全在，八套件 `npm test` 在宿主自带的 cordis 4.1.0 上也全过。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
+已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.5` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5`（判定标准：插件条目进启动页 `__DSH_BOOT__`、运行时服务依赖 `sessions` / `locale` / `slots` 解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.2.2-rc.3` 这版在隔离宿主里除了上述四条，还实测了设置分区渲染与「启用提醒」开关往返、四条宿主路由的挂载，宿主日志零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人在同一版本上验过原生 Toast 与抬窗（1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API）。2026-11-19 又对当时的 `latest` `0.2.2-rc.5` 与前一版 `0.2.2-rc.4` 各跑了一轮隔离验证：两版都是 76 个启动条目、插件在 index 65，清单 `dsh.client.inject` 自 1.21.6 起为空、加载器不再把别的插件包当前置条件（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)），无头 Edge 载入带 token 的真实页面后 `apply` 正常执行（`debug()` 报 `version: 1.21.5`、`uiSession: bound`，控制台零报错；改完 #44 之后又在 `0.2.2-rc.5` 上用 1.21.6 复测一轮，同样 `apply`、`uiSession: bound`、`hostEnv: web`），宿主侧十项 API / 槽位与审批契约 `allowed-once` 全在，八套件 `npm test` 在宿主自带的 cordis 4.1.0 上也全过。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
 
 ## 控制台高级配置
 
@@ -482,7 +484,7 @@ npm pack --dry-run               # 预览发布包
 <details>
 <summary>各测试套件覆盖范围与手动检查</summary>
 
-`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状，外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
+`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 中英语言用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状，外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。它还钉住清单：`package.json` 的 `dsh.client.inject` 必须为空、运行时那句 `inject = ["sessions", "locale", "slots"]` 必须原样保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：加载器把清单读成「先到达这些整包」，目标到不了，整个条目静默不跑）。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」、`relay.bodyTemplate` 的模板渲染与 JSON 转义、坏模板启动即不注册、渲染体积上限。
 
