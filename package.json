@@ -96,11 +96,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-session",
-        "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-conversation"
-      ],
+      "inject": [],
       "platform": "web"
     },
     "compatibility": {

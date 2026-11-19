@@ -31,7 +31,8 @@ const path = require('node:path');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'lib', 'client.js'), 'utf8');
-const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
+const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const PKG_VERSION = PKG.version;
 
 function assert(cond, msg) { if (!cond) throw new Error('ASSERT FAILED: ' + msg); }
 
@@ -239,6 +240,20 @@ async function legacyHost() {
   assert(mod.inject.indexOf('uiSession') === -1,
     'uiSession must NOT be a hard inject entry (a missing service would leave the entry pending and fail the web boot audit)');
   console.log('export shape OK: inject=', JSON.stringify(mod.inject));
+
+  // #44: the boot loader reads dsh.client.inject as "arrive these whole client
+  // bundles before mine". A host that stops shipping one of them leaves this
+  // entry pending forever: installed, enabled, host half serving its routes, and
+  // nothing in the page ever runs — no error the page could report. Keep it
+  // empty; the runtime service inject above is this bundle's only gate.
+  {
+    const manifestInject = (PKG.dsh && PKG.dsh.client && PKG.dsh.client.inject) || [];
+    assert(Array.isArray(manifestInject) && manifestInject.length === 0,
+      'package.json dsh.client.inject must stay empty (issue #44) — got ' + JSON.stringify(manifestInject));
+    assert(/var inject = \["sessions", "locale", "slots"\];/.test(SRC),
+      'plugin body still declares exactly the runtime service inject (sessions/locale/slots)');
+    console.log('manifest inject OK: empty');
+  }
 
   mod.apply(host.ctx);
   assert(typeof win.__dshNotifyMe === 'object', 'global api exposed');

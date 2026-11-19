@@ -4,7 +4,11 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ## [1.21.6] — 2026-11-19
 
-兼容性记录补到 DSH `0.2.2-rc.5`；只动文档与版本号，插件行为不变。
+修掉「装好了、开关开着、什么都不发生」的静默失效：客户端条目不再把别的插件包当硬依赖；兼容性记录顺带补到 DSH `0.2.2-rc.5`。
+
+### 修复
+
+- **客户端条目可能永远不 apply，而且一声不响**（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)）：`package.json` 的 `dsh.client.inject` 列着 `dsh-client-ui-session` / `dsh-client-locale` / `dsh-client-ui-conversation`。加载器把这个列表读成「先让这些整包到达，再跑我这一条」，任一目标在该宿主上到不了，条目就停在 pending——页面不报错、控制台里没有 `window.__dshNotifyMe`、设置里也没有「通知提醒」。报障环境是 DSH Desktop `0.2.2-rc.3` + 1.21.4：插件页可见、开关为开、宿主路由 `/__dsh-notify-me/focus-window` 回 401 而不是 404（宿主半身确实挂上了），把 inject 减到只剩 locale 立刻恢复，改回三个又立刻失效。现在该字段是空数组：本包真正需要的只有运行时那句 `inject = ["sessions", "locale", "slots"]`，`uiSession` / `uiWorkspace` 本来就是 `ctx.get()` 惰性取的，少一个服务只降级，不连累整个条目。
 
 ### 兼容性
 
@@ -14,6 +18,8 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ### 测试
 
+- `smoke/smoke-test.cjs` 新增清单断言：`package.json` 的 `dsh.client.inject` 必须保持空数组，运行时的 `var inject = ["sessions", "locale", "slots"];` 必须原样保留——#44 的复盘就是这个字段一旦被当成「依赖三个 ui 包」，整个条目会静默不加载。
+- 改空注入后在 rc.5 隔离宿主上复测：启动载荷仍是 76 个条目、`dsh-notify-me` 仍在 index 65（`inject: []`），无头 Edge 载入真实页面后 `window.__dshNotifyMe.debug()` 报 `version: 1.21.6`、`uiSession: bound`、`hostEnv: web`，即 `apply` 照常执行。
 - `npm test` 八套件在 rc.5 自带的 cordis 4.1.0 上通过（`DSH_CORDIS_PATH` 指到 `@deepseek-ai/cordis/lib/index.js`，给目录会报 `ERR_UNSUPPORTED_DIR_IMPORT`）；日志含 `watcher bound OK to sessionStatus`、`current-session derivation OK (retainedBy.mainView)`、`toast click navigated via uiWorkspace.openSession OK`、`quick decision via decide() OK: ["allowed-once"]`。
 - 隔离验证环境：隔离 `DSH_HOME` 里装 launcher、profile 用 junction 挂本仓库，`dsh web --profile compat --no-open` 起宿主；rc.4 与 rc.5 各跑一轮。
 
