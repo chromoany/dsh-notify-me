@@ -1812,6 +1812,30 @@ async function desktopRaiseChannel() {
   console.log('focus-window.ps1 OK: no minimize/restore retry, ASCII only, raise is a topmost pulse (#42)');
 }
 
+// ── AudioContext lifecycle: no context while muted, cues sleep it after ──
+// Firefox keeps an output device open for every running AudioContext, so a
+// DSH page holding the context that the first gesture created - even with
+// Sound off and no tone ever played - pinned a Bluetooth sink in "running"
+// for as long as the tab stayed open. The gate must precede construction,
+// and every cue must schedule its own sleep; wake-ups ride on the page's
+// sticky user activation, so resume() from a timer still works.
+{
+  const unlockBody = SRC.slice(SRC.indexOf('function unlockAudio()'));
+  const gate = unlockBody.indexOf('if (!config.sound) return;');
+  const create = unlockBody.indexOf('audioCtx = new AC()');
+  assert(gate !== -1 && create !== -1 && gate < create, 'unlockAudio() bails on Sound off before constructing the AudioContext');
+  assert(SRC.includes('function suspendAfterCue('), 'a cue-end timer suspends the AudioContext again');
+  const toneBody = SRC.slice(SRC.indexOf('function tone('), SRC.indexOf('function playCustomSound('));
+  const stop = toneBody.indexOf('osc.stop(t0 + durMs / 1000 + 0.05);');
+  assert(stop !== -1 && toneBody.indexOf('suspendAfterCue(', stop) !== -1, 'tone() arms the sleep timer after scheduling its oscillator');
+  assert(toneBody.includes('audioCtx.resume()'), 'tone() wakes a suspended context instead of dropping the cue');
+  const customBody = SRC.slice(SRC.indexOf('function playCustomSound('));
+  const play = customBody.indexOf('var started = el.play();');
+  assert(play !== -1 && customBody.indexOf('suspendAfterCue(', play) !== -1, 'a custom cue sleeps the context too; the media element does not need it');
+  assert(SRC.includes('patch({ sound: v }); if (v) unlockAudio();'), 'switching Sound on unlocks within that same click, before any cue has to wait for one');
+  console.log('AudioContext lifecycle OK: muted pages never create one, every cue sleeps it again');
+}
+
 // ── macOS native toast: collect a click even while DSH is already frontmost ──
 // Clicking a banner raises DSH with dsh://open; when the app is already the
 // frontmost one that activates nothing, so the page never receives a focus

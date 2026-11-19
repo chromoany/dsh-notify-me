@@ -2,6 +2,12 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [Unreleased]
+
+### 修复
+
+- **提示音从不释放输出设备，蓝牙耳机被永久占住**：页面侧的 AudioContext 由首次点击/按键解锁创建、之后从不挂起，而 Firefox 会为每个 running 的 AudioContext 持有输出设备——于是 Sound 关着、一个音色都没播过，只要页面开着，蓝牙 sink 也一直停在 `running` 无法 idle。现在四处收紧：① `unlockAudio()` 在 Sound 关闭时直接返回，不再创建 context；② `tone()` 排程完最后一个音色后定时 `suspend()`，`playCustomSound()` 起播 media 元素后同样让 context 休眠（元素播放不依赖 context）；③ `tone()` 不再因 `state !== "running"` 直接丢弃提示音：resume() 是异步的，改为先 resume、再按冻结的时钟排程，唤醒后照常出声；④ 设置里打开 Sound 开关的那次点击当场 `unlockAudio()`，开启后首条提示音不必等到下次用户交互才响。
+
 ## [1.21.4] — 2026-11-17
 
 桌面端抬窗失败时，窗口不再越抬越沉：兜底从「最小化 + 还原」换成一次不抢焦点的置顶脉冲。
