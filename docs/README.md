@@ -30,5 +30,3 @@ README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown �
 ## 头像
 
 `contributors/` 里每位贡献者一张 48×48 PNG，文件名就是 GitHub 用户名，README 里按 40×40 显示。加人时改动两处：这里的图片，和 README 中英两份的致谢表。
-
-图片必须**先把圆形抠好**：48×48、四角 alpha 为 0。GitHub 网页上头像显示成圆的，但 README 里嵌的是裸 PNG，交一张方图进去就是方角，不会有任何裁切。做法是把 `AgMahone.png` 的 alpha 通道当遮罩套到新图上，全表共用同一个圆（连边缘那一圈抗锯齿都一致），不要各自画。验证：`Image.open(p).split()[3]` 四个角取值为 0（套同一遮罩时实心像素约 1724 个，个别图边缘抗锯齿差几个）。
