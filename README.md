@@ -15,7 +15,7 @@
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#安装)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
-[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--rc.3%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#兼容性)
+[![DSH Compatibility](https://img.shields.io/badge/DSH-%E5%B7%B2%E9%80%82%E9%85%8D%200.2.2--rc.5%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#兼容性)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 </div>
@@ -345,7 +345,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 ## 兼容性
 
-已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.3` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.3`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.2.2-rc.3` 这版在隔离宿主里除了上述四条，还实测了设置分区渲染与「启用提醒」开关往返、四条宿主路由的挂载，宿主日志零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人在同一版本上验过原生 Toast 与抬窗（1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API）。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
+已逐版实测在 `0.1.1-rc.2` 到 `0.2.2-rc.5` 上真正激活，含 npm `next` 渠道的 `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5`（判定标准：插件条目进启动页 `__DSH_BOOT__`、注入依赖解析通过、`/plugins/??dsh-notify-me/client.js` 返回含新代码的构建、设置里出现「通知提醒」分区）。`0.2.2-rc.3` 这版在隔离宿主里除了上述四条，还实测了设置分区渲染与「启用提醒」开关往返、四条宿主路由的挂载，宿主日志零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的报告人在同一版本上验过原生 Toast 与抬窗（1.21.3 只加了 Windows 10 的 build 判定，没有碰宿主 API）。2026-11-19 又对当时的 `latest` `0.2.2-rc.5` 与前一版 `0.2.2-rc.4` 各跑了一轮隔离验证：两版都是 76 个启动条目、插件在 index 65、三个注入目标都排在它之前，无头 Edge 载入带 token 的真实页面后 `apply` 正常执行（`debug()` 报 `version: 1.21.5`、`uiSession: bound`，控制台零报错），宿主侧十项 API / 槽位与审批契约 `allowed-once` 全在，八套件 `npm test` 在宿主自带的 cordis 4.1.0 上也全过。逐版适配记录、宿主代际的形状差异与两个会静默失效的坑，见 **[docs/compatibility.md](docs/compatibility.md)**。
 
 ## 控制台高级配置
 

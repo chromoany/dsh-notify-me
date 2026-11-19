@@ -2,6 +2,21 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.21.6] — 2026-11-19
+
+兼容性记录补到 DSH `0.2.2-rc.5`；只动文档与版本号，插件行为不变。
+
+### 兼容性
+
+- **`0.2.2-rc.4` / `0.2.2-rc.5` 实测通过**：两版启动载荷都是 76 个条目（与 `0.2.2-rc.3` 同一形状），`dsh-notify-me` 都在 index 65、三个注入目标（`client-ui-session` 18 / `client-locale` 13 / `client-ui-conversation` 30）排在它之前；`/plugins/??dsh-notify-me/client.js&rev=…` 用条目自己的 `rev` 取回 200 / 282,966 B，即 1.21.5 的 `lib/client.js` 加宿主 70 B 的 sourceMappingURL 注释。无头 Edge 经 CDP 载入带 `?token=` 的真实页面后 `apply` 正常执行：`window.__dshNotifyMe` 是对象，`debug()` 报 `version: 1.21.5`、`uiSession: bound`，控制台零报错。
+- **宿主 API 面没有变化**：把两版的 76 个客户端 bundle 全下载后按字符串核对，`sessionStatus`、`retainedBy`、`completionUnread`、`pendingInteraction`、`settings.section`、三个会话行槽位（`sidebar.workspaces.session.row.action`、`sidebar.session.row.leading`、`sidebar.workspaces.session.menu.item`）、`uiWorkspace.openSession` 与审批契约 `allowed-once` 十项全在。上游 release notes 里 rc.4 是两项 bugfix（异常模型响应处理、桌面端 LiveShare 分享）、rc.5 是 DeepSeek 模型改走服务端搜索，都没有动客户端插件 API。
+- `dsh.compatibility.dshReleases` 补两版；README 中英的徽章与实测范围句、`docs/compatibility.md` / `.en.md` 的版本清单、代际表与逐版验证段同步。
+
+### 测试
+
+- `npm test` 八套件在 rc.5 自带的 cordis 4.1.0 上通过（`DSH_CORDIS_PATH` 指到 `@deepseek-ai/cordis/lib/index.js`，给目录会报 `ERR_UNSUPPORTED_DIR_IMPORT`）；日志含 `watcher bound OK to sessionStatus`、`current-session derivation OK (retainedBy.mainView)`、`toast click navigated via uiWorkspace.openSession OK`、`quick decision via decide() OK: ["allowed-once"]`。
+- 隔离验证环境：隔离 `DSH_HOME` 里装 launcher、profile 用 junction 挂本仓库，`dsh web --profile compat --no-open` 起宿主；rc.4 与 rc.5 各跑一轮。
+
 ## [1.21.5] — 2026-11-19
 
 页面不再长期占着音频输出设备：提醒音关着时根本不建 AudioContext，开着时也是用前唤醒、响完睡回。

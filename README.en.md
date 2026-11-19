@@ -15,7 +15,7 @@
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#installation)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
-[![DSH Compatibility](https://img.shields.io/badge/DSH-tested%200.2.2--rc.3%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#compatibility)
+[![DSH Compatibility](https://img.shields.io/badge/DSH-tested%200.2.2--rc.5%20%2F%200.2.1--rc.5-6366f1.svg?style=flat-square)](#compatibility)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 </div>
@@ -345,7 +345,7 @@ This is primarily a **browser-layer** plugin: local toasts, sound and the title 
 
 ## Compatibility
 
-Every release from `0.1.1-rc.2` through `0.2.2-rc.3` was tested to actually activate, including the npm `next` channel's `0.2.2-rc.3` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). On `0.2.2-rc.3` the isolated run also exercised the settings section rendering, an enable-switch round trip and all four host routes, with no warnings in the host log; on the desktop side the reporter of [#41](https://github.com/chromoany/dsh-notify-me/issues/41) separately verified native toasts and window raising on the same version (1.21.3 only adds the Windows 10 build gate and touches no host API). Per-release records, the host-generation shape differences and the two traps that fail silently are in **[docs/compatibility.en.md](docs/compatibility.en.md)**.
+Every release from `0.1.1-rc.2` through `0.2.2-rc.5` was tested to actually activate, including the npm `next` channel's `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its inject dependencies resolve, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). On `0.2.2-rc.3` the isolated run also exercised the settings section rendering, an enable-switch round trip and all four host routes, with no warnings in the host log; on the desktop side the reporter of [#41](https://github.com/chromoany/dsh-notify-me/issues/41) separately verified native toasts and window raising on the same version (1.21.3 only adds the Windows 10 build gate and touches no host API). On 2026-11-19 the then-`latest` `0.2.2-rc.5` and its predecessor `0.2.2-rc.4` each got an isolated run: both keep the 76 boot entries with the plugin at index 65 and the three inject targets ahead of it, a real `?token=` page loaded through headless Edge ran `apply` (`debug()` reports `version: 1.21.5` and `uiSession: bound`, no console errors), all ten host APIs / slots plus the `allowed-once` approval contract are present, and the eight `npm test` suites pass against the cordis 4.1.0 the host ships. Per-release records, the host-generation shape differences and the two traps that fail silently are in **[docs/compatibility.en.md](docs/compatibility.en.md)**.
 
 ## Advanced console configuration
 
