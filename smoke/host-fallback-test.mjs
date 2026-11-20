@@ -18,6 +18,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import goalEvents from './goal-events.cjs';
+
+const { goalJournal } = goalEvents;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -48,7 +51,7 @@ function captureFetch(responder) {
 }
 
 /** Boot the plugin over a hand-written ctx and return the handles to drive it. */
-function bootHost(config) {
+function bootHost(config, services = {}) {
   const routes = [];
   const handlers = { 'session/event': [], 'session/disposed': [] };
   const warnings = [];
@@ -57,6 +60,7 @@ function bootHost(config) {
     return () => { if (typeof off === 'function') off(); };
   };
   const ctx = {
+    get: (name) => services[name],
     logger: { info() {}, warn(message) { warnings.push(String(message)); } },
     on(type, fn) { (handlers[type] = handlers[type] || []).push(fn); return () => {}; },
     effect,
@@ -183,6 +187,100 @@ const baseConfig = (over) => ({
 });
 
 try {
+  {
+    const calls = captureFetch();
+    const journal = goalJournal();
+    const main = Object.assign(session('goal-main'), {
+      eventAt: (seq) => journal.events[seq],
+      get seq() { return journal.events.length; },
+    });
+    let initiator;
+    const hostHalf = bootHost(baseConfig({ pageLeaseMs: 0, includeSubagents: true }), {
+      agents: { currentInitiator: () => initiator },
+      sessions: { get: (id) => id === main.header.id ? main : undefined },
+    });
+    const emit = (event) => hostHalf.emit(main, event);
+    const stop = (turn, operation, phase, ptc) => {
+      initiator = { session: main };
+      journal.stop(turn, operation, phase, ptc).forEach(emit);
+      initiator = undefined;
+    };
+    const start = (turn, automatic) => journal.start(turn, automatic).forEach(emit);
+    const end = (turn, reason) => emit(journal.end(turn, reason));
+    emit(journal.change('create', 'active'));
+    start(1);
+    end(1);
+    await sleep(20);
+    assert(calls.length === 0, 'an ongoing goal round must not produce a host push (actual ' + calls.length + ', expected 0)');
+    const child = session('goal-child', { origin: 'subagent', parentSession: main.header.id });
+    hostHalf.emit(child, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+    await sleep(20);
+    assert(calls.length === 0, 'an opted-in child completion during the active parent goal stays quiet');
+
+    start(2, false);
+    emit(journal.change('edit', 'active'));
+    end(2);
+    await sleep(20);
+    assert(calls.length === 0, 'a human turn with an active goal and an objective edit remains quiet');
+    hostHalf.emit(main, { type: 'approval/asked', data: { id: 'goal-approval', toolName: 'review' } });
+    await waitFor(() => calls.length === 1, 'an approval during a goal');
+
+    start(3);
+    stop(3, 'block', 'blocked', true);
+    end(3);
+    await waitFor(() => calls.length === 2, 'the same-turn model block');
+    emit(journal.change('resume', 'active'));
+    start(4);
+    end(4);
+    await sleep(20);
+    assert(calls.length === 2, 'resuming the same goal does not repeat its blocked notification');
+
+    start(5, false);
+    stop(5, 'pause', 'paused');
+    end(5);
+    await waitFor(() => calls.length === 3, 'an explicit pause after a prior stop inside the normal throttle window');
+    emit(journal.change('resume', 'active'));
+    start(6);
+    emit(journal.change('pause', 'paused'));
+    end(6, { kind: 'aborted', reason: { kind: 'user' } });
+    await sleep(20);
+    assert(calls.length === 3, 'a human pause that aborts a turn does not produce a goal completion');
+
+    emit(journal.change('resume', 'active'));
+    start(7);
+    end(7);
+    emit(journal.change('block', 'blocked', 'round-limit'));
+    await sleep(20);
+    assert(calls.length === 3, 'a round-limit block after turn/end does not grace the earlier reply');
+
+    emit(journal.change('resume', 'active'));
+    start(8);
+    stop(8, 'complete', 'complete');
+    end(8);
+    await waitFor(() => calls.length === 4, 'the explicitly completed goal');
+    hostHalf.emit(child, { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 5, 'ordinary opted-in child completion after the parent goal');
+
+    const cold = bootHost(baseConfig({ turnEndThrottleMs: 0 }));
+    journal.start(9, false);
+    cold.emit(main, journal.end(9));
+    await waitFor(() => calls.length === 6, 'ordinary reply with an already completed goal in history');
+    journal.change('create', 'active');
+    journal.start(10);
+    journal.stop(10, 'complete', 'complete');
+    const reloaded = bootHost(baseConfig());
+    reloaded.emit(main, journal.end(10));
+    await waitFor(() => calls.length === 7, 'the model stop committed before the host plugin reloaded');
+
+    reloaded.emit(main, journal.change('create', 'active'));
+    reloaded.emit(main, journal.change('pause', 'paused'));
+    journal.start(11, false).forEach(event => reloaded.emit(main, event));
+    reloaded.emit(main, journal.change('complete', 'complete'));
+    reloaded.emit(main, journal.end(11));
+    await waitFor(() => calls.length === 8, 'a human reply while an already paused goal is completed externally');
+    globalThis.fetch = realFetch;
+  }
+
   // 1) A fresh lease means the page is delivering: the host must stay quiet for
   // both event kinds, or every alert would arrive twice.
   {

@@ -4563,7 +4563,176 @@ function mutedSessionsUi() {
   console.log('mute UI OK: bell toggles one row, mark follows it, menu row toggles too, switch hides only the idle bell, card clears the list');
 }
 
+async function ongoingGoalCompletions() {
+  const { goalJournal } = require('./goal-events.cjs');
+  const journal = goalJournal();
+  journal.change('create', 'active');
+  const sid = 'goal-main';
+  const host = buildHost({ withSessionStatus: true });
+  let releaseRead;
+  let holdRead = false;
+  let failReads = false;
+  let cold = false;
+  let visibleEvents = [];
+  let readCalls = 0;
+  let completedTurn = 0;
+  const sessionRemote = {
+    async events({ address, beforeSeq, throughSeq }) {
+      assert(address.kind === 'session' && address.sessionId === sid, 'the background history read names the goal session');
+      readCalls += 1;
+      if (failReads) return { ok: false, error: { code: 'gateway/cancelled' } };
+      if (holdRead) await new Promise(resolve => { releaseRead = resolve; });
+      const cut = throughSeq ?? journal.events.length - 1;
+      const end = Math.min(cut + 1, beforeSeq ?? cut + 1);
+      const start = cold ? Math.max(0, end - 3) : 0;
+      const records = journal.events.slice(start, end).map(event => ({ type: 'event', event }));
+      return { ok: true, value: { cursor: cut, records, hasMore: start > 0 } };
+    },
+    async projections({ sessionId }) {
+      assert(sessionId === sid, 'the projection fallback names the same background session');
+      return { ok: true, value: { kind: 'sequenced', seq: journal.events.length - 1, values: { goal: journal.projection() } } };
+    },
+  };
+  host.ctx.get = (name) => ({ 'remote.session': sessionRemote, uiSession: host.ctx.uiSession })[name];
+  const bind = host.ctx.sessions.binding;
+  host.ctx.sessions.binding = () => ({ ...bind(), eventSource: {
+    getSnapshot: () => ({ entries: visibleEvents.map(event => ({ type: 'event', event })), hasMore: false }),
+  } });
+  const reading = {
+    getSnapshot: () => ({ ready: true, items: { [sid]: { completedTurn } } }),
+    subscribe: () => () => {},
+  };
+  host.ctx.uiSession.sessionStatus.reading = { state: reading };
+  const setRow = (current, running) => {
+    host.setList({ ids: [sid], byId: { [sid]: { running, displayTitle: 'Ongoing goal' } }, current, phase: 'ready',
+      projectionsBySession: cold ? {} : { [sid]: { state: 'ready', values: { goal: journal.projection() } } },
+    });
+    host.notifyList();
+    if (current === sid) {
+      host.setFace({ running, pending: [], nodes: [] });
+      host.notifyFace();
+    }
+  };
+  const setUnread = (turn, unread) => {
+    completedTurn = turn;
+    host.setStatus(new Map([[sid, statusRow(null, { running: false, completionUnread: unread })]]));
+    host.notifyStatus();
+  };
+  const page = bootBundle();
+  page.doc.hidden = true;
+  page.mod.apply(host.ctx);
+  const done = () => page.events.filter(event => event.kind === 'done');
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+
+  journal.start(1);
+  visibleEvents = journal.events.slice();
+  setRow(sid, true);
+  journal.end(1);
+  visibleEvents = journal.events.slice();
+  setRow(sid, false);
+  await settle();
+  assert(done().length === 0, 'the selected ongoing goal must not alert (actual ' + done().length + ', expected 0)');
+  assert(readCalls === 0, 'the selected binding provides the exact completion without a remote history read');
+
+  journal.start(2, false);
+  visibleEvents = journal.events.slice();
+  setRow(sid, true);
+  journal.end(2);
+  holdRead = true;
+  setRow(sid, false);
+  journal.start(3);
+  journal.stop(3, 'block', 'blocked', true);
+  journal.end(3);
+  holdRead = false;
+  releaseRead();
+  await settle();
+  assert(done().length === 0, 'the foreground edge stays on turn 2 even when the RPC also sees the stop in turn 3');
+
+  setRow('s1', false);
+  cold = true;
+  journal.change('resume', 'active');
+  journal.start(4, false);
+  journal.end(4);
+  setRow('s1', false);
+  const readsBeforeColdCompletion = readCalls;
+  setUnread(4, true);
+  await settle();
+  assert(readCalls > readsBeforeColdCompletion + 1, 'a cold background check paginates past the latest turn');
+  assert(done().length === 0 && !page.getTitle().includes('✅'), 'the cold background human turn still belongs to the active goal');
+  setUnread(4, false);
+  cold = false;
+
+  journal.start(5, false);
+  setRow('s1', true);
+  journal.change('edit', 'active');
+  journal.end(5);
+  setUnread(5, true);
+  setRow('s1', false);
+  await settle();
+  assert(done().length === 0 && !page.getTitle().includes('✅'), 'an objective edit does not alert or leave an unread mark');
+
+  journal.start(6);
+  setRow('s1', true);
+  journal.stop(6, 'complete', 'complete', true);
+  journal.end(6);
+  setUnread(6, true);
+  setRow('s1', false);
+  await settle();
+  assert(done().length === 1 && page.getTitle().includes('✅'), 'one goal completion reaches toast and title across both signals');
+  setUnread(6, false);
+  assert(!page.getTitle().includes('✅'), 'clearing the unread flag releases the completion mark');
+
+  journal.start(7, false);
+  visibleEvents = journal.events.slice();
+  setRow(sid, true);
+  journal.end(7);
+  visibleEvents = journal.events.slice();
+  setRow(sid, false);
+  await settle();
+  assert(done().length === 2, 'a later ordinary reply still alerts with a historical completed goal');
+
+  setRow('s1', false);
+  releaseRead = undefined;
+  holdRead = true;
+  journal.change('create', 'active');
+  journal.start(8);
+  journal.stop(8, 'complete', 'complete');
+  journal.end(8);
+  setUnread(8, true);
+  assert(typeof releaseRead === 'function', 'the unread history read is pending');
+  setUnread(8, false);
+  holdRead = false;
+  releaseRead();
+  await settle();
+  assert(done().length === 2 && !page.getTitle().includes('✅'), 'a cleared unread cannot alert after its history response');
+
+  journal.change('create', 'active');
+  journal.start(9);
+  setRow('s1', true);
+  failReads = true;
+  journal.end(9);
+  setRow('s1', false);
+  setUnread(9, true);
+  await settle();
+  assert(done().length === 2 && !page.getTitle().includes('✅'), 'a known active goal stays quiet when the history RPC fails');
+
+  setUnread(9, false);
+  failReads = false;
+  await sleep(260);
+  journal.change('pause', 'paused');
+  journal.start(10, false);
+  journal.change('complete', 'complete');
+  journal.end(10);
+  setUnread(10, true);
+  await settle();
+  assert(done().length === 3, 'a normal human reply alerts when an already paused goal is completed externally');
+
+  for (const cleanup of [...host.cleanups]) cleanup();
+  console.log('ongoing goal OK: selected and background reports, objective edits, terminal transition, historical goal');
+}
+
 (async () => {
+  await ongoingGoalCompletions();
   await legacyHost();
   await currentHost();
   await modernHost();

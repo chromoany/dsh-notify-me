@@ -22,6 +22,9 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import goalEvents from './goal-events.cjs';
+
+const { goalJournal } = goalEvents;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -223,7 +226,7 @@ async function main() {
   const slotsStub = { inject() {}, register() {} };
 
   // mode: 'pendingInteractions' (0.1.2-0.1.5) | 'status' (0.1.6+) | 'legacy'.
-  async function runHost({ mode, withNotification }) {
+  async function runHost({ mode, withNotification, sessionRemote }) {
     const b = bootBundle({ withNotification });
     const controller = makeController({ withOpen: mode !== 'status' });
     const root = new Context();
@@ -238,6 +241,7 @@ async function main() {
         ctx.provide('sessions', controller.sessions);
         ctx.provide('locale', localeStub);
         ctx.provide('slots', slotsStub);
+        if (sessionRemote) ctx.provide('remote.session', sessionRemote);
         if (mode === 'pendingInteractions') uiService = new FakeUiSession(ctx);
         if (mode === 'status') {
           uiService = new FakeUiSessionStatus(ctx);
@@ -488,6 +492,30 @@ async function main() {
     await tick();
     assert(h.getTitle().indexOf('✅') === -1, 'opening the session releases the unread mark');
     console.log('completionUnread latch + release OK');
+  }
+
+  {
+    const journal = goalJournal();
+    journal.change('create', 'active');
+    journal.start(1, false);
+    journal.end(1);
+    let reads = 0;
+    const h = await runHost({ mode: 'status', sessionRemote: {
+      async events({ address }) {
+        assert(address.kind === 'session' && address.sessionId === 'goal-cold', 'the named Remote receives the background session id');
+        reads += 1;
+        return { ok: true, value: { cursor: journal.events.length - 1, hasMore: false, records: journal.events.map(event => ({ type: 'event', event })) } };
+      },
+    } });
+    assert(!h.mod.inject.includes('remote.session'), 'the published plugin has no hard dependency on the newer Remote');
+    h.doc.hidden = true;
+    h.controller.setList({ ids: ['goal-cold'], byId: { 'goal-cold': { running: false, displayTitle: 'Cold goal' } }, phase: 'ready', projectionsBySession: {} });
+    h.controller.notifyList();
+    h.uiService.publish(new Map([['goal-cold', { running: false, completionUnread: true }]]));
+    await tick();
+    assert(reads === 1, 'real Cordis resolves the sibling remote.session service without inject, got ' + reads + ' reads');
+    assert(!h.events.some(event => event.kind === 'done') && !h.getTitle().includes('✅'), 'the real Cordis watch suppresses the active background Goal');
+    console.log('Goal Remote OK: optional named sibling service resolves under the published inject');
   }
 
   // The host-half focus route moved to smoke/host-route-test.mjs: it needs no
