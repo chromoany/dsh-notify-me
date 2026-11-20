@@ -32,15 +32,18 @@ window.__dshNotifyMe.setConfig({
   externalRetryDelays: [2000, 6000], // backoff for retryable failures (ms, with jitter; [] = send once)
   externalTargets: []         // push targets, see the field notes below
 })
-// Target shape: {id, type, url, secret?, token?, uid?, template?, enabled?}
-// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'custom'
-// token/uid only for wxpusher (its URL is fixed to the official endpoint); secret signs Feishu bodies
-// and custom HMAC headers; template is optional ({{title}} {{body}} {{event}} {{time}} {{session}});
+// Target fields are {id, type, url?, secret?, token?, uid?, botToken?, chatId?, template?, enabled?}
+// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'telegram' | 'custom'
+// WxPusher uses token and uid. Telegram uses botToken and chatId. Both use a fixed endpoint.
+// secret signs Feishu bodies and custom HMAC headers.
+// template is optional ({{title}} {{body}} {{event}} {{time}} {{session}}).
 // enabled:false disables that one target
 window.__dshNotifyMe.resetConfig()                // restore defaults (also drops any picked audio files)
 window.__dshNotifyMe.decide("approval:3", "allowed-once")  // programmatic decision: "allowed-once" | "rejected"
 window.__dshNotifyMe.testExternal()               // explicit outbound test to valid targets; resolves {sent, unverified, failed, statuses}
 ```
+
+A Telegram target looks like `{ id: "tg", type: "telegram", botToken: "123456:your_bot_token", chatId: "-1001234567890" }`. The `chatId` can be an integer, a numeric string, or a public channel `@username`.
 
 > **External-test switch boundary:** the settings page's "Send test notification" needs the "Enable reminders" and "External notifications" master switches on, but ignores the two per-kind forwarding switches. The console `testExternal()` call is an explicit test: with valid configured targets it sends to them even when those master switches are off; with no valid targets it sends nothing. Ordinary `test("done")` / `test("attention")` / `test("approval")` calls only test local alerts and never forward externally.
 

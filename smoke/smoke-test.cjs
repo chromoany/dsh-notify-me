@@ -93,7 +93,7 @@ function bootBundle(opts) {
       removeItem: (k) => { delete storage[k]; },
     },
     console, setTimeout, clearTimeout, setInterval, clearInterval,
-    Symbol, Object, JSON, Date, Math, Array, String, Number,
+    Symbol, Object, JSON, Date, Math, Array, String, Number, URLSearchParams,
   };
   vm.createContext(sandbox);
   // Test-specific environment extras (service-worker bridge stubs, __DSH_BOOT__,
@@ -2713,11 +2713,16 @@ async function externalWebhooks() {
 
   // 2) the toast test path never pings: test alerts deliver locally and must
   //    not leak to webhooks even with everything armed.
-  const armed = bootWeb(null, {
+  const telegramTarget = { id: 'tg', type: 'telegram', botToken: ' 123456:test_bot-token ', chatId: ' -1001234567890 ' };
+  const telegramUrl = 'https://api.telegram.org/bot123456:test_bot-token/sendMessage';
+  const armed = bootWeb((rec) => rec.url === telegramUrl
+    ? { ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') }
+    : { ok: true, status: 204 }, {
     externalEnabled: true,
     externalTargets: [
       { id: 't1', type: 'custom', url: 'https://hook.example/x' },
       { id: 't2', type: 'discord', url: 'https://discord.com/api/webhooks/1/y' },
+      telegramTarget,
     ],
   });
   armed.win.__dshNotifyMe.test('done');
@@ -2725,20 +2730,21 @@ async function externalWebhooks() {
 
   // 3) testExternal hits every target with that service's payload shape.
   const r1 = await armed.win.__dshNotifyMe.testExternal();
-  assert(r1.sent === 2 && r1.failed === 0, 'both targets report sent, got ' + JSON.stringify(r1));
-  assert(armed.calls.length === 2, 'one POST per target');
+  assert(r1.sent === 3 && r1.failed === 0, 'all targets report sent, got ' + JSON.stringify(r1));
+  assert(armed.calls.length === 3, 'one POST per target');
   const customCall = armed.calls.find((c) => c.url === 'https://hook.example/x');
   const custom = JSON.parse(customCall.body);
   assert(custom.source === 'dsh-notify-me' && custom.event === 'attention' && custom.title === '外部通知测试',
     'custom payload shape, got ' + JSON.stringify(custom));
   assert(custom.sessionId !== undefined && !!custom.time, 'custom payload carries sessionId + time');
-  const discord = JSON.parse(armed.calls.find((c) => c.url.indexOf('discord.com') !== -1).body);
+  const discordCall = armed.calls.find((c) => c.url.indexOf('discord.com') !== -1);
+  const discord = JSON.parse(discordCall.body);
   assert(discord.username === 'DSH' && discord.content.indexOf('外部通知测试') === 0,
     'discord payload shape, got ' + JSON.stringify(discord));
-  assert(armed.calls.every((c) => c.opts.mode === 'cors' && String(c.opts.headers['Content-Type']) === 'application/json'),
-    'first attempts are CORS JSON POSTs');
+  assert([customCall, discordCall].every((c) => c.opts.mode === 'cors' && c.opts.headers['Content-Type'] === 'application/json'),
+    'custom and Discord still use CORS JSON POSTs');
   const d1 = armed.win.__dshNotifyMe.debug().external;
-  assert(d1.sent === 2 && d1.targets === 2 && d1.activeTargets === 2, 'debug tallies the sends');
+  assert(d1.sent === 3 && d1.targets === 3 && d1.activeTargets === 3, 'debug tallies the sends');
 
   // 3b) a custom target naming the relay's own upstream gateway is folded onto
   //     the same-origin relay route. Straight at that gateway the browser has
@@ -2838,6 +2844,26 @@ async function externalWebhooks() {
   assert(opaqueHealth && opaqueHealth.status === 'unverified' && opaqueHealth.reason === 'opaque',
     'the unverified verdict carries its reason, got ' + JSON.stringify(opaqueHealth));
 
+  // 完成提醒的摘要可能在 UTF-16 代理对中间截断。
+  const completion = bootWeb(() => ({ ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') }), {
+    externalEnabled: true, externalTargets: [telegramTarget],
+  });
+  completion.b.doc.hidden = true;
+  completion.b.doc.visibilityState = 'hidden';
+  const summaryPrefix = '文'.repeat(79);
+  completion.host.setFace({ ...completion.host.faceSnap(), running: true });
+  completion.host.notifyFace();
+  completion.host.setFace({ ...completion.host.faceSnap(), running: false, nodes: [
+    { kind: 'assistant', blocks: [{ kind: 'text', text: summaryPrefix + '📨完成' }] },
+  ] });
+  completion.host.notifyFace();
+  await flush();
+  assert(completion.calls.length === 1 && completion.calls[0].url === telegramUrl,
+    'Telegram sends the completion even with a split emoji in its summary, got ' + completion.calls.length + ' requests');
+  const completionText = new URLSearchParams(completion.calls[0].body).get('text');
+  assert(completionText.startsWith('DSH · 回复完成\n') && completionText.endsWith('\n' + summaryPrefix + '\uFFFD…'),
+    'Telegram replaces the isolated surrogate and preserves the rest of the completion summary');
+
   // 4) real alerts mirror through fire(); the per-kind toggles gate only them.
   armed.calls.length = 0;
   const host = armed.host;
@@ -2848,10 +2874,17 @@ async function externalWebhooks() {
   host.setStatus(new Map([['s2', statusRow(question('question:901', { sessionId: 's2' }))]]));
   host.notifyStatus();
   await flush();
-  assert(armed.calls.length === 2, 'a delivered attention alert mirrors to both targets, got ' + armed.calls.length);
-  const mirrored = JSON.parse(armed.calls[0].body);
+  assert(armed.calls.length === 3, 'a delivered attention alert mirrors to all targets, got ' + armed.calls.length);
+  const mirrored = JSON.parse(armed.calls.find((c) => c.url === 'https://hook.example/x').body);
   assert(mirrored.event === 'attention' && mirrored.title === 'DSH · 提问',
     'the mirror carries the real alert copy, got ' + JSON.stringify(mirrored));
+  const telegramCall = armed.calls.find((c) => c.url === telegramUrl);
+  assert(telegramCall && telegramCall.opts.method === 'POST', 'a delivered alert calls Telegram sendMessage');
+  assert(telegramCall.opts.headers['Content-Type'].startsWith('application/x-www-form-urlencoded'),
+    'Telegram receives a form POST');
+  const telegramForm = new URLSearchParams(telegramCall.body);
+  assert(telegramForm.get('chat_id') === '-1001234567890', 'Telegram receives the signed chat ID');
+  assert(telegramForm.get('text') === mirrored.title + '\n' + mirrored.body, 'Telegram receives the real alert text');
 
   armed.win.__dshNotifyMe.setConfig({ externalAttention: false });
   armed.calls.length = 0;
@@ -2878,7 +2911,7 @@ async function externalWebhooks() {
   host.setStatus(new Map([['s2', statusRow(null, { running: false, completionUnread: true })]]));
   host.notifyStatus();
   await flush();
-  assert(armed.calls.length === 2, 'a done alert mirrors to both targets, got ' + armed.calls.length);
+  assert(armed.calls.length === 3, 'a done alert mirrors to all targets, got ' + armed.calls.length);
   const doneMirror = JSON.parse(armed.calls[0].body);
   assert(doneMirror.event === 'done', 'the done mirror is labelled as such, got ' + JSON.stringify(doneMirror));
 
@@ -2932,6 +2965,58 @@ async function externalWebhooks() {
   });
   const r3b = await denied.win.__dshNotifyMe.testExternal();
   assert(r3b.failed === 1 && denied.calls.length === 1, 'a 4xx is final, got ' + denied.calls.length + ' attempts');
+
+  // Telegram 限流后重试。收到明确的 API 拒绝时结束投递并记录失败。
+  let telegramAttempts = 0;
+  const telegramFailure = bootWeb((rec) => {
+    if (isProbe(rec)) return { ok: false, status: 404 };
+    if (++telegramAttempts === 1) return { ok: false, status: 429 };
+    const rejected = { ok: false, error_code: 400, description: 'Bad Request: ' + rec.url };
+    return { ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(rejected)) };
+  }, { externalEnabled: true, externalRetryDelays: [0, 0], externalTargets: [telegramTarget] });
+  const telegramResult = await telegramFailure.win.__dshNotifyMe.testExternal();
+  assert(telegramFailure.calls.length === 2 && telegramResult.failed === 1,
+    'Telegram retries a 429 and records an API rejection as failed');
+  const telegramFailed = telegramFailure.win.__dshNotifyMe.debug().external;
+  const telegramDead = telegramFailed.deadLettersLog[0];
+  assert(telegramDead && telegramDead.host === 'api.telegram.org' && telegramDead.attempts === 2,
+    'Telegram failure log records the host and attempts');
+  assert(telegramFailed.health.tg.status === 'failed (Telegram API 400)' && telegramDead.status === telegramFailed.health.tg.status,
+    'Telegram records the API error code without echoing the error description');
+
+  const telegramNetwork = bootWeb((rec) => {
+    if (isProbe(rec)) return { ok: false, status: 404 };
+    throw new TypeError('Failed to fetch ' + rec.url);
+  }, { externalEnabled: true, externalRetryDelays: [], externalTargets: [telegramTarget] });
+  const networkResult = await telegramNetwork.win.__dshNotifyMe.testExternal();
+  const failedNetwork = telegramNetwork.win.__dshNotifyMe.debug().external;
+  assert(networkResult.failed === 1 && failedNetwork.deadLettersLog[0].status === 'failed (network error)'
+    && failedNetwork.health.tg.status === 'failed (network error)',
+    'Telegram network failures are recorded without the token from the exception URL');
+  const [corsTelegram, opaqueTelegram] = telegramNetwork.calls;
+  assert(telegramNetwork.calls.length === 2 && opaqueTelegram.opts.mode === 'no-cors'
+    && opaqueTelegram.opts.headers['Content-Type'] === corsTelegram.opts.headers['Content-Type']
+    && opaqueTelegram.body === corsTelegram.body, 'the Telegram fallback preserves the form POST');
+
+  const telegramReroute = bootWeb(() => ({ ok: false, status: 500 }), {
+    externalEnabled: true, externalRetryDelays: [0, 0], externalTargets: [telegramTarget],
+  });
+  const telegramInFlight = telegramReroute.win.__dshNotifyMe.testExternal();
+  telegramReroute.win.__dshNotifyMe.setConfig({ externalTargets: [{ ...telegramTarget, chatId: '@new_channel' }] });
+  const rerouteResult = await telegramInFlight;
+  assert(rerouteResult.statuses[0] === 'cancelled' && telegramReroute.calls.length === 1
+    && telegramReroute.win.__dshNotifyMe.debug().external.deadLetters === 0,
+    'changing the chat ID cancels retries to the previous chat');
+
+  const textGreeting = '文'.repeat(4094);
+  const telegramLength = bootWeb(() => ({ ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') }), {
+    externalEnabled: true,
+    externalTargets: [{ ...telegramTarget, chatId: -1001234567890, template: textGreeting + '🧪🧪末' }],
+  });
+  const lengthResult = await telegramLength.win.__dshNotifyMe.testExternal();
+  const limited = new URLSearchParams(telegramLength.calls[0].body);
+  assert(lengthResult.sent === 1 && limited.get('chat_id') === '-1001234567890'
+    && limited.get('text') === textGreeting + '🧪…', 'Telegram limits text to 4096 characters without splitting emoji');
 
   // 6c) a network blip is retried and the retry can win.
   let flaky = 0;
@@ -3079,12 +3164,14 @@ async function externalWebhooks() {
       { id: 'a', type: 'custom', url: 'https://hook.example/a', enabled: false },
       { id: 'b', type: 'custom', url: 'https://hook.example/b' },
       { id: 'c', type: 'wxpusher', token: 'AT_x' },
+      { id: 'd', type: 'telegram', botToken: '123456:test_bot-token' },
+      { id: 'e', type: 'telegram', botToken: '123456:bad/path', chatId: '@channel', url: 'https://hook.example/wrong' },
     ],
   });
   const d4 = offTarget.win.__dshNotifyMe.debug().external;
-  assert(d4.targets === 3 && d4.activeTargets === 1, 'disabled and half-configured targets stay inactive, got ' + JSON.stringify(d4));
+  assert(d4.targets === 5 && d4.activeTargets === 1, 'disabled and incomplete targets stay inactive, got ' + JSON.stringify(d4));
 
-  console.log('external webhooks OK: gated mirroring, 7 payload shapes, signatures, retry/backoff, dead letters');
+  console.log('external webhooks OK: gated mirroring, 8 payload shapes, signatures, retry/backoff, dead letters');
 }
 
 // ── 宿主侧兜底：页面租约（探针 / 心跳 / 释放） ──────────────────────
@@ -3655,6 +3742,45 @@ async function settingsExternalRows() {
   assert(calls.length === 1 && calls[0].url === 'https://hook.example/x', 'the test pinged the target');
   assert(String(calls[0].opts.body).indexOf('外部通知测试') !== -1, 'the test payload carries the test copy');
   test.cleanup();
+
+  // 从设置新增 Telegram 目标并发送测试消息。
+  const telegramCalls = [];
+  const telegram = settingsBoot({ enabled: true, externalEnabled: true }, null, {
+    advanced: true,
+    fetch: (url, opts) => {
+      if (String(url) !== HOST_BRIDGE_ROUTE) telegramCalls.push({ url, opts });
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') });
+    },
+  });
+  telegram.press('添加目标');
+  const telegramOption = telegram.find((n) => n.type === 'option' && n.props.value === 'telegram');
+  assert(telegramOption, 'Telegram is available in the target type menu');
+  telegram.find((n) => n.props && n.props['aria-label'] === '推送类型')
+    .props.onChange({ currentTarget: { value: 'telegram' } });
+  telegram.renderNow();
+  const tokenInput = telegram.find((n) => n.props && n.props['aria-label'] === '机器人令牌');
+  assert(tokenInput && tokenInput.props.type === 'password', 'the Telegram token input masks the token');
+  assert(!telegram.find((n) => n.props && n.props['aria-label'] === '推送地址'), 'Telegram uses the Bot API address');
+  tokenInput.props.onChange({ currentTarget: { value: '123456:test_bot-token' } });
+  const savedTelegram = telegram.configNow().externalTargets[0];
+  assert(savedTelegram.botToken === '123456:test_bot-token' && !savedTelegram.token,
+    'Telegram keeps its token separate from WxPusher credentials');
+  telegram.renderNow();
+  telegram.find((n) => n.props && n.props['aria-label'] === '聊天 ID')
+    .props.onChange({ currentTarget: { value: '@test_channel' } });
+  telegram.renderNow();
+  telegram.find((n) => n.props && n.props['aria-label'] === '消息模板')
+    .props.onChange({ currentTarget: { value: '{{title}} & + 📨' } });
+  telegram.renderNow();
+  telegram.press('测一测外部通知');
+  await flush();
+  assert(telegram.renderNow().indexOf('测试通知：成功 1') !== -1, 'the Telegram test reports success');
+  assert(telegramCalls.length === 1 && telegramCalls[0].url === 'https://api.telegram.org/bot123456:test_bot-token/sendMessage',
+    'the settings test sends to the configured bot');
+  const telegramPayload = new URLSearchParams(telegramCalls[0].opts.body);
+  assert(telegramPayload.get('chat_id') === '@test_channel' && telegramPayload.get('text') === '外部通知测试 & + 📨',
+    'the settings test preserves the chat username and message template text');
+  telegram.cleanup();
 
   // 6) the "why did nothing send" cases get hints instead of a dead control.
   const offCalls = [];

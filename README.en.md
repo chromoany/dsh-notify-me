@@ -27,7 +27,7 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 - **When input is needed:** approval, plan review, and questions get a notification, a sound, and a title marker.
 - **When a background reply finishes:** come back for the result; clicking the notification returns to that conversation. Pick "background only", "quiet for the open one", or "always".
 - **When you walk off but the window stays in front:** over 3 minutes without input counts as away, and the alert still fires as usual; the toast that arrived does not clear itself before you come back, and is withdrawn the moment you are back at the page (taskbar, Alt-Tab or the toast itself) — turn on "keep alerts when you come back" to let it wait there instead.
-- **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, or your own webhook.
+- **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, Telegram, or your own webhook.
 - **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see [After the page closes: host-side fallback and the same-origin relay](#after-the-page-closes-host-side-fallback-and-the-same-origin-relay)).
 
 ## UI Preview
@@ -190,18 +190,20 @@ For each alert kind — "needs you" and "reply finished" — you can pick a buil
 
 #### External push
 
-Off by default. Supports Discord Webhook / Bark / Gotify / Feishu group bots / ServerChan (Turbo and ServerChan³) / WxPusher / custom webhooks. Alert text is sent to the addresses you enter; use trusted endpoints only.
+Off by default. Supports Discord Webhook / Bark / Gotify / Feishu group bots / ServerChan (Turbo and ServerChan³) / WxPusher / Telegram / custom webhooks. Alert text is sent to the addresses you enter; use trusted endpoints only.
 
 <details>
 <summary>Target URLs, forwarding switches, test messages, and the failure log</summary>
 
 - **External notifications** (default off): forward each alert to your own push endpoints as well, so it reaches you away from the machine; any number of targets, each of which can be enabled or disabled on its own. "Forward 'needs you'" and "Forward 'reply finished'" switch independently; **Send test notification** sends one test message to every target (not limited by those two switches, and never pretending to be a real alert). Forwarding follows exactly the same trigger rules as local alerts ("stay quiet for the conversation on screen" and friends apply to it too); with the master switch off the **host-side fallback after a closed page stops too** (the switches ride the heartbeat — see "after the page closes"), so there is no "the page is gone but it still pushes"; the alert text is sent as-is to the addresses you fill in, so **only use endpoints you trust**;
 - **What each target takes**: Discord — the webhook URL; Bark — `https://api.day.app/<device key>`; Gotify — `https://<server>/message?token=<app token>`; Feishu — the group-bot webhook plus an optional verification secret; ServerChan — the full `…/send/<SendKey>.send` URL; WxPusher — the appToken and the receiver UID; a custom endpoint receives one POST of JSON: `{source, event, title, body, text, sessionId, time}`;
+- A **Telegram** target needs a bot token from `@BotFather` and a numeric chat ID or public channel `@username`. For a private chat, send `/start` to the bot first. In a group or channel, grant the bot permission to post. Select **Send test notification** to check the setup. The page sends to Telegram. For alerts after the page closes, configure the host-side fallback separately.
 - **Reliable delivery**: failures that look transient (network error, 5xx, 429) are retried after 2 s and 6 s; anything else stops at once. Switching forwarding off or deleting a target cancels a retry that is already on a timer — it is not counted as a failure and never reaches the failure log. A delivery that still fails is recorded in the failure log (10 entries at most — title and body snippet plus host only, never the full endpoint), which the settings page shows and can clear;
 - **Service codes and "unverified"**: a 2xx from Feishu / ServerChan / WxPusher also carries a service code (`0` for Feishu and ServerChan, `1000` for WxPusher); a wrong code is recorded as a failure with the service's own message, and a 2xx whose body is not that service's JSON (empty, or a proxy/WAF HTML page) is "sent but unverified" rather than a success;
+- Telegram uses the Bot API response to check delivery. In a 2xx response, `ok: true` confirms delivery and `ok: false` records a failure. A 2xx response without a boolean `ok` field is unverified.
 - **Per-target state**: the right end of each target row shows how its last delivery went (last delivery ok / sent-unverified / failed with the reason) next to a switch of its own, so an endpoint that is temporarily down can be turned off alone instead of muting a whole alert kind;
 - **Signing**: a custom target with a secret sends `X-DSH-Notify-Signature` (HMAC-SHA256 over the body, `sha256=<hex>`); a Feishu target with a secret carries `timestamp` / `sign` in the body per Feishu's own algorithm;
-- **Message template** (optional): Feishu / ServerChan / WxPusher / custom targets accept a template with `{{title}}` `{{body}}` `{{event}}` `{{time}}` `{{session}}`; empty means "title, newline, body";
+- Feishu, ServerChan, WxPusher, Telegram, and custom targets support an optional **message template** with `{{title}}`, `{{body}}`, `{{event}}`, `{{time}}`, and `{{session}}`. Leave it empty to send the title, a newline, and the body. Telegram messages have a 4096-character limit. The plugin truncates longer messages and adds an ellipsis.
 - **DingTalk is not supported**: its robot endpoint answers no CORS header at all and only accepts `application/json`, so a page can neither read the reply nor send a conforming request (under no-cors the content type is restricted to the safelisted ones). To reach DingTalk, relay it through a machine you control and point a custom webhook at that.
 
 </details>
@@ -339,7 +341,7 @@ Credentials stay in the host: the page cannot read them, and they are never echo
 | System notification | Through the browser into the Windows / macOS / Linux notification centre; clicking it returns to the conversation it came from. On macOS Desktop the host spawns `DSH Notify.app` to post it (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)); on Windows 11 Desktop the host posts a native approval toast that carries Approve / Reject (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)). Web can carry Approve / Reject too |
 | Sound | WebAudio cue by default, with different patterns for "needs you" and "done"; swap in a custom audio file, or hand the sound over to the system notification sound |
 | Tab title | `🔔 Action needed · …` / `✅ Reply finished · …`, following the alert language; gone once you open that session, and both markers can be up at the same time |
-| External push (optional, default off) | Forwards the same alert to Discord / Bark / Gotify / Feishu / ServerChan / WxPusher / a custom webhook |
+| External push (optional, default off) | Forwards the same alert to Discord / Bark / Gotify / Feishu / ServerChan / WxPusher / Telegram / a custom webhook |
 | Host-side fallback (optional, default off) | After the page closes the host process keeps pushing "needs you" / "reply finished" to your gateway; needs profile config and a mode-0600 credentials file |
 | Same-origin relay (optional, default off) | The page POSTs to a host route on its own origin, the host adds the credentials and forwards to an authenticated gateway, answering with the gateway's real status |
 

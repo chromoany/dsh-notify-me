@@ -32,14 +32,17 @@ window.__dshNotifyMe.setConfig({
   externalRetryDelays: [2000, 6000], // 可重试失败的退避间隔（毫秒，带抖动；[] = 只发一次）
   externalTargets: []         // 推送目标，见下方字段说明
 })
-// 目标的形状：{id, type, url, secret?, token?, uid?, template?, enabled?}
-// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'custom'
-// token/uid 只用于 wxpusher（url 固定为官方端点）；secret 用于飞书签名与自定义 HMAC 签名；
+// 推送目标字段为 {id, type, url?, secret?, token?, uid?, botToken?, chatId?, template?, enabled?}
+// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'telegram' | 'custom'
+// WxPusher 使用 token 和 uid。Telegram 使用 botToken 和 chatId。两种目标都使用固定地址。
+// secret 用于飞书签名与自定义 HMAC 签名。
 // template 可选，占位符 {{title}} {{body}} {{event}} {{time}} {{session}}；enabled:false 单独停用该目标
 window.__dshNotifyMe.resetConfig()                // 恢复默认（同时清掉已选的自定义音效文件）
 window.__dshNotifyMe.decide("approval:3", "allowed-once")  // 程序化裁决："allowed-once" | "rejected"
 window.__dshNotifyMe.testExternal()               // 显式外发测试：向有效目标发送，返回 {sent, unverified, failed, statuses}
 ```
+
+Telegram 目标示例为 `{ id: "tg", type: "telegram", botToken: "123456:your_bot_token", chatId: "-1001234567890" }`。`chatId` 接受整数、数字字符串或公开频道的 `@用户名`。
 
 > **外部通知测试的开关边界**：设置页「发送测试通知」要求「启用提醒」与「外部通知」主开关开启，但忽略两类提醒的转发开关。控制台 `testExternal()` 是显式测试调用：只要配置了有效目标，即使上述主开关关闭，也会向这些目标发送测试消息；没有有效目标则不发送。普通的 `test("done")` / `test("attention")` / `test("approval")` 只测试本地提醒，不外发。
 
