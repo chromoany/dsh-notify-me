@@ -1,4 +1,3 @@
-// 这里只保留通知判定会用到的 DSH 会话日志字段。
 'use strict';
 
 function goalJournal() {
