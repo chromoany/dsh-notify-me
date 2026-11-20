@@ -43,7 +43,7 @@ window.__dshNotifyMe.decide("approval:3", "allowed-once")  // programmatic decis
 window.__dshNotifyMe.testExternal()               // explicit outbound test to valid targets; resolves {sent, unverified, failed, statuses}
 ```
 
-A Telegram target looks like `{ id: "tg", type: "telegram", botToken: "123456:your_bot_token", chatId: "-1001234567890" }`. The `chatId` can be an integer, a numeric string, or a public channel `@username`.
+Add a Telegram entry to `externalTargets`, such as `{ id: "tg", type: "telegram", botToken: "123456:your_bot_token", chatId: "-1001234567890" }`. Use a JavaScript safe integer, a numeric string, or a public channel `@username` for `chatId`.
 
 > **External-test switch boundary:** the settings page's "Send test notification" needs the "Enable reminders" and "External notifications" master switches on, but ignores the two per-kind forwarding switches. The console `testExternal()` call is an explicit test: with valid configured targets it sends to them even when those master switches are off; with no valid targets it sends nothing. Ordinary `test("done")` / `test("attention")` / `test("approval")` calls only test local alerts and never forward externally.
 

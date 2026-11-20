@@ -2844,7 +2844,6 @@ async function externalWebhooks() {
   assert(opaqueHealth && opaqueHealth.status === 'unverified' && opaqueHealth.reason === 'opaque',
     'the unverified verdict carries its reason, got ' + JSON.stringify(opaqueHealth));
 
-  // 完成提醒的摘要可能在 UTF-16 代理对中间截断。
   const completion = bootWeb(() => ({ ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') }), {
     externalEnabled: true, externalTargets: [telegramTarget],
   });
@@ -2966,7 +2965,6 @@ async function externalWebhooks() {
   const r3b = await denied.win.__dshNotifyMe.testExternal();
   assert(r3b.failed === 1 && denied.calls.length === 1, 'a 4xx is final, got ' + denied.calls.length + ' attempts');
 
-  // Telegram 限流后重试。收到明确的 API 拒绝时结束投递并记录失败。
   let telegramAttempts = 0;
   const telegramFailure = bootWeb((rec) => {
     if (isProbe(rec)) return { ok: false, status: 404 };
@@ -3743,7 +3741,6 @@ async function settingsExternalRows() {
   assert(String(calls[0].opts.body).indexOf('外部通知测试') !== -1, 'the test payload carries the test copy');
   test.cleanup();
 
-  // 从设置新增 Telegram 目标并发送测试消息。
   const telegramCalls = [];
   const telegram = settingsBoot({ enabled: true, externalEnabled: true }, null, {
     advanced: true,

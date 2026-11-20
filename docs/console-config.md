@@ -42,7 +42,7 @@ window.__dshNotifyMe.decide("approval:3", "allowed-once")  // 程序化裁决：
 window.__dshNotifyMe.testExternal()               // 显式外发测试：向有效目标发送，返回 {sent, unverified, failed, statuses}
 ```
 
-Telegram 目标示例为 `{ id: "tg", type: "telegram", botToken: "123456:your_bot_token", chatId: "-1001234567890" }`。`chatId` 接受整数、数字字符串或公开频道的 `@用户名`。
+在 `externalTargets` 中加入 Telegram 目标，例如 `{ id: "tg", type: "telegram", botToken: "123456:your_bot_token", chatId: "-1001234567890" }`。`chatId` 接受 JavaScript 安全整数、数字字符串或公开频道的 `@用户名`。
 
 > **外部通知测试的开关边界**：设置页「发送测试通知」要求「启用提醒」与「外部通知」主开关开启，但忽略两类提醒的转发开关。控制台 `testExternal()` 是显式测试调用：只要配置了有效目标，即使上述主开关关闭，也会向这些目标发送测试消息；没有有效目标则不发送。普通的 `test("done")` / `test("attention")` / `test("approval")` 只测试本地提醒，不外发。
 
