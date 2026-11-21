@@ -15,15 +15,15 @@ README 只保留这两节的摘要与链接，完整内容在对应的 `.md` / `
 
 ## 截图
 
-三张图都取自本机 Windows 上的真实界面：两张 settings 图宽 648 px（1.21.6 重拍），`notify-toast.png` 宽 593 px：
+三张图都取自本机 Windows 上的真实界面：两张 settings 图宽 648 px（1.22.0 重拍），`notify-toast.png` 宽 593 px：
 
 | 文件 | 尺寸 | 内容 |
 | --- | --- | --- |
-| `settings-zh.png` | 648×1162 | 中文设置页完整面板（1.21.6） |
-| `settings-en.png` | 648×1180 | 英文设置页完整面板（1.21.6） |
+| `settings-zh.png` | 648×1162 | 中文设置页完整面板（1.22.0） |
+| `settings-en.png` | 648×1180 | 英文设置页完整面板（1.22.0） |
 | `notify-toast.png` | 593×239 | Edge 里的普通通知，不含审批按钮 |
 
-两张 settings 图 1.21.6 重拍：面板自 1.19.0 起只有页脚版本行变过，这次按 1.21.6 重截，页脚是 `dsh-notify-me v1.21.6`。设置界面再改版时按当版重截并同步上表。
+两张 settings 图 1.22.0 重拍：面板自 1.19.0 起只有页脚版本行变过（1.22.0 新增的 Telegram 目标在默认折叠的「高级」里，不影响外观），这次按 1.22.0 重截，页脚是 `dsh-notify-me v1.22.0`。设置界面再改版时按当版重截并同步上表。
 
 README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown 里的链接不用改。`screenshots.json` 是提交插件市场时给的一套图列表，换图时一并同步。
 
