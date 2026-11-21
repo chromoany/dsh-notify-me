@@ -2,6 +2,26 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.22.0] — 2026-11-21
+
+Goal 续跑的中间轮次不再冒充「回复完成」；外部推送多一个 Telegram 目标。
+
+### 修复
+
+- **连续 Goal 跑到一半就开始刷「回复完成」**（[#45](https://github.com/chromoany/dsh-notify-me/pull/45)）：Goal 的每一轮在宿主看来都是一个普通 turn——轮次骨架在 `dsh-goal-round-driver` 里，靠 `agent.followup()` 排队，`agent/status` 变 idle（也就是 `turn/end` 之后）立刻排下一轮，中间轮通常连 `goal/change` 都不写（提示词让模型「还有活就留着 active」）。插件的两条投递路径都只看 `turn/end`，于是 6 轮的 Goal 换来 6 条「回复完成」，其中 5 条是假的，夜里连手机一起响。现在判据是「这一刻 Goal 还在跑吗」：宿主侧订阅 `goal/change` 维护每个会话的 phase（静音也记；重启或晚挂载时用 `session.eventAt` 倒扫历史播种），`turn/end` 时 phase 还是 `active` 就直接不发；页面侧读会话列表里的 goal 投影（`projectionsBySession`，宿主推送，没打开的会话也有），`active` 就静默。取不到投影或事件（更老的宿主、没同步到）照旧提醒——宁可多响一声，不能把真提醒吞了；`complete`、`pause`、`block` 之后的那一轮照常提醒。
+- **宿主侧兜底同样受影响**：`lib/host-fallback.js` 的 `turn/end` 原先无条件投递（只有 `reason === "completed"` 有 15 秒节流，对分钟级的轮次没有意义），现在与页面侧同一个判据。
+
+### 新增
+
+- **Telegram 外部推送**（[#46](https://github.com/chromoany/dsh-notify-me/pull/46)）：新增 `telegram` 目标类型，填 `@BotFather` 给的机器人令牌与聊天 ID（数字，或公开频道的 `@用户名`）。令牌本身就是端点（`https://api.telegram.org/bot<token>/sendMessage`），所以格式不对的目标会被直接剪掉，不会替用户把 token 送到别处；令牌输入框是 `password` 型，失败文案固定成「网络错误」，不带 URL。请求用表单编码（CORS-safelisted，页面拿不到回执时降级成 no-cors 也能原样送出），单条按码点截到 4096 字符再补省略号（不会切坏代理对）；回执按 `ok` 判：`true` 成功，`false` 按 `error_code` 记失败（`429` 与 `5xx` 可重试），`ok` 缺失或不是布尔值记「已送出但不可确认」。实测 `api.telegram.org` 回 `Access-Control-Allow-Origin: *`，页面能直接读到回执。
+
+### 测试
+
+- `smoke/smoke-test.cjs` 新增 `goalRoundsSilent()`：goal 投影 `active` 时两轮 `turn/end` 一条不报，`complete` 后恰好报一条，没有投影的老宿主仍然报（fail-open）。
+- `smoke/host-fallback-test.mjs` 新增第 18 组：`goal/change` 建出 active 后两轮 `turn/end` 不投递、`complete` 后投递、`pause` 后投递；再起一次宿主，只靠 `session.eventAt` 回扫出的种子也要静默，随后的 `block` 能覆盖掉种子。
+- `smoke/smoke-test.cjs` 外部推送部分补 Telegram：URL 恰为 `…/bot<token>/sendMessage`、`Content-Type` 是 `application/x-www-form-urlencoded`、`chat_id` / `text` 落位；`ok:false` + `error_code:400` 记失败且状态与失败记录里都不出现 token；`429` / `502` 按退避重试到三次；HTML 正文与 `ok:"yes"` 记不可确认；抛出的 `TypeError` 里虽然带完整 URL，落盘文案仍是 `failed (network error)`；`chatId: 42` 被接受并字符串化，半配置目标被剪掉，5000 字符模板发出时恰好 4096 字符且末位是省略号。设置页断言 Telegram 的令牌输入框是 `password` 型、聊天 ID 回填正确、每个目标各一个开关。
+- `npm test` 八套件通过（`smoke-test.cjs` / `host-route-test.mjs` / `page-bridge-test.mjs` / `host-fallback-test.mjs` / `relay-route-test.mjs` / `cordis-host-test.mjs` / `mac-notify-test.mjs` / `win-toast-test.mjs`）。
+
 ## [1.21.6] — 2026-11-19
 
 修掉「装好了、开关开着、什么都不发生」的静默失效：客户端条目不再把别的插件包当硬依赖；兼容性记录顺带补到 DSH `0.2.2-rc.5`。

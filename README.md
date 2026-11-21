@@ -27,7 +27,7 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 - **需要你操作时**：审批、方案确认、提问，用通知、提示音和标题标记提醒。
 - **后台回复完成时**：及时回来查看结果，点击通知可回到对应对话；提醒时机可选「仅后台 / 仅当前对话静默 / 总是提醒」。
 - **人走开但窗口没走**：窗口留在最前台、人却离开座位，超过 3 分钟没有输入也算离开，该提醒的照常提醒；收到的那条通知不会在你回来之前自己消失，一回到页面（点任务栏、Alt+Tab、点通知都算）就收起（想让它在回到页面后继续留着，打开「回到页面也保留提醒」）。
-- **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher 或自己的 Webhook。
+- **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher、Telegram 或自己的 Webhook。
 - **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[页面关闭后：宿主侧兜底与同源中继](#页面关闭后宿主侧兜底与同源中继)）。
 
 ## 效果预览
@@ -145,6 +145,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 - **后台的判定**：切到别的应用、被别的窗口盖住、最小化都算；窗口一直留在前台但 3 分钟没有任何键鼠输入同样算，`idleMinutes: 0` 退回只看窗口。
 - **「当前对话不弹通知」何时补发**：窗口转到后台或闲置超时后照常提醒；若你已处理掉就作废。
 - **「回复完成」三档**：「仅后台」＝不在看页面才提醒；「仅当前对话静默」＝屏幕上那条静默、别的对话照常提醒，多开对话时有用；「总是提醒」＝从不静默。老配置里的「窗口在前台时也提醒『回复完成』」开关自动迁移到这一项。
+- **Goal 还在跑的时候不报「回复完成」**：连续 Goal 的每一轮在宿主看来都是普通的一轮结束，但它只是中间步骤，下一轮马上接着跑。这类轮次现在不提醒，等 Goal 真的停下（完成、暂停、阻塞）才报最后一条；取不到 Goal 状态时（更老的宿主）照旧提醒。
 - **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。**打开「回到页面也保留提醒」后，回到页面这一条也不再收起**，通知留到你点掉或点「关闭」，系统通知样式设成「持续」时会一直挂在屏幕上。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止（仅 Web 端的 Service Worker 通知如此）；macOS 桌面端画不出按钮的审批通知、以及 Windows 11 桌面端带按钮的原生审批 Toast，都按 12 秒收。宿主发出的原生通知（Windows 原生 Toast、macOS 通知中心）同样归这套记账管：人不在时同样不撤，回到页面同样收起（该开关打开时也保留），「总是关闭 / 从不关闭」也管得到它们。
 - **点击通知的兜底**：桌面端抬不起来时只切对话，原因记在 `debug().raiseLast` 里；关掉这一项后点通知不做任何事。
 
@@ -190,18 +191,18 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 #### 外部推送
 
-默认关闭。支持 Discord Webhook / Bark / Gotify / 飞书群机器人 / Server酱（Turbo 与 Server酱³）/ WxPusher / 自定义 Webhook；提醒正文会发往你填写的地址，只使用可信端点。
+默认关闭。支持 Discord Webhook / Bark / Gotify / 飞书群机器人 / Server酱（Turbo 与 Server酱³）/ WxPusher / Telegram / 自定义 Webhook；提醒正文会发往你填写的地址，只使用可信端点。
 
 <details>
 <summary>目标地址、转发开关、发送测试与失败记录</summary>
 
 - **外部通知**（默认关）：把提醒同时转发到你自己的推送端点，人不在电脑前也能收到；可加多个目标，每个目标可单独启停。「转发「需要你」」「转发「回复完成」」各自独立开关；**发送测试通知**往所有目标发一条测试消息（不受这两类开关限制，也不会冒充真提醒）。转发跟本地提醒走同一套触发规则（「当前对话不弹通知」等开关同样管它）；总开关关闭后**页面关闭时的宿主侧兜底也一并停**（开关随心跳交给宿主，见「页面关闭后」一节），不会出现「页面关了还在推」；提醒正文会原样发往你填的地址，**只填你自己信任的端点**；
-- **各目标的填法**：Discord 填 Webhook 地址；Bark 填 `https://api.day.app/<设备密钥>`；Gotify 填 `https://<服务器>/message?token=<应用令牌>`；飞书填群机器人 Webhook，可选填签名校验密钥；Server酱 填 `…/send/<SendKey>.send` 完整地址；WxPusher 填 appToken 与接收者 UID；自定义端点收一条 POST JSON：`{source, event, title, body, text, sessionId, time}`；
+- **各目标的填法**：Discord 填 Webhook 地址；Bark 填 `https://api.day.app/<设备密钥>`；Gotify 填 `https://<服务器>/message?token=<应用令牌>`；飞书填群机器人 Webhook，可选填签名校验密钥；Server酱 填 `…/send/<SendKey>.send` 完整地址；WxPusher 填 appToken 与接收者 UID；Telegram 填 `@BotFather` 给的机器人令牌，聊天 ID 填数字或公开频道的 `@用户名`（私聊要先给机器人发 `/start`，群组与频道要把机器人拉进去并发消息权限）；自定义端点收一条 POST JSON：`{source, event, title, body, text, sessionId, time}`；
 - **可靠投递**：明显是临时故障的失败（网络中断、5xx、429）按 2 秒 / 6 秒自动重试两次，其它错误立即停；关掉「外部通知」总开关或删掉某个目标后，已经排在定时器上的重试立刻作废，既不算失败也不进失败记录；重试仍失败会把这一条记进「失败记录」（最多 10 条，只留标题与正文摘要和主机名，不留完整端点），设置页能一眼看到并清空；
-- **服务码与「不可确认」**：飞书 / Server酱 / WxPusher 的 2xx 还会读返回体里的服务码（飞书与 Server酱是 `0`，WxPusher 是 `1000`），码不对按失败记并带服务端文案；2xx 但正文不是该服务的 JSON（空白、代理或 WAF 的网页）记「已送出不可确认」，不冒充成功；
+- **服务码与「不可确认」**：飞书 / Server酱 / WxPusher 的 2xx 还会读返回体里的服务码（飞书与 Server酱是 `0`，WxPusher 是 `1000`），码不对按失败记并带服务端文案；Telegram 的 2xx 看 `ok`：为 `true` 记成功，为 `false` 时按 `error_code` 记失败（`429` 与 `5xx` 属可重试），`ok` 缺失或不是布尔值记「已送出不可确认」。2xx 但正文不是该服务的 JSON（空白、代理或 WAF 的网页）同样记「已送出不可确认」，不冒充成功；
 - **每个目标的状态**：目标行右侧显示它最近一次投递的结果（上次成功 / 上次已送出但不可确认 / 上次失败 + 原因），并各自带一个启停开关——某个端点临时不可用就单独关掉它，不用关掉整类事件；
 - **签名**：自定义目标填了签名密钥时，请求带 `X-DSH-Notify-Signature`（对请求体做 HMAC-SHA256，`sha256=<hex>`）；飞书填了签名密钥时按官方算法在请求体里带 `timestamp` / `sign`；
-- **消息模板**（可选）：飞书 / Server酱 / WxPusher / 自定义目标可填模板，占位符 `{{title}}` `{{body}}` `{{event}}` `{{time}}` `{{session}}`，留空默认是「标题 + 换行 + 正文」；
+- **消息模板**（可选）：飞书 / Server酱 / WxPusher / Telegram / 自定义目标可填模板，占位符 `{{title}}` `{{body}}` `{{event}}` `{{time}}` `{{session}}`，留空默认是「标题 + 换行 + 正文」；Telegram 单条上限 4096 字符，超出按这个上限截断后接一个省略号（整条发不出去比截断更糟）；
 - **钉钉不在支持列表里**：钉钉群机器人接口不返回任何 CORS 头，且只接受 `application/json`——浏览器页面既读不到响应，也无法发出符合要求的请求（no-cors 下 Content-Type 会被限制成 safelisted 类型）。要用钉钉，请在自己能控制的机器上搭一个中转，再把「自定义 Webhook」指向它。
 
 </details>
@@ -339,7 +340,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 | 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；macOS 桌面端由宿主拉起 `DSH Notify.app` 发（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）；Windows 11 桌面端的审批提醒由宿主发原生 Toast，带「同意 / 拒绝」按钮（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）；Web 端可带「同意 / 拒绝」 |
 | 提示音 | 默认 WebAudio 合成音，「需要你」与「完成」音型不同；可换自定义音频，或交给系统通知音 |
 | 标签页标题 | `🔔 需要你 · …` / `✅ 回复完成 · …`（随通知语言切换），打开对应会话即消失；两种标记可同时出现 |
-| 外部推送（可选，默认关） | 把同一条提醒转发到 Discord / Bark / Gotify / 飞书 / Server酱 / WxPusher / 自定义 Webhook |
+| 外部推送（可选，默认关） | 把同一条提醒转发到 Discord / Bark / Gotify / 飞书 / Server酱 / WxPusher / Telegram / 自定义 Webhook |
 | 宿主侧兜底（可选，默认关） | 页面关闭后由宿主进程继续把「需要你操作」「回复完成」推到你的网关；要 profile 配置与 0600 凭据文件 |
 | 同源中继（可选，默认关） | 页面 POST 到宿主同源路由，由宿主补凭据转发给要认证的网关，并回传网关真实状态码 |
 
@@ -465,7 +466,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 **外部推送**
 
-- 受浏览器跨域（CORS）限制：端点不放行时自动降级为「送出但不可确认」（no-cors），如实标为「已送出不可确认」；Discord、飞书、Server酱、WxPusher 放行跨域，可直接确认送达。钉钉不放行任何 CORS 头、又只收 `application/json`，页面发不出去，所以没有做成目标类型（自建中转 + 自定义目标才行）。临时失败（网络中断、5xx、429）按退避重试，重试仍失败进失败记录，其余错误立即停、不重试；转发在本地提醒决定要发之后才触发，所以被静音的提醒也不会外发。
+- 受浏览器跨域（CORS）限制：端点不放行时自动降级为「送出但不可确认」（no-cors），如实标为「已送出不可确认」；Discord、飞书、Server酱、WxPusher、Telegram 放行跨域（Telegram 回 `Access-Control-Allow-Origin: *`），可直接确认送达。钉钉不放行任何 CORS 头、又只收 `application/json`，页面发不出去，所以没有做成目标类型（自建中转 + 自定义目标才行）。临时失败（网络中断、5xx、429）按退避重试，重试仍失败进失败记录，其余错误立即停、不重试；转发在本地提醒决定要发之后才触发，所以被静音的提醒也不会外发。
 - 同源中继补上的只是「页面够不到要认证的网关」这一类：页面 POST 到同源路由，宿主补凭据并回传网关的真实状态码。仍然成立的边界有几条——中继与宿主侧兜底都要求宿主进程在运行（`dsh web` 或桌面端主进程），它们不是独立守护进程，宿主退出就都停；宿主跑在代理环境里时网关域名要进 `no_proxy`，否则投递会绕到代理出去；兜底只补外部推送，本地系统通知、提示音、标题标记与审批按钮仍要页面在；`pageLeaseMs: 0` 是调试开关，页面开着也会收到两份；中继路由路径等同于口令，别让它出现在公开记录里。
 
 **设置页图标补丁**
@@ -537,6 +538,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/fgql"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/fgql.png" width="40" height="40" alt="@fgql"></a> | [#41](https://github.com/chromoany/dsh-notify-me/issues/41) / [#42](https://github.com/chromoany/dsh-notify-me/issues/42)：审批 Toast 按钮不派发协议激活、桌面端窗口越抬越沉（1.21.2–1.21.4 修复） |
 | <a href="https://github.com/you9you"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/you9you.png" width="40" height="40" alt="@you9you"></a> | [#43](https://github.com/chromoany/dsh-notify-me/pull/43)：关掉「提醒音」后页面仍占音频输出设备的报障、管道级复现与首版补丁（1.21.5 收编） |
 | <a href="https://github.com/Mz135mz"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Mz135mz.png" width="40" height="40" alt="@Mz135mz"></a> | [#44](https://github.com/chromoany/dsh-notify-me/issues/44)：客户端半身从未 apply 的报障与双向复现（1.21.6 修复） |
+| <a href="https://github.com/01101sam"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/01101sam.png" width="40" height="40" alt="@01101sam"></a> | [#45](https://github.com/chromoany/dsh-notify-me/pull/45) / [#46](https://github.com/chromoany/dsh-notify-me/pull/46)：连续 Goal 中间轮次误报「回复完成」的诊断与首版补丁、Telegram 外部推送（1.22.0 收编） |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 

@@ -1060,6 +1060,104 @@ async function completionUnreadChannel() {
   assert(host.listeners.status.length === 0, 'sessionStatus unsubscribed after dispose');
 }
 
+// A Goal session ends a turn per round: the round driver queues the next turn
+// as soon as the agent goes idle, and an intermediate round usually writes no
+// `goal/change` at all. The host's goal projection is what says whether the job
+// is still going, and the reply-finished channel has to follow it — otherwise a
+// goal that runs all night reports a completion per round.
+async function goalRoundsSilent() {
+  console.log('\n— Goal rounds: a finished turn inside a running goal is not a completion —');
+  const b = bootBundle();
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  const { mod, events, getTitle } = b;
+  const cur = { running: false, displayTitle: '当前会话', retainedBy: { mainView: 1 } };
+  const goalSession = (running, title) => ({ running: running, displayTitle: title, retainedBy: {} });
+  // Exactly what the host pushes for `SessionProjectionMap.goal`.
+  const goalProjection = (phase) => ({
+    values: { goal: { goal: { id: 'g1', revision: 1, objective: '把整条流水线跑通', phase: phase }, roundsStarted: 2 } },
+    state: 'idle',
+    error: null,
+  });
+  const rows = (phase, running) => ({
+    ids: ['s1', 's2'],
+    byId: { s1: cur, s2: goalSession(running, '长任务') },
+    phase: 'ready',
+    projectionsBySession: phase ? { s2: goalProjection(phase) } : {},
+  });
+
+  mod.apply(host.ctx);
+  b.win.__dshNotifyMe.onEvent = (kind, payload) => events.push({ kind, ...payload });
+  b.doc.hidden = true; b.doc.visibilityState = 'hidden';
+  host.setList(rows('active', true));
+  host.notifyList();
+
+  // 1) the first round ends while the goal is still `active`: no completion
+  host.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: false, completionUnread: true })],
+  ]));
+  host.notifyStatus();
+  assert(events.filter((e) => e.kind === 'done').length === 0,
+    'a goal round is a step, not an answer, got ' + JSON.stringify(events));
+
+  // 2) the next round starts (the flag clears), and it too ends without news
+  host.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: true, completionUnread: false })],
+  ]));
+  host.notifyStatus();
+  host.setList(rows('active', false));
+  host.notifyList();
+  host.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: false, completionUnread: true })],
+  ]));
+  host.notifyStatus();
+  assert(events.filter((e) => e.kind === 'done').length === 0,
+    'a second goal round is still a step, got ' + JSON.stringify(events));
+
+  // 3) the goal completes before its final turn ends: that one reports
+  host.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: true, completionUnread: false })],
+  ]));
+  host.notifyStatus();
+  host.setList(rows('complete', false));
+  host.notifyList();
+  host.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: false, completionUnread: true })],
+  ]));
+  host.notifyStatus();
+  const done = events.filter((e) => e.kind === 'done');
+  assert(done.length === 1, 'the round that completed the goal reports once, got ' + JSON.stringify(done));
+  assert(done[0].body === '长任务', 'the goal completion names the session, got ' + JSON.stringify(done[0].body));
+
+  // 4) a projection the page cannot read falls back to alerting: unknown is not
+  //    the same as idle, and swallowing the real one is the worse failure
+  events.length = 0;
+  const noGoal = bootBundle();
+  const host2 = buildHost({ withSessionStatus: true });
+  noGoal.mod.apply(host2.ctx);
+  noGoal.win.__dshNotifyMe.onEvent = (kind, payload) => noGoal.events.push({ kind, ...payload });
+  noGoal.doc.hidden = true; noGoal.doc.visibilityState = 'hidden';
+  host2.setList({ ids: ['s1', 's2'], byId: { s1: cur, s2: goalSession(false, '老宿主') }, phase: 'ready' });
+  host2.notifyList();
+  host2.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: false, completionUnread: true })],
+  ]));
+  host2.notifyStatus();
+  assert(noGoal.events.filter((e) => e.kind === 'done').length === 1,
+    'a host without goal projections still reports completions');
+  for (const c of [...host2.cleanups]) c();
+
+  for (const c of [...host.cleanups]) c();
+  assert(host.listeners.status.length === 0, 'sessionStatus unsubscribed after dispose');
+  void getTitle;
+  console.log('goal rounds OK: active goal stays quiet, its last round reports, no projection still reports');
+}
+
 // ─────────────── approval quick-decision bridge (1.3.0) ───────────────
 // Action buttons only exist on persistent notifications, so the bundle is
 // dual-context: the exact same bytes also register as a Service Worker whose
@@ -3025,18 +3123,21 @@ async function externalWebhooks() {
   const multi = bootWeb((rec) => ({
     ok: true,
     status: 200,
-    text: () => Promise.resolve(rec.url.indexOf('wxpusher') !== -1 ? '{"code":1000}' : '{"code":0}'),
+    text: () => Promise.resolve(rec.url.indexOf('wxpusher') !== -1 ? '{"code":1000}'
+      : rec.url.indexOf('api.telegram.org') !== -1 ? '{"ok":true,"result":{}}'
+        : '{"code":0}'),
   }), {
     externalEnabled: true,
     externalTargets: [
       { id: 'f', type: 'feishu', url: 'https://open.feishu.cn/open-apis/bot/v2/hook/X', secret: SECRET },
       { id: 's', type: 'serverchan', url: 'https://sctapi.ftqq.com/KEY.send' },
       { id: 'w', type: 'wxpusher', token: 'AT_x', uid: 'UID_a,UID_b' },
+      { id: 't', type: 'telegram', botToken: '123456:AAHtest', chatId: '-1001234' },
       { id: 'c', type: 'custom', url: 'https://hook.example/x', secret: SECRET, template: '{{event}}: {{title}}' },
     ],
   });
   const r6 = await multi.win.__dshNotifyMe.testExternal();
-  assert(r6.sent === 4 && r6.failed === 0, 'every target type reports sent, got ' + JSON.stringify(r6));
+  assert(r6.sent === 5 && r6.failed === 0, 'every target type reports sent, got ' + JSON.stringify(r6));
 
   const feishuCall = multi.calls.find((c) => c.url.indexOf('open.feishu.cn') !== -1);
   const feishu = JSON.parse(feishuCall.body);
@@ -3070,6 +3171,91 @@ async function externalWebhooks() {
   assert(cuBody.text === 'attention: 外部通知测试', 'the custom template renders {{event}}/{{title}}, got ' + cuBody.text);
   const expectSig = 'sha256=' + crypto.createHmac('sha256', SECRET).update(cuCall.opts.body).digest('hex');
   assert(cuCall.opts.headers['X-DSH-Notify-Signature'] === expectSig, 'the custom signature covers the exact body sent');
+
+  // 9c) Telegram: the bot token is the endpoint, the message is a form, and the
+  //     verdict rides inside a 200 — `ok:false` with an error_code is a real
+  //     refusal (bad chat id, bot never started, bot removed from the group),
+  //     and the token must never appear in a status the user can read.
+  const tgCall = multi.calls.find((c) => c.url.indexOf('api.telegram.org') !== -1);
+  assert(tgCall && tgCall.url === 'https://api.telegram.org/bot123456:AAHtest/sendMessage',
+    'the telegram endpoint is built from the bot token, got ' + (tgCall && tgCall.url));
+  assert(String(tgCall.opts.headers['Content-Type']).indexOf('application/x-www-form-urlencoded') === 0,
+    'telegram takes a form, not JSON');
+  const tgForm = new URLSearchParams(tgCall.opts.body);
+  assert(tgForm.get('chat_id') === '-1001234', 'the chat id is a form field, got ' + tgCall.opts.body.slice(0, 60));
+  assert(tgForm.get('text').indexOf('外部通知测试') === 0, 'the message text is the rendered alert, got ' + tgForm.get('text').slice(0, 40));
+
+  const tg = (body, extra) => bootWeb(() => ({ ok: true, status: 200, text: () => Promise.resolve(body) }), {
+    externalEnabled: true,
+    externalRetryDelays: (extra && extra.retry) || [],
+    externalTargets: [Object.assign({ id: 't', type: 'telegram', botToken: '123456:AAHtest', chatId: '-1001234' }, (extra && extra.target) || {})],
+  });
+
+  const tgRefused = tg('{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}');
+  const rTgRefused = await tgRefused.win.__dshNotifyMe.testExternal();
+  assert(rTgRefused.failed === 1 && rTgRefused.statuses[0].indexOf('Telegram API 400') !== -1,
+    'ok:false on a 200 is a failure, got ' + JSON.stringify(rTgRefused));
+  assert(rTgRefused.statuses[0].indexOf('AAHtest') === -1, 'the bot token never reaches a status line');
+  assert(tgRefused.calls.length === 1, 'a 400 is not retried, got ' + tgRefused.calls.length + ' calls');
+
+  const tgRate = tg('{"ok":false,"error_code":429,"description":"Too Many Requests"}', { retry: [0, 0] });
+  const rTgRate = await tgRate.win.__dshNotifyMe.testExternal();
+  assert(rTgRate.failed === 1 && tgRate.calls.length === 3, 'a 429 is retried on the backoff, got ' + tgRate.calls.length + ' calls');
+
+  const tgDown = tg('{"ok":false,"error_code":502,"description":"Bad Gateway"}', { retry: [0, 0] });
+  await tgDown.win.__dshNotifyMe.testExternal();
+  assert(tgDown.calls.length === 3, 'a 5xx is retried too, got ' + tgDown.calls.length + ' calls');
+
+  const tgHtml = tg('<html>blocked by a proxy</html>');
+  const rTgHtml = await tgHtml.win.__dshNotifyMe.testExternal();
+  assert(rTgHtml.unverified === 1, 'a non-JSON 200 is sent-but-unverified, got ' + JSON.stringify(rTgHtml));
+
+  const tgOdd = tg('{"ok":"yes"}');
+  const rTgOdd = await tgOdd.win.__dshNotifyMe.testExternal();
+  assert(rTgOdd.unverified === 1, 'a non-boolean ok is unverified, got ' + JSON.stringify(rTgOdd));
+
+  // A failed exchange carries the whole URL in the browser's own message; the
+  // token lives in that path, so the recorded reason must not repeat it.
+  const tgNet = bootWeb(() => { throw new TypeError('Failed to fetch https://api.telegram.org/bot123456:AAHtest/sendMessage'); }, {
+    externalEnabled: true,
+    externalTargets: [{ id: 't', type: 'telegram', botToken: '123456:AAHtest', chatId: '-1001234' }],
+  });
+  const rTgNet = await tgNet.win.__dshNotifyMe.testExternal();
+  assert(rTgNet.failed === 1 && rTgNet.statuses[0] === 'failed (network error)',
+    'a telegram network failure is named without the token, got ' + JSON.stringify(rTgNet.statuses));
+  const tgDead = tgNet.win.__dshNotifyMe.debug().external;
+  assert(tgDead.failed === 1, 'the failure is counted');
+  assert(tgDead.deadLettersLog[0].host === 'api.telegram.org' && JSON.stringify(tgDead.deadLettersLog[0]).indexOf('AAHtest') === -1,
+    'the failure log keeps the host, never the bot token, got ' + JSON.stringify(tgDead.deadLettersLog[0]));
+
+  // 9d) the chat id may be written as a number, and a half-configured target is
+  //     inert: a token that is not a token would only buy a 404 with the secret
+  //     in the URL, and a chat id the Bot API cannot parse is rejected by it.
+  const tgShapes = bootWeb(() => ({ ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') }), {
+    externalEnabled: true,
+    externalTargets: [
+      { id: 'ok', type: 'telegram', botToken: '123456:AAHtest', chatId: 42 },
+      { id: 'noToken', type: 'telegram', botToken: '', chatId: '-1' },
+      { id: 'badToken', type: 'telegram', botToken: 'not a token', chatId: '-1' },
+      { id: 'noChat', type: 'telegram', botToken: '123456:AAHtest', chatId: '' },
+      { id: 'badChat', type: 'telegram', botToken: '123456:AAHtest', chatId: 'chat one' },
+    ],
+  });
+  const rTgShapes = await tgShapes.win.__dshNotifyMe.testExternal();
+  assert(tgShapes.win.__dshNotifyMe.debug().external.activeTargets === 1,
+    'only the well-formed telegram target is active, got ' + JSON.stringify(tgShapes.win.__dshNotifyMe.debug().external));
+  assert(rTgShapes.sent === 1, 'the numeric chat id is accepted and sent, got ' + JSON.stringify(rTgShapes));
+  assert(new URLSearchParams(tgShapes.calls[0].body).get('chat_id') === '42', 'a numeric chat id is stringified');
+
+  // One message is capped at 4096 characters: a template longer than that is cut
+  // and marked, because the Bot API rejects the whole message instead.
+  const tgLong = bootWeb(() => ({ ok: true, status: 200, text: () => Promise.resolve('{"ok":true}') }), {
+    externalEnabled: true,
+    externalTargets: [{ id: 't', type: 'telegram', botToken: '123456:AAHtest', chatId: '1', template: 'x'.repeat(5000) }],
+  });
+  await tgLong.win.__dshNotifyMe.testExternal();
+  const longText = new URLSearchParams(tgLong.calls[0].body).get('text');
+  assert(longText.length === 4096 && longText.slice(-1) === '…', 'a 5000-character message is capped at 4096, got ' + longText.length);
 
   // 10) targets switch off one at a time, and a half-filled WxPusher target is
   //     inert rather than posting a request the service will reject.
@@ -3676,12 +3862,14 @@ async function settingsExternalRows() {
 
   // 7) the newer target types surface the fields their service needs, and only
   //    those fields: a feishu bot has a signing secret + template, WxPusher
-  //    needs an appToken + receiver UID instead of a webhook URL.
+  //    needs an appToken + receiver UID instead of a webhook URL, Telegram a
+  //    masked bot token plus the chat id.
   const typed = settingsBoot({
     externalEnabled: true,
     externalTargets: [
       { id: 'f', type: 'feishu', url: 'https://open.feishu.cn/open-apis/bot/v2/hook/X' },
-      { id: 'w', type: 'wxpusher', token: 'AT_x', uid: 'UID_a' }
+      { id: 'w', type: 'wxpusher', token: 'AT_x', uid: 'UID_a' },
+      { id: 't', type: 'telegram', botToken: '123456:AAHtest', chatId: '-1001234' }
     ]
   }, null, { advanced: true });
   assert(typed.find((n) => n.props && n.props['aria-label'] === '签名密钥'), 'feishu exposes the signing-secret field');
@@ -3690,8 +3878,12 @@ async function settingsExternalRows() {
   assert(typed.find((n) => n.props && n.props['aria-label'] === '接收者 UID'), 'wxpusher exposes the receiver UID');
   assert(typed.findAll((n) => n.props && n.props['aria-label'] === '推送地址').length === 1,
     'only the webhook target has a URL field (WxPusher endpoint is fixed)');
+  const tgToken = typed.find((n) => n.props && n.props['aria-label'] === '机器人令牌');
+  assert(tgToken && tgToken.props.type === 'password', 'telegram masks the bot token, got ' + JSON.stringify(tgToken && tgToken.props));
+  const tgChat = typed.find((n) => n.props && n.props['aria-label'] === '聊天 ID');
+  assert(tgChat && tgChat.props.value === '-1001234', 'telegram exposes the chat id');
   const toggles = typed.findAll((n) => n.props && n.props['aria-label'] === '启用或停用这个目标');
-  assert(toggles.length === 2 && toggles[0].props['aria-checked'] === 'true', 'each target gets its own switch, got ' + toggles.length);
+  assert(toggles.length === 3 && toggles[0].props['aria-checked'] === 'true', 'each target gets its own switch, got ' + toggles.length);
   toggles[0].props.onClick();
   typed.renderNow();
   assert(typed.configNow().externalTargets[0].enabled === false, 'the per-target switch persists');
@@ -4570,6 +4762,7 @@ function mutedSessionsUi() {
   await currentSessionTitle();
   await subagentSessions();
   await completionUnreadChannel();
+  await goalRoundsSilent();
   await quickActionsHost();
   await desktopRaiseChannel();
   await macNativeClickPoll();

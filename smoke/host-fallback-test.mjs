@@ -13,7 +13,8 @@
 // `pageLeaseMs: 0`, language following the heartbeat, approval dedupe, the
 // per-session throttle, the subagent skip, the session title that names a body,
 // the copy that must match the page's toast verbatim, the reason suffix, one
-// credential retry on 401, and the health probe.
+// credential retry on 401, the Goal rounds that are steps rather than answers,
+// and the health probe.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -592,7 +593,70 @@ try {
     globalThis.fetch = realFetch;
   }
 
-  console.log('host fallback OK: lease gate, dedupe, throttle, subagent skip, mute, external switches, language, page-parity copy, retry, probe');
+  // 18) A Goal turn is one round of a longer job, not an answer: the round
+  // driver queues the next round as soon as the agent goes idle, and an
+  // intermediate round usually writes no `goal/change` at all, so every round
+  // ends its own turn. Reporting each one was a completion alert per round on a
+  // goal that runs for hours; only the round that takes the goal out of
+  // `active` is news.
+  {
+    const calls = captureFetch();
+    const hostHalf = bootHost(baseConfig({ turnEndThrottleMs: 0 }));
+    const goalChange = (operation, phase) => ({
+      type: 'goal/change',
+      data: {
+        kind: 'goal/change',
+        version: 1,
+        operation,
+        goal: { id: 'g1', revision: 1, objective: 'ship it', phase, maxGoalRounds: 20 },
+        roundsStarted: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    hostHalf.emit(ALPHA, goalChange('create', 'active'));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } });
+    await sleep(80);
+    assert(calls.length === 0, 'rounds of an active goal are not completions (got ' + calls.length + ' alerts)');
+
+    // The final round takes the goal out of `active` before its turn ends, so
+    // that one still reports — the job really did finish.
+    hostHalf.emit(ALPHA, goalChange('complete', 'complete'));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 3, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'the round that completed the goal');
+    assert(JSON.parse(calls[0].body).type === 'info', 'the goal completion is the usual done alert, got ' + calls[0].body);
+
+    // A paused goal is the user's own stop, and a blocked one is the job giving
+    // up: both end the round with a real outcome and must be reported.
+    calls.length = 0;
+    hostHalf.emit(ALPHA, goalChange('create', 'active'));
+    hostHalf.emit(ALPHA, goalChange('pause', 'paused'));
+    hostHalf.emit(ALPHA, { type: 'turn/end', data: { turn: 4, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'the round that paused the goal');
+
+    // A host that restarted mid-goal has seen no `goal/change` yet: the phase
+    // it needs is the last lifecycle change still in the session log.
+    calls.length = 0;
+    const log = [
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'goal/change', data: { kind: 'goal/change', version: 1, operation: 'create', goal: { id: 'g2', revision: 1, objective: 'resume', phase: 'active' } } },
+      { type: 'user/message', data: { role: 'user', content: 'keep going' } },
+    ];
+    const resumed = { header: { id: 'sess-goal-resumed', cwd: '/home/liegu/projects/atlas' }, seq: log.length, eventAt: (seq) => log[seq] };
+    hostHalf.emit(resumed, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+    await sleep(80);
+    assert(calls.length === 0, 'a goal created before this host started still silences its rounds (got ' + calls.length + ')');
+
+    // The seeded phase is not a one-shot: a lifecycle change that arrives later
+    // still wins, and it also stops the next turn from being swallowed.
+    hostHalf.emit(resumed, { type: 'goal/change', data: { kind: 'goal/change', version: 1, operation: 'block', goal: { id: 'g2', revision: 2, objective: 'resume', phase: 'blocked', blockedReason: { code: 'model-reported', message: 'cannot reach the gateway' } } } });
+    hostHalf.emit(resumed, { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'the round that blocked the goal');
+    globalThis.fetch = realFetch;
+  }
+
+  console.log('host fallback OK: lease gate, dedupe, throttle, subagent skip, mute, external switches, goal rounds, language, page-parity copy, retry, probe');
 } finally {
   globalThis.fetch = realFetch;
   fs.rmSync(tempDir, { recursive: true, force: true });

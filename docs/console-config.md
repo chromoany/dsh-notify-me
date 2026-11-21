@@ -32,9 +32,10 @@ window.__dshNotifyMe.setConfig({
   externalRetryDelays: [2000, 6000], // 可重试失败的退避间隔（毫秒，带抖动；[] = 只发一次）
   externalTargets: []         // 推送目标，见下方字段说明
 })
-// 目标的形状：{id, type, url, secret?, token?, uid?, template?, enabled?}
-// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'custom'
-// token/uid 只用于 wxpusher（url 固定为官方端点）；secret 用于飞书签名与自定义 HMAC 签名；
+// 目标的形状：{id, type, url, secret?, token?, uid?, botToken?, chatId?, template?, enabled?}
+// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'telegram' | 'custom'
+// token/uid 只用于 wxpusher（url 固定为官方端点）；botToken/chatId 只用于 telegram（url 由 token 拼出）；
+// secret 用于飞书签名与自定义 HMAC 签名；
 // template 可选，占位符 {{title}} {{body}} {{event}} {{time}} {{session}}；enabled:false 单独停用该目标
 window.__dshNotifyMe.resetConfig()                // 恢复默认（同时清掉已选的自定义音效文件）
 window.__dshNotifyMe.decide("approval:3", "allowed-once")  // 程序化裁决："allowed-once" | "rejected"

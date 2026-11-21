@@ -32,9 +32,10 @@ window.__dshNotifyMe.setConfig({
   externalRetryDelays: [2000, 6000], // backoff for retryable failures (ms, with jitter; [] = send once)
   externalTargets: []         // push targets, see the field notes below
 })
-// Target shape: {id, type, url, secret?, token?, uid?, template?, enabled?}
-// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'custom'
-// token/uid only for wxpusher (its URL is fixed to the official endpoint); secret signs Feishu bodies
+// Target shape: {id, type, url, secret?, token?, uid?, botToken?, chatId?, template?, enabled?}
+// type: 'discord' | 'bark' | 'gotify' | 'feishu' | 'serverchan' | 'wxpusher' | 'telegram' | 'custom'
+// token/uid only for wxpusher (its URL is fixed to the official endpoint); botToken/chatId only for
+// telegram (its URL is built from the token); secret signs Feishu bodies
 // and custom HMAC headers; template is optional ({{title}} {{body}} {{event}} {{time}} {{session}});
 // enabled:false disables that one target
 window.__dshNotifyMe.resetConfig()                // restore defaults (also drops any picked audio files)
