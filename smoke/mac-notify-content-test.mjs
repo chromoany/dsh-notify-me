@@ -134,16 +134,26 @@ try {
   let argv;
 
   // 2a0. The page can lift the label itself: a completion with no snippet sends
-  //      the conversation name as `subtitle` and an empty body, because the body
-  //      it needs for a page toast (issue #20) is that name alone. The explicit
-  //      subtitle must win over the split, and the empty body must stay empty.
+  //      the conversation name as `subtitle` and the channel's own wording as
+  //      the body, because the body a page toast needs (issue #20) is that name
+  //      alone. An explicit subtitle wins over the split, and the body the page
+  //      chose is passed through untouched — including an empty one, which is
+  //      still a legal alert.
   spawned.length = 0;
-  const lifted = await post({ title: 'DSH · 回复完成', body: '', subtitle: '当前会话', id: 'tag-0' });
+  const lifted = await post({ title: 'DSH · 回复完成', body: '回复已完成', subtitle: '当前会话', id: 'tag-0' });
   assert(lifted.status === 200, 'a page-lifted subtitle answers 200, got ' + lifted.status);
   argv = spawned[0].args;
   assert(argv[argv.indexOf('--subtitle') + 1] === '当前会话',
     'the page-lifted label reaches --subtitle, got ' + JSON.stringify(argv));
-  assert(argv[argv.indexOf('--body') + 1] === '', 'the body stays empty when the page lifted the label');
+  assert(argv[argv.indexOf('--body') + 1] === '回复已完成',
+    'the body the page chose reaches --body untouched');
+
+  spawned.length = 0;
+  const liftedEmpty = await post({ title: 'DSH · 回复完成', body: '', subtitle: '当前会话', id: 'tag-0b' });
+  assert(liftedEmpty.status === 200, 'an empty body under an explicit subtitle answers 200');
+  argv = spawned[0].args;
+  assert(argv[argv.indexOf('--body') + 1] === '', 'an explicit empty body stays empty');
+  assert(argv[argv.indexOf('--subtitle') + 1] === '当前会话', 'the subtitle rides along with an empty body');
 
   // 2a. A labelled completion reaches the helper as a subtitle plus a detail.
   spawned.length = 0;
