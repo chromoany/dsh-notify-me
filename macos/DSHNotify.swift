@@ -4,7 +4,8 @@
 // the Electron renderer, so the host spawns this helper instead:
 //
 //   DSH Notify.app/Contents/MacOS/dsh-notify --title T --body B
-//       [--sound] [--session ID] [--id ID] [--click-file PATH] [--open URL]
+//       [--subtitle S] [--sound] [--session ID] [--id ID] [--click-file PATH]
+//       [--open URL]
 //   DSH Notify.app/Contents/MacOS/dsh-notify --remove ID
 //
 // It posts one UNUserNotification and exits. Clicking the notification later
@@ -65,6 +66,10 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = args["body"] ?? ""
+            // Optional second line, drawn between title and body. The page owns
+            // the split (splitNotificationBody() in lib/mac-notify.js) so it can
+            // be unit-tested off-platform; this side stays a dumb renderer.
+            if let subtitle = args["subtitle"], !subtitle.isEmpty { content.subtitle = subtitle }
             if args["sound"] != nil { content.sound = .default }
             var info: [String: String] = ["open": args["open"] ?? "dsh://open"]
             if let s = args["session"] { info["sessionId"] = s }

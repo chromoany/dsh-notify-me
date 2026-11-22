@@ -23,6 +23,7 @@
     "CHANGELOG.md",
     "LICENSE",
     "smoke/mac-notify-test.mjs",
+    "smoke/mac-notify-content-test.mjs",
     "smoke/win-toast-test.mjs",
     "macos/DSHNotify.swift",
     "macos/build.sh",
@@ -77,7 +78,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node smoke/smoke-test.cjs && node smoke/host-route-test.mjs && node smoke/page-bridge-test.mjs && node smoke/host-fallback-test.mjs && node smoke/relay-route-test.mjs && node smoke/cordis-host-test.mjs && node smoke/mac-notify-test.mjs && node smoke/win-toast-test.mjs",
+    "test": "node smoke/smoke-test.cjs && node smoke/host-route-test.mjs && node smoke/page-bridge-test.mjs && node smoke/host-fallback-test.mjs && node smoke/relay-route-test.mjs && node smoke/cordis-host-test.mjs && node smoke/mac-notify-test.mjs && node smoke/mac-notify-content-test.mjs && node smoke/win-toast-test.mjs",
     "pack": "npm pack --dry-run"
   },
   "publishConfig": {
