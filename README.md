@@ -418,6 +418,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 - **走哪条路是自动的**：宿主只在「macOS + 桌面壳（Electron 二进制）+ 助手已编译」三个条件都满足时注册这条路由；任一不满足，`GET` 探测报 `enabled: false`，页面继续用自己原来的通知，行为与改动前一致。`dsh web`（浏览器）永远走不到这条路由。
 - **点通知回到对应对话**：小助手把会话 id 写进临时目录的 `dsh-notify-me-click.json` 并打开 `dsh://open` 抬窗；页面重新获得焦点时 `GET` 一次取走这个 id、切到对应对话，取走后即清掉，不会重复跳转。DSH 本来就处于前台时 `dsh://open` 不产生新的激活，页面收不到 `focus`，所以通知挂出后、页面在前台时还会每秒探测一次宿主（最多 120 秒），点击后 1 秒内完成切换，读到点击即停；窗口不在前台时不轮询。`autoFocus` 关掉时只抬窗不切会话。
 - **提示音**：设置里选「系统通知音」时交给 macOS，其余音效模式仍由页面自己合成，不会两声叠在一起。
+- **标题、副标题、正文三段都用上**：通知正文的第一行是对话名，「回复完成」这类没有摘要的提醒以前正文就只剩这一行，读起来像只告诉你「Main」。现在对话名放副标题（`--subtitle`，画在标题和正文之间），正文放回复摘要：没有摘要的提醒由主机的 `ctx.sessionQuery` 读回会话日志，取最后一条 assistant 消息的开头（80 字符，压成一行）。读不到就留空，提醒照发。带摘要的提醒把对话名升为副标题、摘要留在正文。审批提醒本来是一行「对话名 + 内容」，原样不动——拆开只会把内容弄丢。拆分放在 `lib/mac-notify.js`（`splitNotificationBody()`），摘要在同一处（`lastReplySnippet()`），小助手只负责画，因此这两条逻辑在任何平台都能测。
 - **通知上仍然没有「同意 / 拒绝」按钮**：macOS 的通知动作要求注册通知类别，助手不碰审批状态，裁决仍在对话里做。
 - **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `macNotify: { enabled: false }`；或删掉 `macos/DSH Notify.app`，路由会退回 `enabled: false`。
 
@@ -459,7 +460,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 **提醒内容与时机**
 
-- `≥ 0.1.6`（含 `0.2.0-rc.2`、`0.2.1-rc.2`）的「回复完成」提醒正文只有会话名，不再附带回复摘要——宿主快照已不再提供 `nodes`；提醒本身照常触发。
+- `≥ 0.1.6`（含 `0.2.0-rc.2`、`0.2.1-rc.2`）的宿主快照不再提供 `nodes`，所以页面侧拿不到回复摘要；这类提醒的正文改由主机从 `ctx.sessionQuery` 读会话日志补上（最后一条 assistant 消息开头 80 字符）。若该宿主没有 `sessionQuery` 服务，正文留空，提醒仍照常触发。
 - 标题标记由宿主与插件共同写 `document.title`：宿主重算标题时标记可能被覆盖，直到下一次提醒事件重新写成。
 - 「当前对话不弹通知」按「窗口是否在前台」判定：被别的应用盖住、切到别的应用、最小化都算后台；回到前台或重新有键鼠输入后恢复静默。
 - 按对话静音的标记注在宿主的 `sidebar.session.row.leading` 槽位，而宿主在「这条会话有运行状态」时用状态点占着这个位置，标记就不渲染——正在跑的后台任务看不到划掉的铃铛，停下后自动回来；静音本身不受影响。
@@ -490,6 +491,8 @@ npm pack --dry-run               # 预览发布包
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、Goal 还 `active` 时中间轮不投递（`complete` / `pause` / `block` 之后照常投递，重启后能从会话日志里补出 Goal 状态）、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」、`relay.bodyTemplate` 的模板渲染与 JSON 转义、坏模板启动即不注册、渲染体积上限。
 
 `smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主注册、探测、`405` / `403` / `501` / `400` 的拒绝、传给助手的参数（含 `--id` / `--sound` 与 `{remove:id}` 撤回）、点击回传只被取走一次。它用假的平台与 Electron 版本号驱动，不需要真的编译助手，在任何平台都会跑。
+
+`smoke/mac-notify-content-test.mjs` 跑通知内容：`splitNotificationBody()` 对每一种正文形状的结果（一行、两行、空行、首尾空白、CJK、缺字段）、页面自己抬好的 `subtitle` 优先生效、只有真有副标题时才传 `--subtitle`、正文永远不等于标题（回归）、回复摘要怎么从事件日志里取（跳过工具结果、压成一行、超长截断加省略号、空日志不报错、只在 `done` 且正文为空时读）、读日志失败仍照发提醒、以及拆分后再各自截断（正文 1000 字符、副标题 200 字符）。同样用假 spawn，不需要真的助手，在任何平台都会跑。
 
 `smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、首次发 Toast 前的六条注册命令（`HKCU\Software\Classes\dsh-notify-me` 的三条协议键、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 与 `CustomActivator`、以及只建不写 `LocalServer32` 的空 `CLSID\{…}` 存根）、Windows 10 门控下既不写注册表也不发 Toast、approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式、不烘入 profile 路径，且正文点击只发 `dsh-notify-me://open`（不得再出现 `dsh://open`）；`dsh-notify-me://open` 不带 session 时仍解析为一次纯抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
