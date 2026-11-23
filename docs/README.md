@@ -1,6 +1,6 @@
 # docs
 
-这里放的是仓库自己的材料，插件运行用不到：npm 包的 `files` 白名单只有 `lib/`、`cordis.patch.yml`、两份 README、`CHANGELOG.md` 和 `LICENSE`。
+这里放的是仓库自己的材料，插件运行用不到：npm 包的 `files` 白名单只有 `lib/`、`cordis.patch.yml`、三份 README（`README.md` / `README.en.md` / `README.zh-TW.md`）、`CHANGELOG.md` 和 `LICENSE`。
 
 | 路径 | 内容 | 什么时候要动 |
 | --- | --- | --- |
@@ -15,17 +15,18 @@ README 只保留这两节的摘要与链接，完整内容在对应的 `.md` / `
 
 ## 截图
 
-三张图都取自本机 Windows 上的真实界面：两张 settings 图宽 648 px（1.22.0 重拍），`notify-toast.png` 宽 593 px：
+四张图都取自本机 Windows 上的真实界面：三张 settings 图宽 648 px（1.23.0 重拍），`notify-toast.png` 宽 593 px：
 
 | 文件 | 尺寸 | 内容 |
 | --- | --- | --- |
-| `settings-zh.png` | 648×1162 | 中文设置页完整面板（1.22.0） |
-| `settings-en.png` | 648×1180 | 英文设置页完整面板（1.22.0） |
+| `settings-zh.png` | 648×1162 | 简体中文设置页完整面板（1.23.0） |
+| `settings-zh-tw.png` | 648×1162 | 繁體中文设置页完整面板（1.23.0，`README.zh-TW.md` 用） |
+| `settings-en.png` | 648×1180 | 英文设置页完整面板（1.23.0） |
 | `notify-toast.png` | 593×239 | Edge 里的普通通知，不含审批按钮 |
 
-两张 settings 图 1.22.0 重拍：面板自 1.19.0 起只有页脚版本行变过（1.22.0 新增的 Telegram 目标在默认折叠的「高级」里，不影响外观），这次按 1.22.0 重截，页脚是 `dsh-notify-me v1.22.0`。设置界面再改版时按当版重截并同步上表。
+三张 settings 图 1.23.0 重拍：面板外观自 1.19.0 起只有页脚版本行变过（1.23.0 新增的繁體语言项在默认折叠的「高级」里，Android 的 Worker 退路不改变外观），这次按 1.23.0 重截，页脚是 `dsh-notify-me v1.23.0`。字号、间距与旧图一致，逐像素差异只在文字抗锯齿。设置界面再改版时按当版重截并同步上表。
 
-README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown 里的链接不用改。`screenshots.json` 是提交插件市场时给的一套图列表，换图时一并同步。
+README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown 里的链接不用改。
 
 ## 头像
 

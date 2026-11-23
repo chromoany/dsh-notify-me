@@ -9,7 +9,7 @@
 window.__dshNotifyMe.config                       // 查看
 window.__dshNotifyMe.setConfig({
   enabled: true,           // false = 关闭所有提醒（主开关）
-  language: "auto",        // 'auto' 跟随界面 | 'zh' 简体中文 | 'en' English
+  language: "auto",        // 'auto' 跟随界面 | 'zh' 简体中文 | 'zh-TW' 繁體中文 | 'en' English
   attentionHiddenOnly: false, // true = 页面可见时「需要你」不提醒
   currentHiddenOnly: true,    // true = 当前对话的等待只留标题标记（人离开后补发）
   donePolicy: "background",   // 「回复完成」策略：'background' 仅后台 | 'smart' 仅当前对话静默 | 'always' 总是提醒
