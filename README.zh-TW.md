@@ -41,7 +41,7 @@ DSH Web / Desktop 的通知插件，讓你敢不開完整存取，也不必一�
 <details>
 <summary>展開設定介面預覽</summary>
 
-![通知提醒設定頁：頁首、提醒方式、什麼時候提醒、會話靜音、試一試與摺疊的進階設定](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/settings-zh.png)
+![通知提醒設定頁：頁首、提醒方式、什麼時候提醒、對話靜音、試一試與摺疊的進階設定](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/settings-zh-tw.png)
 
 只截插件自己的面板（真實元件，與宿主同款深色主題），不帶 DSH 左側導航欄；每行說明在滑鼠停在標題文字上時才出現，所以這裡只看到標題。
 
@@ -114,11 +114,11 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 
 **需要你操作**包括核准請求、方案待確認（plan review）和提問（`ask_user_question`）。帶按鈕的快速裁決在 Web 與 Windows 11 桌面端可用（Windows 由宿主發原生 Toast），macOS 桌面端與沒有 Service Worker 的頁面點通知回到對話裡裁決（見[已知限制](#已知限制)）。
 
-**回覆完成**也覆蓋後台會話；完成但還沒看時，標題帶 `✅ 回覆完成 ·` 標記，開啟對應會話即撤。標題標記不受提醒策略限制。
+**回覆完成**也覆蓋後台對話；完成但還沒看時，標題帶 `✅ 回覆完成 ·` 標記，開啟對應對話即撤。標題標記不受提醒策略限制。
 
-通知正文的第一行是會話標題：目前正在看的會話和其他會話一樣顯示自己的標題，只有宿主還沒給出標題的新會話才用「目前對話」佔位符兜底。
+通知正文的第一行是對話標題：目前正在看的對話和其他對話一樣顯示自己的標題，只有宿主還沒給出標題的新對話才用「目前對話」佔位符兜底。
 
-> **後台**子代理（subagent）子會話的等待與完成預設**不提醒**：DSH 把每個子代理子會話列成獨立會話，但它們是所屬主對話那一輪裡的步驟，提醒只會是噪音。你目前開啟的那個子代理會話不算在內，照常提醒。設定頁「子代理會話不提醒」可關掉這個靜音。
+> **後台**子代理（subagent）對話的等待與完成預設**不提醒**：DSH 把每個子代理對話列成一條獨立對話，但它們是所屬主對話那一輪裡的步驟，提醒只會是噪音。你目前開啟的那個子代理對話不算在內，照常提醒。設定頁「子代理對話不提醒」可關掉這個靜音。
 
 ## 在 DSH 設定裡調整
 
@@ -138,7 +138,7 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 - **「回覆完成」什麼時候提醒**（預設「僅後台」）：僅後台 / 僅目前對話靜默 / 總是提醒，三選一；
 - **通知自動消失**（預設「離開時保留」）：離開時保留 / 總是關閉 / 從不關閉，三選一；三種設定只管「時間到點」那一次關閉，你回到頁面時殘留的通知一律收起；
 - **回到頁面也保留提醒**（預設關）：開啟後，離開時收到的通知在你回到 DSH 頁面後不再被收起，會一直留到你點掉或點「關閉」——適合把系統通知樣式設成「持續」、希望提醒常駐螢幕的用法；
-- **子代理會話不提醒**（預設開）：跳過後台子代理（subagent）會話，你正開著的那個照常提醒；
+- **子代理對話不提醒**（預設開）：跳過後台子代理（subagent）對話，你正開著的那個照常提醒；
 - **點選通知回到對應對話**（預設開）：切到對應對話並把視窗帶到前台，Windows 桌面走宿主路由原生抬窗、macOS / Linux 走 `dsh://open` 深鏈，多個分頁只調起一個。
 
 <details>
@@ -157,22 +157,22 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 
 適合「後台跑著週期任務、但這次不用管它」的對話：只關掉那一行的提醒，別的照舊。
 
-- **靜音**：滑鼠移到側邊欄的會話行上，右側出現鈴鐺，點一下即靜音（按鈕讀作「靜音此會話的提醒」）；再點一次恢復。也可以右鍵點會話，在選單裡選「靜音此會話的提醒」——觸控裝置沒有滑鼠移上條，選單裡這一行就是入口；
-- **標記**：被靜音的對話在標題前顯示一個劃掉的鈴鐺（螢幕閱讀器讀作「此會話已靜音」）；
-- **滑鼠移上鈴鐺可以關掉**：設定頁「會話靜音」卡片頂部的「滑鼠移上時顯示靜音按鈕」預設開；關掉後滑鼠移上不再出鈴鐺，未靜音的會話改用右鍵選單。已靜音的會話仍保留這枚鈴鐺——它既表示狀態，點一下就能取消靜音；標題前的劃掉鈴鐺不受影響；
+- **靜音**：滑鼠移到側邊欄的對話行上，右側出現鈴鐺，點一下即靜音（按鈕讀作「靜音此對話的提醒」）；再點一次恢復。也可以右鍵點對話，在選單裡選「靜音此對話的提醒」——觸控裝置沒有滑鼠移上條，選單裡這一行就是入口；
+- **標記**：被靜音的對話在標題前顯示一個劃掉的鈴鐺（螢幕閱讀器讀作「此對話已靜音」）；
+- **滑鼠移上鈴鐺可以關掉**：設定頁「對話靜音」卡片頂部的「滑鼠移上時顯示靜音按鈕」預設開；關掉後滑鼠移上不再出鈴鐺，未靜音的對話改用右鍵選單。已靜音的對話仍保留這枚鈴鐺——它既表示狀態，點一下就能取消靜音；標題前的劃掉鈴鐺不受影響；
 - **範圍**：「需要你」「回覆完成」、提示音、分頁標記、外部推送一起關掉；別的對話完全不受影響；「試一試」裡的測試按鈕照發（它就是用來當場驗證渠道的）；
 - **持久化**：列表存在本地，重新整理、重啟都在；手工改壞的設定會被剪掉而不是讓整頁失效；
 - **關掉分頁之後**：靜音列表會隨心跳交給宿主，所以「頁面關閉後的宿主側兜底」也不會為它推送——否則關掉頁面反而開始響。
 
-設定頁「什麼時候提醒」下面有一張「會話靜音」卡片，顯示目前靜音了幾個對話，滑鼠移上鈴鐺的開關就在卡片頂部，可以一鍵「全部取消靜音」。
+設定頁「什麼時候提醒」下面有一張「對話靜音」卡片，顯示目前靜音了幾個對話，滑鼠移上鈴鐺的開關就在卡片頂部，可以一鍵「全部取消靜音」。
 
 <details>
 <summary>邊界條件</summary>
 
-- 標記注在宿主的 `sidebar.session.row.leading` 槽位，宿主在「這條會話有執行狀態」時用狀態點佔著這個位置，標記就不渲染——正在跑的後台任務看不到劃掉的鈴鐺，停下後自動回來。靜音本身不受影響，通知照舊不發。
+- 標記注在宿主的 `sidebar.session.row.leading` 槽位，宿主在「這條對話有執行狀態」時用狀態點佔著這個位置，標記就不渲染——正在跑的後台任務看不到劃掉的鈴鐺，停下後自動回來。靜音本身不受影響，通知照舊不發。
 - 右鍵選單裡那一行注在宿主舊的 `sidebar.workspaces.session.menu.item` 槽位，宿主不宣告這個槽位時只是選單裡少一行，滑鼠移上鈴鐺、設定頁和靜音本身都不受影響。
-- 滑鼠移上鈴鐺關掉後，未靜音的會話在行上沒有任何靜音入口，判斷/取消靜音都走右鍵選單；已靜音的會話行尾仍保留按下狀態的鈴鐺。
-- 靜音只看會話 id：重新命名、換目錄都不影響，刪掉的會話留在列表裡也不會報錯（列表上限 200 條，恢復按鈕隨時清空）。
+- 滑鼠移上鈴鐺關掉後，未靜音的對話在行上沒有任何靜音入口，判斷/取消靜音都走右鍵選單；已靜音的對話行尾仍保留按下狀態的鈴鐺。
+- 靜音只看對話 id：重新命名、換目錄都不影響，刪掉的對話留在列表裡也不會報錯（列表上限 200 條，恢復按鈕隨時清空）。
 - 靜音不改變「回覆完成」的 donePolicy 判定，也不改變「目前對話不彈通知」：兩者疊加時以靜音為準。
 
 </details>
@@ -229,7 +229,7 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 <details>
 <summary>宿主側兜底：頁面關閉後由宿主接著推</summary>
 
-頁面不在時頁面半體不執行，提醒就斷在這裡。宿主側兜底訂閱宿主的會話事件流（`session/event`），在頁面關閉後自己把同樣兩條提醒發到你設定的閘道。它跟頁面共用同一組開關：心跳把 `external: {enabled, attention, done}` 報給宿主，頁面裡「轉發外部通知」總開關關掉（或只關掉「需要你」/「回覆完成」其中一類）時，兜底也照同樣規則閉嘴——否則關掉總開關、再關掉分頁，最後那條外部通知還是會到。
+頁面不在時頁面半體不執行，提醒就斷在這裡。宿主側兜底訂閱宿主的對話事件流（`session/event`），在頁面關閉後自己把同樣兩條提醒發到你設定的閘道。它跟頁面共用同一組開關：心跳把 `external: {enabled, attention, done}` 報給宿主，頁面裡「轉發外部通知」總開關關掉（或只關掉「需要你」/「回覆完成」其中一類）時，兜底也照同樣規則閉嘴——否則關掉總開關、再關掉分頁，最後那條外部通知還是會到。
 
 profile 覆蓋範例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`config` 是整塊替換、不是深合併**：patch 裡寫同一個 `id` 就把整個 `config` 賦過去，所以範例把三塊都寫全——漏寫的鍵會回落到插件內的預設值（與隨包 YAML 是同一份），但被一起沖掉的 `gateway.target` 不會自己回來。
 
@@ -265,9 +265,9 @@ profile 覆蓋範例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 - `enabled`（`false`）：關著時宿主不訂閱任何事件，也不註冊健康探針；
 - `target` / `credentialsFile`（空）：留空回落到 `gateway.*`；兩處都空等於沒地方可推，模組乾脆不掛載，只在宿主日誌裡留一行 warning——比每次投遞都失敗好查；
 - `events`（`['turn/end', 'approval/asked']`）：要推的事件，只列一種就只有那一種；
-- `includeSubagents`（`false`）：`origin === 'subagent'` 的會話預設跳過，理由與頁面側一致——它們是主對話一輪裡的步驟；
-- `turnEndThrottleMs`（`15000`）：同一會話的「回覆完成」在這個視窗內只推一條；視窗只在真發出去時才消耗，被租約擋掉的那次不算。節流只管 `completed`——`aborted` / `error` / `max-tokens` 這些收尾不節流，它們本來就少，而且往往是此刻最該看到的那一條；
-- **文案與頁面通知逐字一致**：標題是 `<字首> · 回覆完成` / `<字首> · 核准請求`，正文「回覆完成」只有會話名、「核准請求」是 `會話名：工具名 · 原因`——不含任何使用者訊息正文（使用者訊息裡常帶注入的 `<system-reminder>`、記憶上下文與時間戳，複製進通知就沒法讀了）；非正常收尾（`aborted` / `error` / `max-tokens`…）會在正文尾部附一個短後綴，如 `（error）`；
+- `includeSubagents`（`false`）：`origin === 'subagent'` 的對話預設跳過，理由與頁面側一致——它們是主對話一輪裡的步驟；
+- `turnEndThrottleMs`（`15000`）：同一對話的「回覆完成」在這個視窗內只推一條；視窗只在真發出去時才消耗，被租約擋掉的那次不算。節流只管 `completed`——`aborted` / `error` / `max-tokens` 這些收尾不節流，它們本來就少，而且往往是此刻最該看到的那一條；
+- **文案與頁面通知逐字一致**：標題是 `<字首> · 回覆完成` / `<字首> · 核准請求`，正文「回覆完成」只有對話名、「核准請求」是 `對話名：工具名 · 原因`——不含任何使用者訊息正文（使用者訊息裡常帶注入的 `<system-reminder>`、記憶上下文與時間戳，複製進通知就沒法讀了）；非正常收尾（`aborted` / `error` / `max-tokens`…）會在正文尾部附一個短後綴，如 `（error）`；
 - `titlePrefix`（`DSH`）：標題是 `<字首> · 核准請求` / `<字首> · 回覆完成`（與頁面通知同一套標籤）；
 - `language`（`auto`）：`auto` 用頁面最近一次心跳報的語言，沒有心跳才回落到中文；`zh` / `zh-TW` / `en` 強制；
 - `pageLeaseMs`（`60000`）：頁面線上租約，見下面「去重」；
@@ -275,7 +275,7 @@ profile 覆蓋範例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 **憑證檔案**：宿主使用者可讀的 0600 JSON，內容是 `{"user": "...", "password": "..."}`（按 HTTP Basic 發）或 `{"authorization": "Bearer ..."}`（原樣發；裸 token 會自動補上 `Bearer `）。它不能寫進 patch 層——那一層世界可讀、還會進 profile 目錄。不填這個鍵時請求不帶認證頭：很多 webhook 端點本來就不要認證，把「沒配憑證」當成錯誤會讓每個提醒都失敗；只有「配了路徑卻讀不出來」才算憑證不可用。閘道回 401 / 403 時宿主丟掉快取的憑證、重讀檔案、只重試一次，所以輪換密碼不需要重啟宿主。
 
-**去重靠一條頁面線上租約**：頁面載入後 `GET /__dsh-notify-me/host-bridge` 探測一次（之後每 60 秒復探，頁面隱藏時不探、回到可見補探一次），只有回包 `hostFallback.enabled === true` 才開始心跳——body 是 `{alive, language, muted, external}`（`muted` 是被靜音會話的 id 列表，`external` 是 `{enabled, attention, done}` 三個轉發開關），間隔取 `leaseMs/3`、夾在 5–20 秒；改靜音列表或任一轉發開關時不等間隔，立刻補一次心跳；`pagehide` 時發一條 `{alive:false, language, external}`（帶 `keepalive`）立刻釋放。宿主側租約新鮮就不補推（頁面自己在推），租約過期或收到 `alive:false` 才接手，最多等 `pageLeaseMs` 這麼久。心跳帶語言、靜音列表與轉發開關：前三樣都是使用者親手寫進設定的確定狀態，宿主照它們執行就是頁面自己的意思——靜音列表決定哪些會話閉嘴，`external.enabled: false`（設定頁「轉發外部通知」關掉）則連宿主兜底一起停，否則關掉總開關、再關掉分頁，宿主照樣把剛被關掉的那條外部通知推出去；`attention` / `done` 分別管「需要你」「回覆完成」兩類。仍然不帶的是頁面的可見性與閒置判定：那是宿主看不見的啟發式，只照做一半會得到誰也算不清的規則。語言帶過來是為了英文頁面不收中文宿主提醒，`language: 'auto'` 時生效。`external` 只有三個欄位全是布林才被採納，缺欄位或型別不對保留上一次答案；頁面從沒報過（宿主剛起、頁面還沒開）時兜底照舊按 `hostFallback.enabled` 推。列表在心跳裡按位元組截斷（預算 8 KiB、最多 200 條）：被截掉的會話仍在本頁靜音，只是不由兜底接管。`pageLeaseMs: 0` 關掉協調，宿主永遠推——頁面開著時會收到兩份，只在除錯時用。
+**去重靠一條頁面線上租約**：頁面載入後 `GET /__dsh-notify-me/host-bridge` 探測一次（之後每 60 秒復探，頁面隱藏時不探、回到可見補探一次），只有回包 `hostFallback.enabled === true` 才開始心跳——body 是 `{alive, language, muted, external}`（`muted` 是被靜音對話的 id 列表，`external` 是 `{enabled, attention, done}` 三個轉發開關），間隔取 `leaseMs/3`、夾在 5–20 秒；改靜音列表或任一轉發開關時不等間隔，立刻補一次心跳；`pagehide` 時發一條 `{alive:false, language, external}`（帶 `keepalive`）立刻釋放。宿主側租約新鮮就不補推（頁面自己在推），租約過期或收到 `alive:false` 才接手，最多等 `pageLeaseMs` 這麼久。心跳帶語言、靜音列表與轉發開關：前三樣都是使用者親手寫進設定的確定狀態，宿主照它們執行就是頁面自己的意思——靜音列表決定哪些對話閉嘴，`external.enabled: false`（設定頁「轉發外部通知」關掉）則連宿主兜底一起停，否則關掉總開關、再關掉分頁，宿主照樣把剛被關掉的那條外部通知推出去；`attention` / `done` 分別管「需要你」「回覆完成」兩類。仍然不帶的是頁面的可見性與閒置判定：那是宿主看不見的啟發式，只照做一半會得到誰也算不清的規則。語言帶過來是為了英文頁面不收中文宿主提醒，`language: 'auto'` 時生效。`external` 只有三個欄位全是布林才被採納，缺欄位或型別不對保留上一次答案；頁面從沒報過（宿主剛起、頁面還沒開）時兜底照舊按 `hostFallback.enabled` 推。列表在心跳裡按位元組截斷（預算 8 KiB、最多 200 條）：被截掉的對話仍在本頁靜音，只是不由兜底接管。`pageLeaseMs: 0` 關掉協調，宿主永遠推——頁面開著時會收到兩份，只在除錯時用。
 
 **兩個路由的契約**：頁面探測的那條 `GET /__dsh-notify-me/host-bridge` 回 `{ok, version, features, hostFallback:{enabled, leaseMs}, relay:{enabled, path, upstreamHost, upstreamPath}, language, page:{alive, ageMs}}`（`upstreamHost` / `upstreamPath` 是宿主替你轉發時的閘道主機名與路徑，只在中繼啟用時給出，憑證永不下發）；它只在 `hostFallback.enabled` 或 `relay.enabled` 為真時註冊，預設安裝下是 404，頁面按「未啟用」處理而不是當故障。心跳 `POST` 要求意圖頭 `x-dsh-notify-me-page: bridge`（缺了回 `403`），壞 JSON 回 `400`，body 超 16 KiB 回 `413`，成功回 `200 {ok, leaseUntil}`。
 
@@ -342,7 +342,7 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 | 系統通知 | 經瀏覽器進 Windows / macOS / Linux 的系統通知中心，點選回到對應對話；macOS 桌面端由宿主拉起 `DSH Notify.app` 發（見 [macOS 桌面端怎麼發系統通知](#macos-桌面端怎麼發系統通知)）；Windows 11 桌面端的核准提醒由宿主發原生 Toast，帶「同意 / 拒絕」按鈕（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)）；Web 端可帶「同意 / 拒絕」 |
 | 手機瀏覽器 | Android Chrome 不能 `new Notification()`（`Illegal constructor`），插件改用頁面自帶的 Service Worker 發通知，點一下回對應對話；`swState` 與 `debug().lastToastReject` 會說明是走了 Worker 還是被拒 |
 | 提示音 | 預設 WebAudio 合成音，「需要你」與「完成」音型不同；可換自定義音訊，或交給系統通知音 |
-| 分頁標題 | `🔔 需要你 · …` / `✅ 回覆完成 · …`（隨通知語言切換），開啟對應會話即消失；兩種標記可同時出現 |
+| 分頁標題 | `🔔 需要你 · …` / `✅ 回覆完成 · …`（隨通知語言切換），開啟對應對話即消失；兩種標記可同時出現 |
 | 外部推送（可選，預設關） | 把同一條提醒轉發到 Discord / Bark / Gotify / 飛書 / Server酱 / WxPusher / Telegram / 自定義 Webhook |
 | 宿主側兜底（可選，預設關） | 頁面關閉後由宿主行程繼續把「需要你操作」「回覆完成」推到你的閘道；要 profile 設定與 0600 憑證檔案 |
 | 同源中繼（可選，預設關） | 頁面 POST 到宿主同源路由，由宿主補憑證轉發給要認證的閘道，並回傳閘道真實狀態碼 |
@@ -359,17 +359,17 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 
 ## 工作原理
 
-提醒核心監聽會話狀態與待處理互動；核准裁決由頁面側完成，Windows 桌面抬窗走宿主路由加 Win32 原生啟用、macOS / Linux 走 `dsh://open` 深鏈。
+提醒核心監聽對話狀態與待處理互動；核准裁決由頁面側完成，Windows 桌面抬窗走宿主路由加 Win32 原生啟用、macOS / Linux 走 `dsh://open` 深鏈。
 
 <details>
 <summary>展開事件來源與降級說明</summary>
 
-提醒核心按宿主代際取源（對照表見 [docs/compatibility.md](docs/compatibility.md)），目前會話一律來自客戶端 `sessions` 服務：
+提醒核心按宿主代際取源（對照表見 [docs/compatibility.md](docs/compatibility.md)），目前對話一律來自客戶端 `sessions` 服務：
 
-- **目前會話** `SessionSnapshot`：`running` true→false = 回覆完成；
-- **待辦互動**：`uiSession` 的 `sessionStatus`（`≥ 0.1.6`，逐會話 `pendingInteraction`）或 `pendingInteractions`（`0.1.2 .. 0.1.5`）出現新 key = 模型在等你，容器裡帶上核准工具名 / 理由、提問文本；舊宿主回落到控制器快照的 `pending[]`；
-- **其它已列會話**摘要：`running` true→false（或舊宿主的 `completed` 邊沿）= 後台工作提醒。宿主的「完成未讀」級別標誌負責補漏與標題標記：`≥ 0.1.6` 用 `sessionStatus` 行的 `completionUnread`（後台會話完成即點亮、開啟該會話/再次開跑/會話消失即清零），舊宿主用列表行的 `completed` 提醒位（選中會話即清零）；頁面沒看見的完成邊沿（插件熱過載中途、快照合併跳變）由此補報一次，邊沿與級別標誌同來時按短時間窗合併，只響一聲。
-- **子代理會話**：列表行帶 `origin: 'subagent'`（並有 `parentId`）的**後台**會話預設靜音；你正開啟著的那個子代理會話不算靜音物件，它的提醒走目前對話的常規規則（頁面可見時預設只留標題標記、轉後台補發），切進來時積壓的等待同樣補上，切走後重新靜音。只有 `parentId`、沒有 `origin` 的分支（fork）會話屬於你自己的對話，始終照常提醒。
+- **目前對話** `SessionSnapshot`：`running` true→false = 回覆完成；
+- **待辦互動**：`uiSession` 的 `sessionStatus`（`≥ 0.1.6`，逐對話 `pendingInteraction`）或 `pendingInteractions`（`0.1.2 .. 0.1.5`）出現新 key = 模型在等你，容器裡帶上核准工具名 / 理由、提問文本；舊宿主回落到控制器快照的 `pending[]`；
+- **其它已列對話**摘要：`running` true→false（或舊宿主的 `completed` 邊沿）= 後台工作提醒。宿主的「完成未讀」級別標誌負責補漏與標題標記：`≥ 0.1.6` 用 `sessionStatus` 行的 `completionUnread`（後台對話完成即點亮、開啟該對話/再次開跑/對話消失即清零），舊宿主用列表行的 `completed` 提醒位（選中對話即清零）；頁面沒看見的完成邊沿（插件熱過載中途、快照合併跳變）由此補報一次，邊沿與級別標誌同來時按短時間窗合併，只響一聲。
+- **子代理對話**：列表行帶 `origin: 'subagent'`（並有 `parentId`）的**後台**對話預設靜音；你正開啟著的那個子代理對話不算靜音物件，它的提醒走目前對話的常規規則（頁面可見時預設只留標題標記、轉後台補發），切進來時積壓的等待同樣補上，切走後重新靜音。只有 `parentId`、沒有 `origin` 的分支（fork）對話屬於你自己的對話，始終照常提醒。
 
 提醒核心仍然零第三方執行時依賴、完全自包含：通知文字按所選語言（跟隨介面 / 簡體中文 / 繁體中文 / English）即時解析。設定頁是**可選**的 React 呈現層——當 DSH web profile 提供 `slots` / `locale` / `react` 時才註冊進「設定 → 通知提醒」，缺任一能力時插件自動降級為純提醒（無設定頁），不影響功能。
 
@@ -419,9 +419,9 @@ Windows 的啟用順序是實的：已經在前台就什麼都不做（最常見
 
 - **一次性準備**：`bash macos/build.sh` 編譯出 `macos/DSH Notify.app`（需要 Xcode Command Line Tools，幾秒鐘）。產物在 `.gitignore` 裡，不進倉庫也不進 npm 包。首次彈通知時在「系統設定 → 通知 → DSH Notify」裡允許。
 - **走哪條路是自動的**：宿主只在「macOS + 桌面殼（Electron 二進位制）+ 助手已編譯」三個條件都滿足時註冊這條路由；任一不滿足，`GET` 探測報 `enabled: false`，頁面繼續用自己原來的通知，行為與改動前一致。`dsh web`（瀏覽器）永遠走不到這條路由。
-- **點通知回到對應對話**：小助手把會話 id 寫進臨時目錄的 `dsh-notify-me-click.json` 並開啟 `dsh://open` 抬窗；頁面重新獲得焦點時 `GET` 一次取走這個 id、切到對應對話，取走後即清掉，不會重複跳轉。DSH 本來就處於前台時 `dsh://open` 不產生新的啟用，頁面收不到 `focus`，所以通知掛出後、頁面在前台時還會每秒探測一次宿主（最多 120 秒），點選後 1 秒內完成切換，讀到點選即停；視窗不在前台時不輪詢。`autoFocus` 關掉時只抬窗不切會話。
+- **點通知回到對應對話**：小助手把對話 id 寫進臨時目錄的 `dsh-notify-me-click.json` 並開啟 `dsh://open` 抬窗；頁面重新獲得焦點時 `GET` 一次取走這個 id、切到對應對話，取走後即清掉，不會重複跳轉。DSH 本來就處於前台時 `dsh://open` 不產生新的啟用，頁面收不到 `focus`，所以通知掛出後、頁面在前台時還會每秒探測一次宿主（最多 120 秒），點選後 1 秒內完成切換，讀到點選即停；視窗不在前台時不輪詢。`autoFocus` 關掉時只抬窗不切對話。
 - **提示音**：設定裡選「系統通知音」時交給 macOS，其餘音效模式仍由頁面自己合成，不會兩聲疊在一起。
-- **標題、副標題、正文三段都用上**：通知正文的第一行是對話名，「回覆完成」這類沒有摘要的提醒以前正文就只剩這一行，讀起來像只告訴你「Main」。現在對話名放副標題（`--subtitle`，畫在標題和正文之間），正文放回復摘要：沒有摘要的提醒由主機的 `ctx.sessionQuery` 讀回會話日誌，取最後一條 assistant 訊息的開頭（80 字元，壓成一行）。讀不到就留空，提醒照發。帶摘要的提醒把對話名升為副標題、摘要留在正文。核准提醒本來是一行「對話名 + 內容」，原樣不動——拆開只會把內容弄丟。拆分放在 `lib/mac-notify.js`（`splitNotificationBody()`），摘要在同一處（`lastReplySnippet()`），小助手只負責畫，因此這兩條邏輯在任何平臺都能測。
+- **標題、副標題、正文三段都用上**：通知正文的第一行是對話名，「回覆完成」這類沒有摘要的提醒以前正文就只剩這一行，讀起來像只告訴你「Main」。現在對話名放副標題（`--subtitle`，畫在標題和正文之間），正文放回復摘要：沒有摘要的提醒由主機的 `ctx.sessionQuery` 讀回對話日誌，取最後一條 assistant 訊息的開頭（80 字元，壓成一行）。讀不到就留空，提醒照發。帶摘要的提醒把對話名升為副標題、摘要留在正文。核准提醒本來是一行「對話名 + 內容」，原樣不動——拆開只會把內容弄丟。拆分放在 `lib/mac-notify.js`（`splitNotificationBody()`），摘要在同一處（`lastReplySnippet()`），小助手只負責畫，因此這兩條邏輯在任何平臺都能測。
 - **通知上仍然沒有「同意 / 拒絕」按鈕**：macOS 的通知動作要求註冊通知類別，助手不碰核准狀態，裁決仍在對話裡做。
 - **關掉它**：在 profile 的 patch 層給 `notify-me` 加 `macNotify: { enabled: false }`；或刪掉 `macos/DSH Notify.app`，路由會退回 `enabled: false`。
 
@@ -433,7 +433,7 @@ Windows 的啟用順序是實的：已經在前台就什麼都不做（最常見
 
 - **誰去彈**：宿主半（`lib/index.js`）註冊 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知發到插件自己的 AUMID `dsh-notify-me` 下，走同一套系統通知設定。**不能借 DSH 的 AUMID**：那個 AUMID 掛著 COM Toast 啟用器，Windows 會把每次點選都交給 DSH 本體，Toast 上的協議按鈕永遠等不到派發（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
 - **按鈕怎麼裁決**：Toast 的兩個按鈕是 `activationType="protocol"`，分別指向 `dsh-notify-me://approve?token=…` / reject。點按鈕後系統調起註冊在這個協議下的處理器（一個寫入動作檔案、再開啟 `dsh://open` 的 VBS），宿主在頁面下一次探針時把動作交回頁面；頁面仍走核准面板裡同一個 `decidePending()`——「同意」就是「允許一次」，不多放行任何東西。這條鏈路要求 Toast 掛在自己的 AUMID 下，否則點選會被別的應用的啟用器截走。
-- **點正文也會抬窗**：正文點選統一走 `dsh-notify-me://open`（有會話時帶 `?session=`，沒有會話也保留為一次純抬窗），不再把 `dsh://open` 當 Windows 抬窗手段——那條深鏈拉不起最小化視窗，更拉不起 `SW_HIDE` 到系統匣的視窗。等待核准期間頁面每 1.5 秒取一次動作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切會話；系統匣隱藏的視窗由 `focus-window.ps1` 先 `SW_SHOW` 再啟用（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
+- **點正文也會抬窗**：正文點選統一走 `dsh-notify-me://open`（有對話時帶 `?session=`，沒有對話也保留為一次純抬窗），不再把 `dsh://open` 當 Windows 抬窗手段——那條深鏈拉不起最小化視窗，更拉不起 `SW_HIDE` 到系統匣的視窗。等待核准期間頁面每 1.5 秒取一次動作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切對話；系統匣隱藏的視窗由 `focus-window.ps1` 先 `SW_SHOW` 再啟用（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - **中文使用者名等非 ASCII profile**：處理器指令碼按 UTF-16LE + BOM 寫盤，動作目錄在點選時才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——指令碼正文因此全是 ASCII，不會再被 WSH 按系統 ANSI 內碼表解碼後把路徑弄亂（此前每次點按鈕都彈 `800A004C` 指令碼錯誤，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修復。升級後重啟桌面端即可，第一次發出帶按鈕的 Toast 時會重寫這份指令碼，不用手動清舊檔案。
 - **註冊**：第一次發 Toast 前寫 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬頭，`CustomActivator` = 一個 CLSID），CLSID 只建空的存根、不註冊 `LocalServer32`——未打包應用不實現 COM 啟用器時，Windows 才會按 XML 把 `activationType="protocol"` 的點選派發出去；隨後按 tag 記賬到 `ToastNotificationManager.History`。兩者都是目前使用者級，不需要管理員權限。token 單次、3 分鐘有效；動作檔案被取走後即刪。
 - **Windows 10 沒有按鈕**：Windows 10（build < 22000）缺 Windows 11 那條「沒有 COM 啟用器也照 XML 派發協議啟用」的實現——修復只落在 18967 之後的預覽分支，沒進 19041 / 19045 的服務分支（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)）。19045 上實測：自帶 AUMID + 空存根 + 開始選單快捷方式都補齊，點按鈕、點正文仍然只把通知收掉（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）。所以 1.21.3 起在 build < 22000 上不發原生 Toast：路由回 `enabled: false`、`reason: "windows-10"`，核准提醒回到頁面自己的通知與浮層——寧可沒有按鈕，也不給一個按下去沒反應的。
@@ -465,10 +465,10 @@ Windows 的啟用順序是實的：已經在前台就什麼都不做（最常見
 
 **提醒內容與時機**
 
-- `≥ 0.1.6`（含 `0.2.0-rc.2`、`0.2.1-rc.2`）的宿主快照不再提供 `nodes`，所以頁面側拿不到回覆摘要；這類提醒的正文改由主機從 `ctx.sessionQuery` 讀會話日誌補上（最後一條 assistant 訊息開頭 80 字元）。若該宿主沒有 `sessionQuery` 服務，正文留空，提醒仍照常觸發。
+- `≥ 0.1.6`（含 `0.2.0-rc.2`、`0.2.1-rc.2`）的宿主快照不再提供 `nodes`，所以頁面側拿不到回覆摘要；這類提醒的正文改由主機從 `ctx.sessionQuery` 讀對話日誌補上（最後一條 assistant 訊息開頭 80 字元）。若該宿主沒有 `sessionQuery` 服務，正文留空，提醒仍照常觸發。
 - 標題標記由宿主與插件共同寫 `document.title`：宿主重算標題時標記可能被覆蓋，直到下一次提醒事件重新寫成。
 - 「目前對話不彈通知」按「視窗是否在前台」判定：被別的應用蓋住、切到別的應用、最小化都算後台；回到前台或重新有鍵鼠輸入後恢復靜默。
-- 按對話靜音的標記注在宿主的 `sidebar.session.row.leading` 槽位，而宿主在「這條會話有執行狀態」時用狀態點佔著這個位置，標記就不渲染——正在跑的後台任務看不到劃掉的鈴鐺，停下後自動回來；靜音本身不受影響。
+- 按對話靜音的標記注在宿主的 `sidebar.session.row.leading` 槽位，而宿主在「這條對話有執行狀態」時用狀態點佔著這個位置，標記就不渲染——正在跑的後台任務看不到劃掉的鈴鐺，停下後自動回來；靜音本身不受影響。
 
 **外部推送**
 
@@ -491,9 +491,9 @@ npm pack --dry-run               # 預覽釋出包
 <details>
 <summary>各測試套件覆蓋範圍與手動檢查</summary>
 
-`smoke/smoke-test.cjs` 是離線狀態機測試：三代宿主 + 主開關 + 中英語言用例 + 快速裁決橋（Service Worker 半側一併跑）+ 閒置判定與通知自收 + 回到頁面即收起殘留通知 + 通知標籤長度收口 + 頁面側 host-bridge 探測/心跳/釋放與 `debug().hostBridge` 形狀 + 外部推送（含 Telegram 的報文形狀、`ok` / `error_code` 判決、429 與 5xx 重試、4096 截斷、半設定目標被剪掉、設定頁的權杖與聊天 ID 輸入框）+ Goal 中間輪不報「回覆完成」（有 Goal 投影時靜默、Goal 停後報最後一條、沒有投影的老宿主照舊報），外加兩條桌面原生通道用例——Windows 原生核准 Toast 正文點選只走宿主 focus 路由才切會話（無 session 時只抬窗不切），macOS 前台點選只靠 1 秒輪詢切會話並在讀走後停止。它還釘住清單：`package.json` 的 `dsh.client.inject` 必須為空、執行時那句 `inject = ["sessions", "locale", "slots"]` 必須原樣保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：載入器把清單讀成「先到達這些整包」，目標到不了，整個條目靜默不跑）。`smoke/host-route-test.mjs` 不需要本機 DSH，`lib/index.js` 的路由、探針與 403/405/501 閘門在任何平臺都會跑。
+`smoke/smoke-test.cjs` 是離線狀態機測試：三代宿主 + 主開關 + 中英語言用例 + 快速裁決橋（Service Worker 半側一併跑）+ 閒置判定與通知自收 + 回到頁面即收起殘留通知 + 通知標籤長度收口 + 頁面側 host-bridge 探測/心跳/釋放與 `debug().hostBridge` 形狀 + 外部推送（含 Telegram 的報文形狀、`ok` / `error_code` 判決、429 與 5xx 重試、4096 截斷、半設定目標被剪掉、設定頁的權杖與聊天 ID 輸入框）+ Goal 中間輪不報「回覆完成」（有 Goal 投影時靜默、Goal 停後報最後一條、沒有投影的老宿主照舊報），外加兩條桌面原生通道用例——Windows 原生核准 Toast 正文點選只走宿主 focus 路由才切對話（無 session 時只抬窗不切），macOS 前台點選只靠 1 秒輪詢切對話並在讀走後停止。它還釘住清單：`package.json` 的 `dsh.client.inject` 必須為空、執行時那句 `inject = ["sessions", "locale", "slots"]` 必須原樣保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：載入器把清單讀成「先到達這些整包」，目標到不了，整個條目靜默不跑）。`smoke/host-route-test.mjs` 不需要本機 DSH，`lib/index.js` 的路由、探針與 403/405/501 閘門在任何平臺都會跑。
 
-新增的三個套件同樣自帶假 `ctx`、不聯網、不需要本機 DSH：`smoke/page-bridge-test.mjs` 跑頁面橋接路由的狀態回包形狀、心跳與釋放、缺意圖頭 `403`、跨源 `403`、壞 JSON `400`、超長 `413`，以及 `allowedOrigins` 派生的 `Host`（模擬隧道）放行與路徑衝突；`smoke/host-fallback-test.mjs` 跑宿主兜底——核准去重、`turn/end` 節流、子代理跳過、Goal 還 `active` 時中間輪不投遞（`complete` / `pause` / `block` 之後照常投遞，重啟後能從會話日誌裡補出 Goal 狀態）、租約新鮮時不發、租約過期後發、`alive:false` 後立刻發、語言跟隨心跳、401 後重讀憑證、健康探針；`smoke/relay-route-test.mjs` 跑中繼——`GET` 探針、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 對映與「401 只重試一次」、`relay.bodyTemplate` 的模板渲染與 JSON 轉義、壞模板啟動即不註冊、渲染體積上限。
+新增的三個套件同樣自帶假 `ctx`、不聯網、不需要本機 DSH：`smoke/page-bridge-test.mjs` 跑頁面橋接路由的狀態回包形狀、心跳與釋放、缺意圖頭 `403`、跨源 `403`、壞 JSON `400`、超長 `413`，以及 `allowedOrigins` 派生的 `Host`（模擬隧道）放行與路徑衝突；`smoke/host-fallback-test.mjs` 跑宿主兜底——核准去重、`turn/end` 節流、子代理跳過、Goal 還 `active` 時中間輪不投遞（`complete` / `pause` / `block` 之後照常投遞，重啟後能從對話日誌裡補出 Goal 狀態）、租約新鮮時不發、租約過期後發、`alive:false` 後立刻發、語言跟隨心跳、401 後重讀憑證、健康探針；`smoke/relay-route-test.mjs` 跑中繼——`GET` 探針、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 對映與「401 只重試一次」、`relay.bodyTemplate` 的模板渲染與 JSON 轉義、壞模板啟動即不註冊、渲染體積上限。
 
 `smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主註冊、探測、`405` / `403` / `501` / `400` 的拒絕、傳給助手的引數（含 `--id` / `--sound` 與 `{remove:id}` 撤回）、點選回傳只被取走一次。它用假的平臺與 Electron 版本號驅動，不需要真的編譯助手，在任何平臺都會跑。
 
@@ -524,15 +524,15 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行應是 F
 | <a href="https://github.com/bakasbk"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/bakasbk.png" width="40" height="40" alt="@bakasbk"></a> | [#5](https://github.com/chromoany/dsh-notify-me/issues/5)：`0.2.0-rc.1` 上安裝被拒的報障，peer 範圍隨後放寬（1.2.0） |
 | <a href="https://github.com/XinAnzzZ"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/XinAnzzZ.png" width="40" height="40" alt="@XinAnzzZ"></a> | [#6](https://github.com/chromoany/dsh-notify-me/issues/6)：「需要你操作」全程啞火的報障，指出要遷到 `uiSession.sessionStatus`（1.2.0 修復） |
 | <a href="https://github.com/AgMahone"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AgMahone.png" width="40" height="40" alt="@AgMahone"></a> | [#7](https://github.com/chromoany/dsh-notify-me/pull/7)：宿主代際相容（0.1.6+ / 0.2.0）的報障與複測 |
-| <a href="https://github.com/d0ublecl1ck"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/d0ublecl1ck.png" width="40" height="40" alt="@d0ublecl1ck"></a> | [#8](https://github.com/chromoany/dsh-notify-me/pull/8)：子代理會話靜音（`ignoreSubagent`） |
+| <a href="https://github.com/d0ublecl1ck"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/d0ublecl1ck.png" width="40" height="40" alt="@d0ublecl1ck"></a> | [#8](https://github.com/chromoany/dsh-notify-me/pull/8)：子代理對話靜音（`ignoreSubagent`） |
 | <a href="https://github.com/EliteOtaku"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/EliteOtaku.png" width="40" height="40" alt="@EliteOtaku"></a> | [#9](https://github.com/chromoany/dsh-notify-me/issues/9)：桌面端抬窗鏈路的逐層排查與真實殼複測 |
 | <a href="https://github.com/Wh1stle05"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Wh1stle05.png" width="40" height="40" alt="@Wh1stle05"></a> | [#10](https://github.com/chromoany/dsh-notify-me/pull/10)：「音效來源」（合成音 / 自定義音訊 / 系統通知音） |
-| <a href="https://github.com/yanzhaohui1999"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yanzhaohui1999.png" width="40" height="40" alt="@yanzhaohui1999"></a> | [#13](https://github.com/chromoany/dsh-notify-me/issues/13) / [#14](https://github.com/chromoany/dsh-notify-me/pull/14)：多會話下空閒頁面佔 CPU 的效能報告與修復 |
+| <a href="https://github.com/yanzhaohui1999"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yanzhaohui1999.png" width="40" height="40" alt="@yanzhaohui1999"></a> | [#13](https://github.com/chromoany/dsh-notify-me/issues/13) / [#14](https://github.com/chromoany/dsh-notify-me/pull/14)：多對話下空閒頁面佔 CPU 的效能報告與修復 |
 | <a href="https://github.com/RiZhiZhaoYi"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/RiZhiZhaoYi.png" width="40" height="40" alt="@RiZhiZhaoYi"></a> | [#12](https://github.com/chromoany/dsh-notify-me/issues/12)：外部通知轉發（Discord / Bark / Gotify / Webhook） |
 | <a href="https://github.com/yuexian7"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yuexian7.png" width="40" height="40" alt="@yuexian7"></a> | [#17](https://github.com/chromoany/dsh-notify-me/issues/17)：手機端收訊息的訴求，促成飛書 / Server酱 / WxPusher 三種目標 |
 | <a href="https://github.com/shrekcg"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/shrekcg.png" width="40" height="40" alt="@shrekcg"></a> | [#16](https://github.com/chromoany/dsh-notify-me/pull/16)：離開判定 `idleMinutes`、「回覆完成」`donePolicy`、自動消失 `autoDismiss` |
 | <a href="https://github.com/Donald-Yip"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Donald-Yip.png" width="40" height="40" alt="@Donald-Yip"></a> | #18（原 issue 已刪除）：Windows 通知 tag 超 64 字元、核准測試通知被平臺拒收的報告 |
-| <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20)：目前會話的通知正文用佔位符、未取會話標題的報告 |
+| <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20)：目前對話的通知正文用佔位符、未取對話標題的報告 |
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上深鏈抬窗失效的報障與補丁（1.14.4 恢復） |
 | <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25) / [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30)：宿主兜底推送與同源中繼兩個模組，及其轉發開關的修復（1.19.0） |
 | <a href="https://github.com/ekexium"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ekexium.png" width="40" height="40" alt="@ekexium"></a> | [#23](https://github.com/chromoany/dsh-notify-me/issues/23)：按對話靜音的訴求（1.16.0 支援） |
@@ -543,7 +543,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行應是 F
 | <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中繼的自定義 JSON 請求體模板（1.20.0 支援） |
 | <a href="https://github.com/AlbertDope"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AlbertDope.png" width="40" height="40" alt="@AlbertDope"></a> | [#36](https://github.com/chromoany/dsh-notify-me/issues/36)：中文使用者名下核准按鈕必彈 `800A004C` 的根因定位與修復驗證（1.20.1） |
 | <a href="https://github.com/yangmin19990201-crypto"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yangmin19990201-crypto.png" width="40" height="40" alt="@yangmin19990201-crypto"></a> | [#37](https://github.com/chromoany/dsh-notify-me/issues/37)：同一 `800A004C` 的獨立復現與根因核對（1.20.1） |
-| <a href="https://github.com/TianqiCai"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/TianqiCai.png" width="40" height="40" alt="@TianqiCai"></a> | [#38](https://github.com/chromoany/dsh-notify-me/pull/38)：macOS 前台點通知不切會話的修復（1.21.0 收編） |
+| <a href="https://github.com/TianqiCai"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/TianqiCai.png" width="40" height="40" alt="@TianqiCai"></a> | [#38](https://github.com/chromoany/dsh-notify-me/pull/38)：macOS 前台點通知不切對話的修復（1.21.0 收編） |
 | <a href="https://github.com/MVennn"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/MVennn.png" width="40" height="40" alt="@MVennn"></a> | [#40](https://github.com/chromoany/dsh-notify-me/issues/40)：原生核准 Toast 點正文不喚醒最小化/系統匣視窗的報障與定位（1.21.0 修復） |
 | <a href="https://github.com/fgql"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/fgql.png" width="40" height="40" alt="@fgql"></a> | [#41](https://github.com/chromoany/dsh-notify-me/issues/41) / [#42](https://github.com/chromoany/dsh-notify-me/issues/42)：核准 Toast 按鈕不派發協議啟用、桌面端視窗越抬越沉（1.21.2–1.21.4 修復） |
 | <a href="https://github.com/you9you"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/you9you.png" width="40" height="40" alt="@you9you"></a> | [#43](https://github.com/chromoany/dsh-notify-me/pull/43)：關掉「提醒音」後頁面仍佔音訊輸出裝置的報障、管道級復現與首版補丁（1.21.5 收編） |
