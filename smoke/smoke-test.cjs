@@ -2579,12 +2579,17 @@ function settingsBoot(seedConfig, seedSound, opts) {
     },
   });
   const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  // The host dictionary lookup only ever knows zh and en (the DSH catalog has
+  // no zh-TW), so bind() mimics that: a language the host lacks falls back to
+  // zh. A zh-TW case therefore proves the plugin's own dictionary is what
+  // actually renders, not the host's.
+  const activeLocale = (opts && opts.locale) || 'zh';
   host.ctx.locale = {
     register(ns, d) { dict = d; return () => {}; },
     bind: () => (k) => (dict && dict.zh[k]) || k,
     subscribe: () => () => {},
-    getSnapshot: () => ({ active: 'zh' }),
-    getLocale: () => ({ active: 'zh' }),
+    getSnapshot: () => ({ active: activeLocale }),
+    getLocale: () => ({ active: activeLocale }),
   };
   host.ctx.slots = {
     inject(slot, fn) { injected.push(slot); fn(); },
@@ -2619,7 +2624,10 @@ function settingsBoot(seedConfig, seedSound, opts) {
   // The page collapses its rarely-touched half (sound sources, external
   // forwarding, runtime) behind one toggle; tests that assert on those rows
   // have to open it the way a user would.
-  if (opts && opts.advanced) pressAria((dict && dict.zh.advanced) || '高级设置');
+  if (opts && opts.advanced) {
+    const d = dict && (dict[activeLocale] || dict.zh);
+    pressAria((d && d.advanced) || '高级设置');
+  }
   return {
     text: collectText(tree).join(' | '),
     get tree() { return tree; },
@@ -4455,8 +4463,10 @@ function storageFailureFeedback() {
   const api = s.apiNow();
   api.setConfig({ language: 'en' });
   assert(api.debug().configStored === false, 'debug() reports the failed write');
+  // The settings page speaks the same language as the notifications: pinning
+  // English flips the page with it, so the warning is read in English too.
   const text = s.renderNow();
-  assert(text.indexOf('设置没能保存') !== -1, 'the page says the setting did not stick, got ' + text.slice(0, 200));
+  assert(text.indexOf('Settings were not saved') !== -1, 'the page says the setting did not stick, got ' + text.slice(0, 200));
   // The live copy still works for this page, and the next patch builds on it
   // instead of on the stale storage copy.
   api.setConfig({ sound: false });
@@ -4466,6 +4476,8 @@ function storageFailureFeedback() {
   // defaults are back while storage still holds the old profile.
   api.resetConfig();
   assert(api.debug().configStored === false, 'a refused reset reports the failed write');
+  // Reverting to the defaults also reverts the page language to auto, so the
+  // same warning comes back in the interface's own language.
   assert(s.renderNow().indexOf('设置没能保存') !== -1, 'the warning survives a refused reset');
   s.cleanup();
 }
@@ -4755,6 +4767,229 @@ function mutedSessionsUi() {
   console.log('mute UI OK: bell toggles one row, mark follows it, menu row toggles too, switch hides only the idle bell, card clears the list');
 }
 
+// ── issue #51: Android Chrome refuses the Notification constructor ─────────
+// `new Notification(...)` throws "Illegal constructor. Use ServiceWorker
+// Registration.showNotification() instead." on Android, and only the approval
+// path ever touched the worker, so every plain reminder was rejected there.
+// Plain toasts now fall back to that worker on their own.
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const ILLEGAL_CTOR = "Failed to construct 'Notification': Illegal constructor. Use ServiceWorkerRegistration.showNotification() instead.";
+
+// A worker whose registration is only activated after register() resolves, so
+// the page really has to wait for the worker instead of trusting .active.
+function plainWorkerStub(posted, { refuse } = {}) {
+  const registered = [];
+  const worker = { state: 'installing', listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+  const reg = {
+    active: null,
+    installing: worker,
+    waiting: null,
+    showNotification(title, opts) {
+      if (refuse) return Promise.reject(new Error(refuse));
+      posted.push({ title, opts });
+      return Promise.resolve();
+    },
+    getNotifications() { return Promise.resolve([]); },
+  };
+  const serviceWorker = {
+    register(url) {
+      registered.push(url);
+      setTimeout(() => {
+        worker.state = 'activated';
+        reg.active = worker;
+        for (const fn of worker.listeners) fn();
+      }, 0);
+      return Promise.resolve(reg);
+    },
+    addEventListener() {},
+  };
+  return { serviceWorker, registered };
+}
+
+async function androidWorkerFallback() {
+  console.log('\n— Android: plain reminders go through the worker (issue #51) —');
+  function boot({ ua, refuse, withWorker = true }) {
+    const posted = [];
+    const stub = withWorker ? plainWorkerStub(posted, { refuse }) : null;
+    let ctorCalls = 0;
+    class RefusingCtor {
+      constructor() { ctorCalls += 1; throw new TypeError(ILLEGAL_CTOR); }
+    }
+    RefusingCtor.permission = 'granted';
+    RefusingCtor.requestPermission = () => Promise.resolve('granted');
+    const b = bootBundle({
+      extend(sandbox, windowStub) {
+        sandbox.Notification = RefusingCtor;
+        windowStub.Notification = RefusingCtor;
+        sandbox.navigator = { userAgent: ua, serviceWorker: stub ? stub.serviceWorker : undefined };
+        windowStub.__DSH_BOOT__ = { entries: [{ id: 'dsh-notify-me', url: '/plugins/dsh-notify-me/client.js' }] };
+      },
+    });
+    const host = buildHost({ withSessionStatus: true });
+    b.mod.apply(host.ctx);
+    b.win.__dshNotifyMe.onEvent = () => {};
+    return { b, host, posted, stub, ctorCalls: () => ctorCalls };
+  }
+
+  // 1) Android: the constructor is never asked, the worker carries the toast.
+  const android = boot({ ua: ANDROID_UA });
+  await sleep(20);
+  assert(android.stub.registered.length === 1,
+    'boot registers the worker on a platform without a constructor, got ' + android.stub.registered.length);
+  assert(android.stub.registered[0] === '/plugins/dsh-notify-me/client.js',
+    'the page registers its own bundle, got ' + android.stub.registered[0]);
+  android.b.win.__dshNotifyMe.test('done');
+  await sleep(20);
+  assert(android.posted.length === 1, 'the plain toast reached the worker, got ' + android.posted.length);
+  assert(android.ctorCalls() === 0, 'the constructor is never called on Android, got ' + android.ctorCalls());
+  const opts = android.posted[0].opts || {};
+  assert(typeof opts.tag === 'string' && opts.tag.indexOf('dsh-notify-me-done-') === 0,
+    'the worker toast keeps the plain-toast tag, got ' + opts.tag);
+  assert(opts.renotify === true && opts.silent === true, 'the worker toast keeps the plain-toast options');
+  assert(opts.data && opts.data.kind === 'done' && 'sessionId' in opts.data,
+    'the worker toast carries the click data, got ' + JSON.stringify(opts.data));
+  assert(opts.actions === undefined, 'a plain toast carries no approval buttons');
+  android.b.win.__dshNotifyMe.test('done');
+  await sleep(20);
+  assert(android.posted.length === 2, 'a second plain toast also reaches the worker, got ' + android.posted.length);
+  assert(android.stub.registered.length === 1, 'the worker is registered once, not once per toast');
+
+  // 2) A desktop page whose constructor refuses anyway: one retry through the
+  //    worker, and the refusal is remembered so later toasts skip the ctor.
+  const desktop = boot({ ua: DESKTOP_UA });
+  await sleep(20);
+  assert(desktop.stub.registered.length === 1,
+    'only the approval bridge registers up front, got ' + desktop.stub.registered.length);
+  const api = desktop.b.win.__dshNotifyMe;
+  api.test('done');
+  await sleep(20);
+  assert(desktop.ctorCalls() === 1, 'the constructor is tried first, got ' + desktop.ctorCalls());
+  assert(desktop.posted.length === 1, 'the refused toast is retried through the worker, got ' + desktop.posted.length);
+  api.test('done');
+  await sleep(20);
+  assert(desktop.ctorCalls() === 1, 'the refusal is remembered, got ' + desktop.ctorCalls() + ' constructor calls');
+  assert(desktop.posted.length === 2, 'later toasts go straight to the worker, got ' + desktop.posted.length);
+
+  // 3) No worker to fall back to: the refusal is recorded, not swallowed.
+  const dead = boot({ ua: ANDROID_UA, refuse: 'no service worker' });
+  await sleep(20);
+  dead.b.win.__dshNotifyMe.test('done');
+  await sleep(20);
+  const reject = dead.b.win.__dshNotifyMe.debug().lastToastReject;
+  assert(reject && /no service worker/.test(reject.message),
+    'a worker that cannot show the toast is recorded, got ' + JSON.stringify(reject));
+  console.log('android fallback OK: worker registered at boot, plain toasts posted there, ctor refusal remembered, dead worker recorded');
+}
+
+// Traditional Chinese is a language, not a script substitution: the page picks
+// 'zh-TW' from the UI language tag (zh-TW / zh-HK / zh-MO / zh-Hant), keeps it
+// pinned in config.language, and draws its settings copy from its own
+// dictionary. The host's locale catalog has no zh-TW, so that copy can only come
+// from UI_DICTS — the settings case below runs with a host bind() that knows
+// only zh, which is exactly the real host's shape.
+function languageModes() {
+  console.log('\n— Traditional Chinese: language ids, copy tables and settings copy —');
+
+  function coreBoot({ active, langAttr, seed } = {}) {
+    const b = bootBundle({
+      withNotification: true,
+      extend(sandbox) {
+        if (seed) sandbox.localStorage.setItem('dshNotifyMe.config', JSON.stringify(seed));
+      },
+    });
+    const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+    if (active) {
+      host.ctx.locale = {
+        register: () => () => {},
+        bind: () => (k) => k,
+        subscribe: () => () => {},
+        getSnapshot: () => ({ active }),
+        getLocale: () => ({ active }),
+      };
+    }
+    if (langAttr) b.doc.documentElement = { lang: langAttr };
+    b.mod.apply(host.ctx);
+    return b;
+  }
+  const apiOf = (b) => b.win.__dshNotifyMe;
+  const lastTitle = (b) => (b.lastNotification() ? b.lastNotification().title : null);
+
+  // 1) A zh-TW UI speaks Traditional in its notifications.
+  const tw = coreBoot({ active: 'zh-TW' });
+  assert(apiOf(tw).debug().language === 'zh-TW',
+    'the auto language follows a zh-TW UI (got ' + apiOf(tw).debug().language + ')');
+  apiOf(tw).test('done');
+  assert(lastTitle(tw) === 'DSH · 回覆完成', 'the done toast is Traditional (got ' + lastTitle(tw) + ')');
+  apiOf(tw).test('attention');
+  assert(lastTitle(tw) === 'DSH · 提問', 'the attention toast is Traditional (got ' + lastTitle(tw) + ')');
+
+  // 2) Every Traditional Chinese tag the app can carry picks the same table.
+  for (const tag of ['zh-HK', 'zh-MO', 'zh-Hant']) {
+    const b = coreBoot({ active: tag });
+    assert(apiOf(b).debug().language === 'zh-TW',
+      tag + ' resolves to zh-TW (got ' + apiOf(b).debug().language + ')');
+  }
+
+  // 3) The document language is the fallback when the locale service is absent,
+  //    and Simplified tags keep the Simplified table.
+  const fromDoc = coreBoot({ langAttr: 'zh-TW' });
+  assert(apiOf(fromDoc).debug().language === 'zh-TW',
+    'documentElement.lang decides when no locale service exists (got ' + apiOf(fromDoc).debug().language + ')');
+  const simplified = coreBoot({ langAttr: 'zh-CN' });
+  apiOf(simplified).test('done');
+  assert(lastTitle(simplified) === 'DSH · 回复完成', 'zh-CN stays Simplified (got ' + lastTitle(simplified) + ')');
+
+  // 4) A pinned language wins over the UI's own, and absent information keeps
+  //    the zh default.
+  const pinned = coreBoot({ active: 'en', seed: { language: 'zh-TW' } });
+  apiOf(pinned).test('done');
+  assert(apiOf(pinned).debug().language === 'zh-TW',
+    'an explicit zh-TW config is not overruled by an English UI');
+  assert(lastTitle(pinned) === 'DSH · 回覆完成',
+    'a pinned zh-TW still draws Traditional copy (got ' + lastTitle(pinned) + ')');
+  const plain = coreBoot();
+  assert(apiOf(plain).debug().language === 'zh', 'with no locale information the default stays zh');
+
+  // 5) The settings page renders its own zh-TW copy, keyset-identical to zh.
+  //    The runtime / language / reset rows live behind the advanced toggle, so
+  //    this page opens it the way a user would first.
+  const page = settingsBoot(null, null, { locale: 'zh-TW', advanced: true });
+  const dict = page.dictNow();
+  assert(dict && dict.zh && dict['zh-TW'] && dict.en,
+    'the page registers zh, zh-TW and en (got ' + JSON.stringify(dict ? Object.keys(dict) : null) + ')');
+  const zhKeys = Object.keys(dict.zh).sort();
+  for (const id of ['zh-TW', 'en']) {
+    const keys = Object.keys(dict[id]).sort();
+    assert(JSON.stringify(keys) === JSON.stringify(zhKeys),
+      'UI_' + id + ' defines exactly the zh key set (' + keys.length + ' vs ' + zhKeys.length + ')');
+    for (const k of zhKeys) {
+      assert(typeof dict[id][k] === 'string' && dict[id][k].length > 0,
+        'UI_' + id + '.' + k + ' is a non-empty string');
+    }
+  }
+  assert(dict['zh-TW'].reset !== dict.zh.reset,
+    'the zh-TW table is translated, not copied from zh (got ' + dict['zh-TW'].reset + ')');
+  assert(page.text.includes('恢復預設設定'),
+    'the page renders Traditional copy (got ' + page.text.slice(0, 160) + ')');
+  assert(!page.text.includes('恢复默认设置'), 'the page does not mix Simplified copy in');
+  // The picker offers the fourth language, labelled in its own script.
+  const sel = page.find((n) => n.type === 'select' && n.props['aria-label'] === dict['zh-TW'].language);
+  assert(sel, 'the language picker rendered');
+  const options = [];
+  page.walk(sel, (n) => { if (n.type === 'option') options.push(n); });
+  const values = options.map((o) => o.props.value);
+  assert(JSON.stringify(values) === JSON.stringify(['auto', 'zh', 'zh-TW', 'en']),
+    'the picker lists auto / zh / zh-TW / en (got ' + JSON.stringify(values) + ')');
+  const twOption = options.find((o) => o.props.value === 'zh-TW');
+  assert(twOption && collectText(twOption).join('') === '繁體中文',
+    'the zh-TW option is labelled 繁體中文 (got ' + (twOption && collectText(twOption).join('')) + ')');
+  // The language readout names the resolved language in its own script.
+  assert(page.text.includes('繁體中文'), 'the resolved-language note names 繁體中文');
+  page.cleanup();
+  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
@@ -4771,6 +5006,8 @@ function mutedSessionsUi() {
   await audioSleepWake();
   uniqueToastTags();
   toastTagLimits();
+  await androidWorkerFallback();
+  languageModes();
   settingsSoundRows();
   await externalWebhooks();
   await hostBridgeLease();

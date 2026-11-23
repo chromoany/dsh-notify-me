@@ -448,7 +448,49 @@ try {
       'the switches survive the page release');
   }
 
-  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves, external switches');
+  // 16) Traditional Chinese is a language of its own on both sides: the page
+  // reports it in the heartbeat (so a host-side fallback alert follows the
+  // script the user reads), and the host's own word table has a zh-TW column
+  // instead of falling back to Simplified.
+  {
+    const bridgeLib = await import(pathToFileURL(path.join(ROOT, 'lib', 'page-bridge.js')).href);
+    const twBeat = await call(bridge, {
+      method: 'POST',
+      headers: { 'x-dsh-notify-me-page': 'bridge' },
+      body: JSON.stringify({ alive: true, language: 'zh-TW' }),
+    });
+    assert(twBeat.status === 200 && twBeat.body && twBeat.body.ok === true,
+      'a zh-TW heartbeat is accepted (got ' + twBeat.status + ' ' + JSON.stringify(twBeat.body) + ')');
+    const twStatus = await call(bridge, { method: 'GET' });
+    assert(twStatus.body.language === 'zh-TW',
+      'the reported language keeps zh-TW (got ' + twStatus.body.language + ')');
+    // An unknown tag is still ignored rather than stored: the host would
+    // otherwise render a language it has no words for.
+    await call(bridge, {
+      method: 'POST',
+      headers: { 'x-dsh-notify-me-page': 'bridge' },
+      body: JSON.stringify({ alive: true, language: 'fr' }),
+    });
+    const stillTw = await call(bridge, { method: 'GET' });
+    assert(stillTw.body.language === 'zh-TW',
+      'an unknown language leaves the previous one (got ' + stillTw.body.language + ')');
+
+    const twCopy = bridgeLib.copyFor('zh-TW');
+    assert(twCopy.language === 'zh-TW', 'copyFor names the zh-TW table (got ' + twCopy.language + ')');
+    assert(twCopy.approval === '核准請求' && twCopy.done === '回覆完成',
+      'the zh-TW table speaks Traditional (got ' + twCopy.approval + ' / ' + twCopy.done + ')');
+    assert(twCopy.bodySeparator === '：', 'zh-TW keeps the full-width body separator');
+    assert(bridgeLib.copyFor('zh').approval === '审批请求',
+      'zh stays Simplified (got ' + bridgeLib.copyFor('zh').approval + ')');
+    assert(bridgeLib.pickLanguage('auto', 'zh-TW') === 'zh-TW',
+      'auto follows a page that reported zh-TW');
+    assert(bridgeLib.pickLanguage('zh-TW', 'en') === 'zh-TW',
+      'an explicit zh-TW config wins over the page');
+    assert(bridgeLib.pickLanguage('auto', 'fr') === 'zh',
+      'an unknown page language falls back to zh');
+  }
+
+  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves, external switches, zh-TW');
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
