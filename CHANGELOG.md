@@ -2,6 +2,28 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.23.0] — 2026-11-23
+
+macOS 的通知不再只有对话名一行字；设置页与通知文案多一档繁體中文；手机上的 Android Chrome 终于也能收到提示。
+
+### 修复
+
+- **macOS 的「回复完成」通知只写了一个对话名**（[#49](https://github.com/chromoany/dsh-notify-me/issues/49)，收编 [#50](https://github.com/chromoany/dsh-notify-me/pull/50)，作者 CheungPuiKwan）：`fireDone()` 在没有片段时把正文写成会话标题（页面 toast 的契约，见 [#20](https://github.com/chromoany/dsh-notify-me/issues/20)），通知中心就把这个标题画成任务标题底下的细字，正文永远是空的。现在对话名走 `content.subtitle`（helper 新增 `--subtitle`），正文留空时由宿主补：`ctx.get("sessionQuery").readSession()` 倒扫最后一条 `assistant/message`，取其中的 text block、压成一行、截 80 字。拆分逻辑放在 `lib/mac-notify.js` 的 `splitNotificationBody()` 而不是 Swift 里，任何平台可测；页面自己抬了 subtitle 就优先用页面的。只在 `kind === "done"` 且正文为空时读日志，读失败或无此服务时正文留空、通知照发——不因为想补一句话把提醒本身搞丢。
+- **Android Chrome 上除审批外的通知一条也发不出来**（[#51](https://github.com/chromoany/dsh-notify-me/issues/51)，作者 wx233Github）：移动端 Chrome 已不允许页面构造 `new Notification()`，抛 `Illegal constructor. Use ServiceWorkerRegistration.showNotification() instead.`；而插件只有「快捷裁决」那条分支走 Service Worker，关掉它连 worker 都不注册，等于毫无退路。现在 `notificationCtorUsable()` 先判断构造器能不能用（UA 带 Android 直接判不能，其余看 `Notification` 是否存在且是函数），不能就改由页面的 Service Worker 发，`isCtorRefusal()` 兜住构造时才抛的同类错误（记住 `ctorBroken`，后续不再试），两条路都失败仍进 `debug().lastToastReject`，不吞错。等待激活不能用 `navigator.serviceWorker.ready`——registration 的 scope 是 bundle 目录（`/plugins/…`），并不控制 `/` 页面，`ready` 永不 resolve；改成等 `installing` / `waiting` 的 `statechange` 到 `activated`，8 秒超时。worker 通知带 `tag` / `renotify` / `data.sessionId`，点一下回对应对话，自动消失照旧按设置走。审批通知仍先走带按钮的桥，构造器回退只接普通提醒，所以手机上「同意 / 拒绝」按钮没丢；关掉快捷裁决也不影响这条退路。注意 Service Worker 只认安全上下文：`https` 或 `http://localhost`，从局域网 IP 打开时只能收到提示音与标题标记，`debug().swState` 与 `debug().lastToastReject` 会写明原因。
+
+### 新增
+
+- **繁體中文**：通知文字、🔔 / ✅ 标题标记与整张设置页都多一档（`language` 取 `zh-TW`）。宿主自己只有简中与英文的语言包，插件不往宿主的语言目录里塞条目（那会让「繁體中文」出现在 DSH 全局语言选择器里、而核心界面并没有对应文案），只在插件内部自带一份 `UI_zhTW` 与 `TXT["zh-TW"]`，由同一个开关决定用哪份。`auto` 跟着界面语言走，`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都按繁體处理，`zh-CN` 仍是简体；认不出来时回落简体。宿主侧的兜底推送与心跳契约也认 `zh-TW`（`lib/page-bridge.js` 的 `LANGUAGES` 与 `copyFor()`、`pickLanguage()`），页面报了什么就照什么发，不再把繁体用户的兜底提示压回简体。
+- **`README.zh-TW.md`**：简体与英文两份 README 顶部都加了三语切换，繁體版由简体版逐行生成后按台湾用词校过（設定 / 網路 / 檔案 / 核准 / 訊息 / 權杖 / 閘道 / 系統匣…），代码块里的命令与键名保持原样。
+
+### 测试
+
+- 收编 PR 的 `smoke/mac-notify-content-test.mjs`：`splitNotificationBody()` 的各种形状、`lastReplySnippet()` 的跳 tool / 压空白 / 截断、以及路由层的 argv 断言（subtitle 只在有值时传、`--body` 不等于标题、正文截 1000 副标题截 200、`kind !== "done"` 不读日志、读失败仍发）。
+- `smoke/smoke-test.cjs` 新增 `languageModes()`：两条识别来源（宿主 locale 与 `<html lang>`）、四种繁體标签、`zh-CN` 仍简体、没有信息时回落简体、钉死某一档后通知与设置页一起变、三份字典键集完全一致；设置页断言语言下拉是 `auto` / `zh` / `zh-TW` / `en` 四项，选繁體后页面出现「恢復預設設定」。
+- `smoke/smoke-test.cjs` 新增 `androidWorkerFallback()`：Android UA 下 boot 只注册一个 worker、`ctor` 一次都没被调用、worker 收到的参数正确（`tag` 前缀、`renotify`、`silent`、`data.sessionId`、没有 `actions`）；桌面 UA 上构造器抛 `Illegal constructor` 时先试构造、再回落，第二条直接不再试；worker 也拒收时错误进 `debug().lastToastReject`。
+- `smoke/page-bridge-test.mjs` 新增一组：心跳报 `zh-TW` 被接受、未知语言被忽略、`copyFor('zh-TW')` 的核准 / 完成 / 分隔符、`pickLanguage()` 的优先级。
+- `npm test` 九套件通过（新增 `smoke/mac-notify-content-test.mjs`）。
+
 ## [1.22.0] — 2026-11-21
 
 Goal 续跑的中间轮次不再冒充「回复完成」；外部推送多一个 Telegram 目标。

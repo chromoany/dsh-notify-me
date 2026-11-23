@@ -6,7 +6,7 @@
 
 **Step away from DSH and know when to come back.**
 
-[简体中文](README.md) | English
+[简体中文](README.md) | [繁體中文](README.zh-TW.md) | English
 
 [![npm version](https://img.shields.io/npm/v/dsh-notify-me?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads%2Fmonth&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
@@ -28,6 +28,8 @@ A notification plugin for DSH Web / Desktop, so you can afford to keep full acce
 - **When a background reply finishes:** come back for the result; clicking the notification returns to that conversation. Pick "background only", "quiet for the open one", or "always".
 - **When you walk off but the window stays in front:** over 3 minutes without input counts as away, and the alert still fires as usual; the toast that arrived does not clear itself before you come back, and is withdrawn the moment you are back at the page (taskbar, Alt-Tab or the toast itself) — turn on "keep alerts when you come back" to let it wait there instead.
 - **When you leave your computer:** optionally forward alerts to Discord, Bark, Gotify, Feishu group bots, ServerChan, WxPusher, Telegram, or your own webhook.
+- **When you read DSH Web on a phone:** Android Chrome refuses the page's `new Notification()` (`Illegal constructor`), so the plugin switches to the page's own Service Worker instead — the toast still lands in the notification shade and clicking it returns to that conversation, with or without quick decisions.
+- **Four languages:** follow the UI / Simplified Chinese / Traditional Chinese / English — the alert copy, the `🔔 …` title marker and the Settings page all switch together (the host ships no Traditional pack, so that one comes from the plugin).
 - **When you close the page entirely:** optional host-side fallback — with no page open the host process keeps pushing "needs you" / "reply finished" to your gateway; or turn on just the same-origin relay so the page can reach an authenticated gateway. Both are off by default and configured in the profile's patch layer (see [After the page closes: host-side fallback and the same-origin relay](#after-the-page-closes-host-side-fallback-and-the-same-origin-relay)).
 
 ## UI Preview
@@ -214,7 +216,7 @@ The last block inside Advanced. The page protocol is detected automatically to t
 <details>
 <summary>Alert language, Desktop window raising, and reset</summary>
 
-- **Alert language**: follow the UI / Simplified Chinese / English — governs the alert copy and the `🔔 …` title marker;
+- **Interface and alert language**: follow the UI / Simplified Chinese / Traditional Chinese / English — governs the alert copy, the `🔔 …` title marker and the Settings page itself;
 - **Desktop window raising**: on Windows the host route does the native activation, on macOS / Linux the `dsh://open` deep link does; raising back a minimized or covered window is measured to work on Windows and Linux, and a window hidden to the tray with `SW_HIDE` is first shown with `SW_SHOW` on Windows since 1.21.0 (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised));
 - **Reset settings**: restores every switch and sound setting to the factory defaults (external push targets and chosen custom audio files are kept).
 
@@ -247,7 +249,7 @@ An override example for the profile (`~/.dsh/profiles/<profile>/cordis.patch.yml
       includeSubagents: false
       turnEndThrottleMs: 15000
       titlePrefix: 'DSH'
-      language: 'auto'            # auto | zh | en
+      language: 'auto'            # auto | zh | zh-TW | en
       pageLeaseMs: 60000          # 0 = no coordination with the page (duplicates while it is open)
       healthPath: '/__dsh-notify-me/host-fallback'
     relay:
@@ -267,7 +269,7 @@ Key by key (defaults in parentheses):
 - `turnEndThrottleMs` (`15000`): one "reply finished" per session inside that window; the window is only spent when an alert actually went out, so one held off by the lease does not consume it. The throttle covers `completed` only — `aborted` / `error` / `max-tokens` ends are never throttled: they are rare to begin with, and they are usually the one alert you want to see;
 - **The copy matches the page's own toast verbatim**: the title is `<prefix> · Reply finished` / `<prefix> · Approval request`, the body is the session name for a finished turn and `session: tool · reason` for an approval — never any of the user message text (a user message often carries injected `<system-reminder>` blocks, memory context and timestamps, which make a notification unreadable); an abnormal end (`aborted` / `error` / `max-tokens`, …) appends a short parenthetical such as ` (error)`;
 - `titlePrefix` (`DSH`): titles read `<prefix> · Approval request` / `<prefix> · Reply finished` (the page's own labels);
-- `language` (`auto`): `auto` follows the language of the page's last heartbeat and only falls back to Chinese with no heartbeat at all; `zh` / `en` force one;
+- `language` (`auto`): `auto` follows the language of the page's last heartbeat and only falls back to Chinese with no heartbeat at all; `zh` / `zh-TW` / `en` force one;
 - `pageLeaseMs` (`60000`): the page's online lease, see "deduplication" below;
 - `healthPath` (`/__dsh-notify-me/host-fallback`): the path of the read-only health probe.
 
@@ -338,13 +340,14 @@ Credentials stay in the host: the page cannot read them, and they are never echo
 | Channel | What it does |
 | --- | --- |
 | System notification | Through the browser into the Windows / macOS / Linux notification centre; clicking it returns to the conversation it came from. On macOS Desktop the host spawns `DSH Notify.app` to post it (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)); on Windows 11 Desktop the host posts a native approval toast that carries Approve / Reject (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)). Web can carry Approve / Reject too |
+| Mobile browser | Android Chrome cannot `new Notification()` (`Illegal constructor`), so the plugin posts through the page's own Service Worker instead; clicking it returns to the conversation, and `swState` / `debug().lastToastReject` say whether the Worker carried it or refused it |
 | Sound | WebAudio cue by default, with different patterns for "needs you" and "done"; swap in a custom audio file, or hand the sound over to the system notification sound |
 | Tab title | `🔔 Action needed · …` / `✅ Reply finished · …`, following the alert language; gone once you open that session, and both markers can be up at the same time |
 | External push (optional, default off) | Forwards the same alert to Discord / Bark / Gotify / Feishu / ServerChan / WxPusher / Telegram / a custom webhook |
 | Host-side fallback (optional, default off) | After the page closes the host process keeps pushing "needs you" / "reply finished" to your gateway; needs profile config and a mode-0600 credentials file |
 | Same-origin relay (optional, default off) | The page POSTs to a host route on its own origin, the host adds the credentials and forwards to an authenticated gateway, answering with the gateway's real status |
 
-This is primarily a **browser-layer** plugin: local toasts, sound and the title marker still only work while the page is open (minimized or backgrounded is fine — that is exactly the "away" state it watches for); with host-side fallback enabled, external push keeps going from the host process once the page is closed.
+This is primarily a **browser-layer** plugin: local toasts, sound and the title marker still only work while the page is open (minimized or backgrounded is fine — that is exactly the "away" state it watches for); with host-side fallback enabled, external push keeps going from the host process once the page is closed. Same on a phone: Android Chrome posts through a Service Worker, and nothing is delivered once the page is closed.
 
 ## Compatibility
 
@@ -368,7 +371,7 @@ The reminder core picks its interaction source per host generation (see the tabl
 - **Every other listed session's** summary: a `running: true → false` edge (or the legacy `completed` edge) alerts you about background work. The host's completion-unread level flag covers gaps and owns the title marker: `completionUnread` on `sessionStatus` rows on `>= 0.1.6` (lit when a background session finishes, cleared when it is opened / starts running again / disappears), the list row's `completed` reminder bit on older hosts (cleared on select). It re-reports a completion edge the page never saw (a plugin hot reload mid-turn, a snapshot merge that jumps) exactly once, and when the edge and the level flag arrive together a short window collapses them into a single alert;
 - **Subagent sessions**: **background** rows carrying `origin: 'subagent'` (and a `parentId`) are muted by default; the subagent session you have open is not muted — its alerts follow the normal current-conversation rules (tab marker only while the page is visible by default, delivered once backgrounded), outstanding waits are caught up when you switch in, and it goes back to muted when you switch away. A fork has a `parentId` but no `origin`, is your own conversation, and keeps alerting as usual.
 
-The reminder core still has zero third-party runtime dependencies and is fully self-contained: notification copy resolves at alert time from the chosen language (follow the interface / Simplified Chinese / English). The Settings page is an **optional** React surface — it only registers into Settings → Notify me when the DSH web profile provides `slots` / `locale` / `react`; missing any of them, the plugin degrades gracefully to alerts-only (no Settings page), with no functional loss.
+The reminder core still has zero third-party runtime dependencies and is fully self-contained: notification copy resolves at alert time from the chosen language (follow the interface / Simplified Chinese / Traditional Chinese / English). The Settings page is an **optional** React surface — it only registers into Settings → Notify me when the DSH web profile provides `slots` / `locale` / `react`; missing any of them, the plugin degrades gracefully to alerts-only (no Settings page), with no functional loss.
 
 </details>
 
@@ -457,6 +460,8 @@ Like the other routes, this one registers exactly one exact path and refuses eve
 - On Desktop (Windows) a toast click can still fail to raise the window: when the target window is owned by a higher integrity level (elevated / UAC), sits on another virtual desktop, or has its foreground repeatedly stolen by another process, the host script answers `FOCUSED=0` and the route answers `202`, with the conversation switch intact (see [How the Desktop window gets raised](#how-the-desktop-window-gets-raised)). A window hidden to the tray with `SW_HIDE` is first `SW_SHOW`-ed since 1.21.0, so it no longer falls under this entry ([#40](https://github.com/chromoany/dsh-notify-me/issues/40)).
 - Desktop (macOS / Linux) toast clicks rely on the `dsh://open` deep link: when the system has no `x-scheme-handler/dsh` registration, or the shell has no `second-instance` / `open-url` handling, the window will not raise. Measured to work on Linux; macOS is untested.
 - macOS Desktop: the page's own `new Notification()` never reaches the Notification Centre (`Notification.permission` reads `granted` yet nothing shows), so the plugin posts through a host-spawned helper — build it once with `bash macos/build.sh` (see [How macOS Desktop raises system notifications](#how-macos-desktop-raises-system-notifications)). Without the helper it falls back to the old behaviour, i.e. no system notification on Desktop. Approval buttons still do not render on the macOS desktop host; Windows 11 Desktop posts a native toast with working buttons (see [How Windows Desktop raises buttoned notifications](#how-windows-desktop-raises-buttoned-notifications)).
+- Android Chrome only allows a Service Worker in a secure context (`https` or `http://localhost`); opened from `http://192.168.x.x` the alert cannot be posted at all and only the sound and title marker are left, with `debug().swState` / `debug().lastToastReject` saying why. Quick decisions being off does not cost you this path — plain and approval alerts both register that Service Worker themselves.
+- "Traditional Chinese" is the plugin's own table (the host language pack only has Simplified Chinese and English): it governs this plugin's alert copy, title marker and Settings page, while the rest of the host UI stays in the host's own language. Under `auto`, tags like `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` all resolve to Traditional.
 
 **Alert content and timing**
 
@@ -493,6 +498,8 @@ The three new suites also ship their own fake `ctx`, need no local DSH and touch
 `smoke/mac-notify-test.mjs` runs the macOS notification route: registered only on the macOS desktop host, the probe, the `405` / `403` / `501` / `400` refusals, the arguments handed to the helper (including `--id` / `--sound` and `{remove:id}` withdrawal), and the click hand-off being taken exactly once. It fakes the platform and Electron version, needs no real helper, and runs on every platform.
 
 `smoke/mac-notify-content-test.mjs` runs the notification content: what `splitNotificationBody()` does with every shape a body arrives in (one line, two lines, blank lines, outer whitespace, CJK, missing fields), a subtitle the page lifted itself winning over the split, `--subtitle` being passed only when there really is one, the body never becoming the title (the regression), how the reply excerpt is taken from the event log (tool results skipped, collapsed to one line, cut and ellipsised when long, an empty log is not an error, and only read for a `done` alert with an empty body), a failed log read still posting the alert, and each half being cut to its own bound after the split (1000 characters for the body, 200 for the subtitle). It fakes the spawn too, needs no real helper, and runs on every platform.
+
+Language and the Android fallback each get their own cases: `languageModes()` in `smoke/smoke-test.cjs` covers both `auto` sources (the host locale and `document.documentElement.lang`), `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` all resolving to Traditional, `zh-CN` staying Simplified, the Simplified default with no information at all, a pinned language flipping both the alerts and the Settings page, and the three dictionaries holding exactly the same key set; `androidWorkerFallback()` covers three paths — on an Android UA the constructor is never touched, exactly one Service Worker is registered, and the alert options (tag / renotify / silent / data) are right; on a desktop UA whose constructor throws `Illegal constructor` the first alert tries it as usual, falls back to the Worker and remembers the failure; and a Worker that refuses too leaves the error in `debug().lastToastReject` instead of swallowing it. `smoke/page-bridge-test.mjs` additionally pins that a `zh-TW` heartbeat is accepted, an unknown language is ignored, and the host-fallback copy and `pickLanguage` precedence follow.
 
 `smoke/win-toast-test.mjs` runs the Windows native-toast route: the Windows desktop gate, the `GET` probe, the `405` / `403` / `501` / `400` refusals, the approval payload and its base64 pass-through, the six registration commands written before the first toast (the three protocol keys under `HKCU\Software\Classes\dsh-notify-me`, `DisplayName` and `CustomActivator` under `AppUserModelId\dsh-notify-me`, and an empty `CLSID\{…}` stub with no `LocalServer32`), the Windows 10 gate writing no registry keys and posting no toast, approve / reject / open actions being claimed once, token expiry, and `{remove}` withdrawal. It drives `reg.exe` / `powershell.exe` through a fake `spawn`, so it needs no real Windows desktop host and runs on every platform. It also asserts the generated handler script is UTF-16LE with a BOM, pure ASCII, carries the `ExpandEnvironmentStrings` expression, and bakes in no profile path, and that the toast body launches only `dsh-notify-me://open` (never `dsh://open`); a no-session `dsh-notify-me://open` still parses as a plain raise request ([#40](https://github.com/chromoany/dsh-notify-me/issues/40)).
 
@@ -542,6 +549,8 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # the last line 
 | <a href="https://github.com/you9you"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/you9you.png" width="40" height="40" alt="@you9you"></a> | [#43](https://github.com/chromoany/dsh-notify-me/pull/43): the report and first patch for the page holding an output device after Sound is off (landed in 1.21.5) |
 | <a href="https://github.com/Mz135mz"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Mz135mz.png" width="40" height="40" alt="@Mz135mz"></a> | [#44](https://github.com/chromoany/dsh-notify-me/issues/44): the report and two-way bisect of the client half never applying (fixed in 1.21.6) |
 | <a href="https://github.com/01101sam"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/01101sam.png" width="40" height="40" alt="@01101sam"></a> | [#45](https://github.com/chromoany/dsh-notify-me/pull/45) / [#46](https://github.com/chromoany/dsh-notify-me/pull/46): diagnosing the false "reply finished" alert between Goal rounds plus a first patch; Telegram external push (taken in 1.22.0) |
+| <a href="https://github.com/CheungPuiKwan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/CheungPuiKwan.png" width="40" height="40" alt="@CheungPuiKwan"></a> | [#49](https://github.com/chromoany/dsh-notify-me/issues/49) / [#50](https://github.com/chromoany/dsh-notify-me/pull/50): tracing why the macOS alert showed only the conversation name, plus a patch that lifts it into the subtitle and lets the host caption the reply (taken in 1.23.0) |
+| <a href="https://github.com/wx233Github"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/wx233Github.png" width="40" height="40" alt="@wx233Github"></a> | [#51](https://github.com/chromoany/dsh-notify-me/issues/51): reporting and reproducing Android Chrome's `Illegal constructor` on `new Notification()`, plus a Service Worker fallback patch (fixed in 1.23.0) |
 
 Attribution policy: external PRs are landed as maintainer commits — the original commit is not reused and no Co-authored-by trailer is added, so GitHub's contributors graph lists the maintainer only and contributors are credited above.
 
