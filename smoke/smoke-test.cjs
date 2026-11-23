@@ -4987,7 +4987,31 @@ function languageModes() {
   // The language readout names the resolved language in its own script.
   assert(page.text.includes('繁體中文'), 'the resolved-language note names 繁體中文');
   page.cleanup();
-  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker');
+
+  // 6) Picking a language re-renders the page in place: the handler swaps the
+  //    module config, the component state follows, and every label is read
+  //    through pageText() at render time. Without this the picker would only
+  //    take effect after a reload.
+  const live = settingsBoot({ language: 'zh' }, null, { locale: 'zh', advanced: true });
+  const liveDict = live.dictNow();
+  const liveSel = live.find((n) => n.type === 'select' && n.props['aria-label'] === liveDict.zh.language);
+  assert(liveSel && liveSel.props.value === 'zh', 'the picker starts on the pinned zh');
+  assert(live.text.includes('恢复默认设置'), 'the pinned zh page starts Simplified');
+  liveSel.props.onChange({ currentTarget: { value: 'zh-TW' } });
+  const twText = live.renderNow();
+  assert(twText.includes('恢復預設設定'),
+    'choosing 繁體中文 re-renders the page in Traditional (got ' + twText.slice(0, 160) + ')');
+  assert(!twText.includes('恢复默认设置'), 'no Simplified copy survives the switch');
+  const afterSel = live.find((n) => n.type === 'select' && n.props['aria-label'] === liveDict['zh-TW'].language);
+  assert(afterSel && afterSel.props.value === 'zh-TW', 'the picker shows the value just chosen');
+  assert(live.configNow().language === 'zh-TW', 'the choice is persisted in the config');
+  assert(live.debugNow().language === 'zh-TW', 'the toast language follows the picker');
+  afterSel.props.onChange({ currentTarget: { value: 'auto' } });
+  const backText = live.renderNow();
+  assert(backText.includes('恢复默认设置'), 'auto follows the host UI back to Simplified');
+  assert(live.configNow().language === 'auto', 'auto is persisted as auto, not as the resolved language');
+  live.cleanup();
+  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker, live switch');
 }
 
 (async () => {
