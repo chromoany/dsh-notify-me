@@ -5014,6 +5014,88 @@ function languageModes() {
   console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker, live switch');
 }
 
+async function dockBadgeChannel() {
+  console.log('\n— Dock badge: unread completions and waits on the app icon —');
+  const writes = [];
+  let now = null;
+  const navStub = {
+    setAppBadge: (n) => { writes.push(n); now = n; },
+    clearAppBadge: () => { writes.push(0); now = 0; },
+  };
+  const b = bootBundle({ extend: (sandbox) => { sandbox.navigator = navStub; } });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  const { mod, win } = b;
+  mod.apply(host.ctx);
+  const row = (extra) => Object.assign({ running: false, pendingInteraction: null, completionUnread: false }, extra || {});
+  host.setList({
+    ids: ['s1', 's2', 's3'],
+    byId: {
+      s1: { displayTitle: '当前会话', retainedBy: { mainView: 1 } },
+      s2: { displayTitle: '后台任务', retainedBy: {} },
+      s3: { displayTitle: '另一个任务', retainedBy: {} },
+    },
+    phase: 'ready',
+  });
+  host.notifyList();
+
+  // 1) nothing to come back to: the icon is cleared, not left at a stale count
+  host.setStatus(new Map([['s1', row()]]));
+  host.notifyStatus();
+  assert(now === 0, 'an empty status map clears the badge, got ' + now);
+
+  // 2) a background completion is one item; the open conversation never counts
+  host.setStatus(new Map([
+    ['s1', row({ completionUnread: true })],
+    ['s2', row({ completionUnread: true })],
+  ]));
+  host.notifyStatus();
+  assert(now === 1, 'only the background unread counts, got ' + now);
+
+  // 3) a wait outside the conversation is another item, and one session with
+  //    both facts still counts once
+  host.setStatus(new Map([
+    ['s1', row({ completionUnread: true })],
+    ['s2', row({ completionUnread: true })],
+    ['s3', row({ pendingInteraction: { key: 'k3', kind: 'question' } })],
+  ]));
+  host.notifyStatus();
+  assert(now === 2, 'a background wait adds one, got ' + now);
+
+  // 4) a muted row is one the user asked not to hear about
+  win.__dshNotifyMe.setConfig({ mutedSessions: ['s2'] });
+  assert(now === 1, 'muting a session drops it from the badge, got ' + now);
+  win.__dshNotifyMe.setConfig({ mutedSessions: [] });
+  assert(now === 2, 'unmuting brings it back, got ' + now);
+
+  // 5) both switches clear the icon immediately, without waiting for a host update
+  win.__dshNotifyMe.setConfig({ dockBadge: false });
+  assert(now === 0, 'the switch clears the badge, got ' + now);
+  win.__dshNotifyMe.setConfig({ dockBadge: true });
+  assert(now === 2, 'turning it back on restores the count, got ' + now);
+  win.__dshNotifyMe.setConfig({ enabled: false });
+  assert(now === 0, 'the master switch clears the badge too, got ' + now);
+  win.__dshNotifyMe.setConfig({ enabled: true });
+
+  // 6) the count goes away when the host says everything was read
+  host.setStatus(new Map([['s1', row()]]));
+  host.notifyStatus();
+  assert(now === 0, 'reading everything clears the badge, got ' + now);
+  assert(writes.length > 0, 'the badge surface was actually driven');
+
+  // 7) an environment without the Badging API stays silent instead of throwing
+  const plain = bootBundle();
+  const host2 = buildHost({ withSessionStatus: true });
+  plain.mod.apply(host2.ctx);
+  host2.setStatus(new Map([['s1', row({ completionUnread: true })]]));
+  host2.notifyStatus();
+  assert(plain.win.__dshNotifyMe.debug().dockBadgeSupported === false,
+    'a page without setAppBadge reports the badge as unsupported');
+  assert(plain.win.__dshNotifyMe.debug().dockBadge === -1,
+    'and never writes a value');
+
+  console.log('dock badge OK: unread + waits counted per session, current/muted rows excluded, switches and read-state clear it, unsupported pages inert');
+}
+
 (async () => {
   await legacyHost();
   await currentHost();
@@ -5021,6 +5103,7 @@ function languageModes() {
   await currentSessionTitle();
   await subagentSessions();
   await completionUnreadChannel();
+  await dockBadgeChannel();
   await goalRoundsSilent();
   await quickActionsHost();
   await desktopRaiseChannel();
