@@ -5024,7 +5024,7 @@ async function dockBadgeChannel() {
   };
   const b = bootBundle({ extend: (sandbox) => { sandbox.navigator = navStub; } });
   const host = buildHost({ withSessionStatus: true, withWorkspace: true });
-  const { mod, win } = b;
+  const { mod, win, doc, events } = b;
   mod.apply(host.ctx);
   const row = (extra) => Object.assign({ running: false, pendingInteraction: null, completionUnread: false }, extra || {});
   host.setList({
@@ -5082,7 +5082,31 @@ async function dockBadgeChannel() {
   assert(now === 0, 'reading everything clears the badge, got ' + now);
   assert(writes.length > 0, 'the badge surface was actually driven');
 
-  // 6b) the manual test writes a number the sessions do not explain, and a
+  // 6b) an alert raised while away badges the conversation left open: the host
+  //     never flags that one unread, but the user did get the toast
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  host.setStatus(new Map([['s1', row({ running: true })]]));
+  host.notifyStatus();
+  host.setFace({ sessionId: 's1', running: true, pending: [], nodes: [], partial: null });
+  host.notifyFace();
+  // The completion edge is ignored within 300 ms of an attention alert (same
+  // tick dedupe), and this test drives several alerts in a row.
+  await sleep(400);
+  events.length = 0;
+  host.setFace({ sessionId: 's1', running: false, nodes: [
+    { kind: 'user', seq: 1, content: [] },
+    { kind: 'assistant', seq: 2, blocks: [{ kind: 'text', text: '跑完了' }] },
+  ] });
+  host.notifyFace();
+  assert(events.filter((e) => e.kind === 'done').length === 1, 'the away completion still alerts');
+  assert(now === 1, 'the away alert badges the open conversation, got ' + now);
+
+  // 6c) coming back to the page retires it, like the toast being withdrawn
+  doc.hidden = false; doc.visibilityState = 'visible';
+  b.fireVisibility();
+  assert(now === 0, 'returning to the page clears the away mark, got ' + now);
+
+  // 6d) the manual test writes a number the sessions do not explain, and a
   //     host update must not wipe it while the user is looking at the Dock
   const verdict = win.__dshNotifyMe.testBadge(2);
   assert(/^badge set to 2/.test(verdict), 'testBadge reports what it wrote, got ' + verdict);

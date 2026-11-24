@@ -9,6 +9,7 @@ All notable changes to **dsh-notify-me** are documented here.
 ### 新增
 
 - **Dock / 任务栏数字角标**（设置 → 通知提醒 → 提醒方式：「Dock 角标」，默认开）：在应用图标上显示「需要你回来」的条数——后台跑完还没打开的回复，加上不在当前对话里的审批 / 提问，每个对话只算一件；打开对应对话后自动减少，全部处理完自动消失。数据就是侧栏「已完成」绿点与等待提醒的同一份事实（`sessionStatus` 的 `completionUnread` / `pendingInteraction`），当前对话、手动静音的会话与后台子会话都不计入。
+- **角标与通知同步**：只要一条提醒真的发出去了（`fire()` 放行、通知已投递）且当时你不在页面前，对应的对话就会留在角标上——包括你离开时正开着的那个对话（宿主不会给它打 `completionUnread`，但提醒确实弹了）。回到页面、打开该对话、等它重新开始跑，或把这一行静音，角标都会相应减少。
 - 走系统的 **Badging API**（`navigator.setAppBadge` / `clearAppBadge`）：桌面端与安装为应用的 Web 端可用，**不需要通知权限、不发一声**；页面卸载、宿主切换、关闭总开关或角标开关时立即清除，不留一个读不掉的数字。
 - `window.__dshNotifyMe.debug()` 新增 `dockBadge`（最近写入的值，-1 表示尚未写入）与 `dockBadgeSupported`（当前页面能不能画角标）。
 - **「试一试」里的「测试角标」**：把图标上的数字设成 3、8 秒后恢复真实数量，用来区分「没有未读」和「这个页面画不出角标」；控制台里等价写法是 `__dshNotifyMe.testBadge(3)`，返回 `badge set to 3 for 8s` / `unsupported: …` / `failed: …`。
