@@ -50,10 +50,15 @@ function bootRelay(relayOver) {
     const off = fn();
     return () => { if (typeof off === 'function') off(); };
   };
+  const { allowedOrigins, sessionQuery, ...relayFields } = relayOver;
   const ctx = {
     logger: { info() {}, warn(message) { warnings.push(String(message)); } },
     on() { return () => {}; },
     effect,
+    // The completion-snippet fallback reads the conversation through the host's
+    // session-query service; a boot without one (every case before 3e) must keep
+    // forwarding the page's own body untouched.
+    get(service) { return service === 'sessionQuery' ? sessionQuery : undefined; },
     inject(_services, cb) {
       cb({
         effect,
@@ -67,7 +72,6 @@ function bootRelay(relayOver) {
       });
     },
   };
-  const { allowedOrigins, ...relayFields } = relayOver;
   host.apply(ctx, {
     allowedOrigins,
     gateway: { target: relayOver.gatewayTarget === undefined ? TARGET : relayOver.gatewayTarget, credentialsFile: relayOver.credentialsFile },
@@ -290,6 +294,121 @@ try {
     assert(posted.status === 500 && posted.body.reason === 'rendered-body-too-large',
       'an amplified templated body is refused (got ' + posted.status + ' ' + JSON.stringify(posted.body) + ')');
     assert(calls.length === 0, 'and nothing is sent (got ' + calls.length + ')');
+    globalThis.fetch = realFetch;
+  }
+
+  // 3e) A completion whose page body is the conversation label alone (0.1.6+
+  // hosts carry no message nodes in their snapshot, so the page cannot caption
+  // it) is completed from the session log: the host reads the last assistant
+  // text, keeps its newlines — a markdown `##` heading or `- ` list item only
+  // reads as one from the line start — and `relay.snippetLimit` bounds it. A
+  // page body that already carries a second line is left alone, and only
+  // `done` is completed: an attention alert's body is written by the page.
+  {
+    const events = [
+      { type: 'user/message', data: { message: { content: [{ type: 'text', text: '问一句' }] } } },
+      {
+        type: 'assistant/message',
+        data: { message: { content: [
+          { type: 'reasoning', text: '想一下' },
+          { type: 'text', text: '## 标题\n\n- 第一项\n- 第二项' },
+        ] } },
+      },
+    ];
+    const sessionQuery = { readSession: async () => ({ events }) };
+    const template = JSON.stringify({ title: '{{title}}', content: '{{text}}' });
+    const completionBody = { body: 'atlas', text: 'DSH · 回复完成 · atlas\natlas' };
+
+    const calls = captureFetch();
+    const relay = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: template, sessionQuery });
+    await call(relay.route(RELAY), { method: 'POST', body: eventBody(completionBody) });
+    const completed = JSON.parse(calls[0].body);
+    assert(completed.content === 'DSH · 回复完成 · atlas\n## 标题\n\n- 第一项\n- 第二项',
+      'the completion body is filled from the session log with its newlines, got ' + JSON.stringify(completed.content));
+    globalThis.fetch = realFetch;
+
+    const longEvents = [
+      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'x'.repeat(200) }] } } },
+    ];
+    const limitedCalls = captureFetch();
+    const limited = bootRelay({
+      target: TARGET,
+      credentialsFile: '',
+      bodyTemplate: template,
+      // Below the 100-character floor on purpose: the excerpt must be bounded by
+      // the floor rather than by the configured 5.
+      snippetLimit: 5,
+      sessionQuery: { readSession: async () => ({ events: longEvents }) },
+    });
+    await call(limited.route(RELAY), { method: 'POST', body: eventBody(completionBody) });
+    const bounded = JSON.parse(limitedCalls[0].body);
+    assert(bounded.content === 'DSH · 回复完成 · atlas\n' + 'x'.repeat(100) + '\u2026',
+      'relay.snippetLimit bounds the excerpt, got ' + JSON.stringify(bounded.content));
+    globalThis.fetch = realFetch;
+
+    const labelledCalls = captureFetch();
+    const labelled = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: template, sessionQuery });
+    await call(labelled.route(RELAY), {
+      method: 'POST',
+      body: eventBody({ body: 'atlas\n你刚才问：check the parser', text: 'DSH · 回复完成 · atlas\natlas\n你刚才问：check the parser' }),
+    });
+    const kept = JSON.parse(labelledCalls[0].body);
+    assert(kept.content === 'DSH · 回复完成 · atlas\natlas\n你刚才问：check the parser',
+      'a page body that already carries a caption is never overwritten, got ' + JSON.stringify(kept.content));
+    globalThis.fetch = realFetch;
+
+    const attentionCalls = captureFetch();
+    const attention = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: template, sessionQuery });
+    await call(attention.route(RELAY), {
+      method: 'POST',
+      body: eventBody({ event: 'attention', body: 'atlas', text: 'DSH · 需要你\natlas' }),
+    });
+    const untouched = JSON.parse(attentionCalls[0].body);
+    assert(untouched.content === 'DSH · 需要你\natlas',
+      'only a completion is completed, got ' + JSON.stringify(untouched.content));
+    globalThis.fetch = realFetch;
+  }
+
+  // 3f) Two refusals around that fill. `relay.snippetLimit: 0` turns it off, for
+  // an operator who wants only the label to leave the machine. A request that
+  // arrives on a public name — a tunnel or reverse proxy fronting the host —
+  // still forwards the page's own payload, but it never reads the session log:
+  // the payload names the session, so answering it would turn the relay into a
+  // read-any-session endpoint for whoever can reach the path.
+  {
+    const template = JSON.stringify({ title: '{{title}}', content: '{{text}}' });
+    const completionBody = { body: 'atlas', text: 'DSH · 回复完成 · atlas\natlas' };
+    const sessionQuery = {
+      readSession: async () => ({
+        events: [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '不该被读到' }] } } }],
+      }),
+    };
+
+    const offCalls = captureFetch();
+    const off = bootRelay({ target: TARGET, credentialsFile: '', bodyTemplate: template, snippetLimit: 0, sessionQuery });
+    await call(off.route(RELAY), { method: 'POST', body: eventBody(completionBody) });
+    const offBody = JSON.parse(offCalls[0].body);
+    assert(offBody.content === 'DSH · 回复完成 · atlas\natlas',
+      'relay.snippetLimit 0 keeps the label-only body, got ' + JSON.stringify(offBody.content));
+    globalThis.fetch = realFetch;
+
+    const publicCalls = captureFetch();
+    const tunnelled = bootRelay({
+      target: TARGET,
+      credentialsFile: '',
+      bodyTemplate: template,
+      allowedOrigins: ['https://dsh.example.com'],
+      sessionQuery,
+    });
+    const answer = await call(tunnelled.route(RELAY), {
+      method: 'POST',
+      headers: { host: 'dsh.example.com' },
+      body: eventBody(completionBody),
+    });
+    assert(answer.status === 200, 'a public name listed in allowedOrigins still forwards, got ' + answer.status);
+    const publicBody = JSON.parse(publicCalls[0].body);
+    assert(publicBody.content === 'DSH · 回复完成 · atlas\natlas',
+      'a request on a public name forwards the page body without reading the log, got ' + JSON.stringify(publicBody.content));
     globalThis.fetch = realFetch;
   }
 

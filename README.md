@@ -258,6 +258,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
       target: ''
       credentialsFile: ''
       bodyTemplate: ''            # 可选：JSON 请求体模板，见「同源中继」
+      snippetLimit: 3000         # 「回复完成」补正文上限，0 = 不补（非 0 时 100..10000）
 ```
 
 逐键说明（括号内是默认值）：
@@ -302,6 +303,8 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 
 模板在宿主启动时就校验：渲染结果不是 JSON 对象、或模板超过 16 KiB（按 UTF-8 字节算），整条中继不挂载，日志里留一行 warning 写明原因，状态回包与设置页也显示中继未启用——配错一次就能看见，不用等每条提醒都回 500。渲染后的请求体另有 256 KiB 上限（模板可以重复占位符放大体积），超了回 `500 {reason:'rendered-body-too-large'}` 且不发送。不写这个键时保持原来的 `{title, body, type:'info'}` 不变。
 
+**「回复完成」缺的正文由宿主补齐**：`0.1.6` 起的宿主把会话文本从 `SessionSnapshot` 里移走了（快照只剩生命周期与控制状态），页面上的完成提醒于是只有会话名——`body` 是一行标题、`text` 是「标题 + 换行 + 会话名」，推到手机上就是一条「只有标题」的通知。中继在渲染前用宿主自己的 `sessionQuery` 读该会话日志，倒扫最后一条 `assistant/message` 的 text block 补成正文，再交给模板；补上来的文本**保留换行**（markdown 的 `##` 标题、`- ` 列表只有行首还在才算结构），只压掉三行以上空行与行尾空白。`relay.snippetLimit` 控制上限（默认 `3000` 字符；`0` 表示不补、只转发页面给的那行会话名，非 `0` 时夹在 `100`–`10000` 之间）。**从公网名字进来的请求不补**：`allowedOrigins` 里列出的域名能过闸门，但这样的请求只转发页面自己的载荷——载荷里的 `sessionId` 能指向任意会话、路径本身又是能力，按它去读日志等于把会话内容交给能打到这条路的人；所以隧道下打开自己的页面只收到会话名，本机页面照常拿正文。页面已经给出多行正文（旧宿主带摘要）时不覆盖；只有 `event: 'done'` 这样补，「需要你」的正文是页面写的、不是完成摘要；读不到会话日志或没有该服务时原样转发，提醒本身照发。
+
 例：把提醒推给自己的推送服务（下面以 MagicPush 风格接口为例，它要求 `channel_ids` + `title` + `content`，Bearer 令牌放在宿主的 0600 凭据文件里）：
 
 ```yaml
@@ -326,7 +329,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 回包口径（页面据此把「已送出不可确认」变成可核对的状态）：
 
 - `GET` / `HEAD` `<relay.path>` → `200 {ok, route, version, enabled}`：只读探针，不转发、不带凭据，但**和其它宿主入口走同一道闸门**——路径本身就是能力，不设闸门的探针会把「猜对了」告诉猜的人；拿它确认「这个进程挂的是不是我配的那条路径」；
-- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象，映射成网关的 `{title, body, type:'info'}`（配了 `relay.bodyTemplate` 时改为按模板渲染出的 JSON 对象；页面载荷里的 `tag` 一律不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
+- `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象（完成提醒缺正文时先由宿主从会话日志补齐，见上），映射成网关的 `{title, body, type:'info'}`（配了 `relay.bodyTemplate` 时改为按模板渲染出的 JSON 对象；页面载荷里的 `tag` 一律不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
 - `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字符）＝转发成功；上游非 2xx 回 `502`，同为这一形状；
 - `500 {reason}`：模板配错（`invalid-body-template` / `template-too-large` / `rendered-body-too-large`）——前两种正常在宿主启动校验时就拦下了，这里只是运行期的兜底，且什么都不发；
 - `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝或缺少意图头）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常或网关回了 3xx——跳转不跟，因为跟过去会把 body 和 `Authorization` 重放到别处）。
@@ -540,7 +543,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/Matthew-Laplace"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Matthew-Laplace.png" width="40" height="40" alt="@Matthew-Laplace"></a> | [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28)：`keepOnReturn` 的提案与最小实现、「前台也提醒」一键预设（1.19.0 支持） |
 | <a href="https://github.com/xty13114150041"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/xty13114150041.png" width="40" height="40" alt="@xty13114150041"></a> | [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32)：macOS 页面通知不响的排查与宿主助手方案（1.19.0 支持） |
 | <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：审批通知缺按钮的反馈，以及 Electron 丢弃 `actions` 的源码级定位（1.19.0 支持） |
-| <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中继的自定义 JSON 请求体模板（1.20.0 支持） |
+| <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中继的自定义 JSON 请求体模板（1.20.0 支持）；[#52](https://github.com/chromoany/dsh-notify-me/pull/52)：完成提醒缺正文时由宿主从会话日志补齐（1.24.0 支持） |
 | <a href="https://github.com/AlbertDope"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AlbertDope.png" width="40" height="40" alt="@AlbertDope"></a> | [#36](https://github.com/chromoany/dsh-notify-me/issues/36)：中文用户名下审批按钮必弹 `800A004C` 的根因定位与修复验证（1.20.1） |
 | <a href="https://github.com/yangmin19990201-crypto"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yangmin19990201-crypto.png" width="40" height="40" alt="@yangmin19990201-crypto"></a> | [#37](https://github.com/chromoany/dsh-notify-me/issues/37)：同一 `800A004C` 的独立复现与根因核对（1.20.1） |
 | <a href="https://github.com/TianqiCai"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/TianqiCai.png" width="40" height="40" alt="@TianqiCai"></a> | [#38](https://github.com/chromoany/dsh-notify-me/pull/38)：macOS 前台点通知不切会话的修复（1.21.0 收编） |

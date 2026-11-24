@@ -258,6 +258,7 @@ profile 覆蓋範例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
       target: ''
       credentialsFile: ''
       bodyTemplate: ''            # 可選：JSON 請求體模板，見「同源中繼」
+      snippetLimit: 3000          # 「回覆完成」補正文上限，0 = 不補（非 0 時 100..10000）
 ```
 
 逐鍵說明（括號內是預設值）：
@@ -301,6 +302,8 @@ profile 覆蓋範例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 `relay.bodyTemplate`（可選）給不接受 Apprise `{title, body, type}` 形狀的閘道用：寫一段 JSON 模板，宿主按模板渲染請求體。佔位符是 `{{title}}` `{{body}}` `{{text}}` `{{event}}` `{{time}}` `{{session}}`（取載荷裡的 `sessionId`）`{{source}}` `{{version}}`，要寫在 JSON 字串裡；代入的值先按 JSON 字串轉義，所以標題裡的引號、換行不會把模板弄壞，載荷裡沒有的欄位渲染成空串，模板裡沒寫的欄位不會出現在請求體裡。
 
 模板在宿主啟動時就校驗：渲染結果不是 JSON 物件、或模板超過 16 KiB（按 UTF-8 位元組算），整條中繼不掛載，日誌裡留一行 warning 寫明原因，狀態回包與設定頁也顯示中繼未啟用——配錯一次就能看見，不用等每條提醒都回 500。渲染後的請求體另有 256 KiB 上限（模板可以重複佔位符放大體積），超了回 `500 {reason:'rendered-body-too-large'}` 且不傳送。不寫這個鍵時保持原來的 `{title, body, type:'info'}` 不變。
+
+**「回覆完成」缺的正文由宿主補齊**：`0.1.6` 起的宿主把對話文字從 `SessionSnapshot` 裡移走了（快照只剩生命週期與控制狀態），頁面上的完成提醒於是只有對話名——`body` 是一行標題、`text` 是「標題 + 換行 + 對話名」，推到手機上就是一條「只有標題」的通知。中繼在渲染前用宿主自己的 `sessionQuery` 讀該對話日誌，倒掃最後一條 `assistant/message` 的 text block 補成正文，再交給模板；補上來的文字**保留換行**（markdown 的 `##` 標題、`- ` 清單只有行首還在才算結構），只壓掉三行以上空行與行尾空白。`relay.snippetLimit` 控制上限（預設 `3000` 字元；`0` 表示不補、只轉發頁面給的那行對話名，非 `0` 時夾在 `100`–`10000` 之間）。**從公網名字進來的請求不補**：`allowedOrigins` 裡列出的網域能過閘門，但這樣的請求只轉發頁面自己的載荷——載荷裡的 `sessionId` 能指向任意對話、路徑本身又是能力，按它去讀日誌等於把對話內容交給能打到這條路的人；所以隧道下打開自己的頁面只收到對話名，本機頁面照常拿正文。頁面已經給出多行正文（舊宿主帶摘要）時不覆蓋；只有 `event: 'done'` 這樣補，「需要你」的正文是頁面寫的、不是完成摘要；讀不到對話日誌或沒有該服務時原樣轉發，提醒本身照發。
 
 例：把提醒推給自己的推送服務（下面以 MagicPush 風格介面為例，它要求 `channel_ids` + `title` + `content`，Bearer 權杖放在宿主的 0600 憑證檔案裡）：
 
@@ -540,7 +543,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行應是 F
 | <a href="https://github.com/Matthew-Laplace"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Matthew-Laplace.png" width="40" height="40" alt="@Matthew-Laplace"></a> | [#27](https://github.com/chromoany/dsh-notify-me/issues/27) / [#28](https://github.com/chromoany/dsh-notify-me/pull/28)：`keepOnReturn` 的提案與最小實現、「前台也提醒」一鍵預設（1.19.0 支援） |
 | <a href="https://github.com/xty13114150041"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/xty13114150041.png" width="40" height="40" alt="@xty13114150041"></a> | [#31](https://github.com/chromoany/dsh-notify-me/issues/31) / [#32](https://github.com/chromoany/dsh-notify-me/pull/32)：macOS 頁面通知不響的排查與宿主助手方案（1.19.0 支援） |
 | <a href="https://github.com/Inh-ui"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Inh-ui.png" width="40" height="40" alt="@Inh-ui"></a> | [#33](https://github.com/chromoany/dsh-notify-me/issues/33)：核准通知缺按鈕的反饋，以及 Electron 丟棄 `actions` 的原始碼級定位（1.19.0 支援） |
-| <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中繼的自定義 JSON 請求體模板（1.20.0 支援） |
+| <a href="https://github.com/sakurakugu"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/sakurakugu.png" width="40" height="40" alt="@sakurakugu"></a> | [#34](https://github.com/chromoany/dsh-notify-me/pull/34)：同源中繼的自定義 JSON 請求體模板（1.20.0 支援）；[#52](https://github.com/chromoany/dsh-notify-me/pull/52)：完成提醒缺正文時由宿主從對話日誌補齊（1.24.0 支援） |
 | <a href="https://github.com/AlbertDope"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/AlbertDope.png" width="40" height="40" alt="@AlbertDope"></a> | [#36](https://github.com/chromoany/dsh-notify-me/issues/36)：中文使用者名下核准按鈕必彈 `800A004C` 的根因定位與修復驗證（1.20.1） |
 | <a href="https://github.com/yangmin19990201-crypto"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yangmin19990201-crypto.png" width="40" height="40" alt="@yangmin19990201-crypto"></a> | [#37](https://github.com/chromoany/dsh-notify-me/issues/37)：同一 `800A004C` 的獨立復現與根因核對（1.20.1） |
 | <a href="https://github.com/TianqiCai"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/TianqiCai.png" width="40" height="40" alt="@TianqiCai"></a> | [#38](https://github.com/chromoany/dsh-notify-me/pull/38)：macOS 前台點通知不切對話的修復（1.21.0 收編） |
