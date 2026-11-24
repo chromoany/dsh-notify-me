@@ -30,6 +30,7 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 - **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher、Telegram 或自己的 Webhook。
 - **拿手机看 DSH Web 时**：Android Chrome 不支持页面的 `new Notification()`（抛 `Illegal constructor`），插件自动改用页面自带的 Service Worker 发通知，点通知回对应对话；关掉快捷裁决也照样能收到。
 - **四档语言**：跟随界面 / 简体中文 / 繁體中文 / English——通知文字、`🔔 …` 标题标记与设置界面按同一档切换（宿主本身没有繁體语言包，这一档由插件自带）。
+- **不用盯着侧栏**：任务栏 / Dock 图标带角标，显示还有几个对话在等你（默认开）；打开对话、答掉等待或把它静音，数字就自己降下去，平台没有角标接口时不画。
 - **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[页面关闭后：宿主侧兜底与同源中继](#页面关闭后宿主侧兜底与同源中继)）。
 
 ## 效果预览
@@ -43,7 +44,7 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 
 ![通知提醒设置页：页眉、提醒方式、什么时候提醒、会话静音、试一试与折叠的高级设置](https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/screenshots/settings-zh.png)
 
-只截插件自己的面板（真实组件，与宿主同款深色主题），不带 DSH 左侧导航栏；每行说明在鼠标停在标题文字上时才出现，所以这里只看到标题。
+只截插件自己的面板（真实组件，与宿主同款深色主题），不带 DSH 左侧导航栏；每行说明在鼠标停在标题文字上时才出现，所以这里只看到标题。（截于 1.24.0：1.25.0 起「什么时候提醒」里多了一行角标开关，测试按钮也从三个变成四个。）
 
 </details>
 
@@ -180,7 +181,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 ### 试一试
 
-三个按钮分别发一条「需要你」「回复完成」「审批按钮」测试提醒，用当前设置立即发，**不受**「什么时候提醒」里的开关限制；下方一行如实说明当前哪种渠道能给审批按钮。
+四个按钮分别发一条「需要你」「回复完成」「审批按钮」测试提醒和一次角标测试，用当前设置立即发，**不受**「什么时候提醒」里的开关限制；角标测试在不支持 `navigator.setAppBadge` 的平台上会灰掉，下方一行如实说明当前哪种渠道能给审批按钮。
 
 设置页底部常显插件版本号（`dsh-notify-me v…`）——报障、核对是否装上新版本时直接照抄这一行。
 
@@ -495,7 +496,7 @@ npm pack --dry-run               # 预览发布包
 <details>
 <summary>各测试套件覆盖范围与手动检查</summary>
 
-`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 语言四档用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状 + 外部推送（含 Telegram 的报文形状、`ok` / `error_code` 判决、429 与 5xx 重试、4096 截断、半配置目标被剪掉、设置页的令牌与聊天 ID 输入框）+ Goal 中间轮不报「回复完成」（有 Goal 投影时静默、Goal 停后报最后一条、没有投影的老宿主照旧报），外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。它还钉住清单：`package.json` 的 `dsh.client.inject` 必须为空、运行时那句 `inject = ["sessions", "locale", "slots"]` 必须原样保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：加载器把清单读成「先到达这些整包」，目标到不了，整个条目静默不跑）。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
+`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 语言四档用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状 + 外部推送（含 Telegram 的报文形状、`ok` / `error_code` 判决、429 与 5xx 重试、4096 截断、半配置目标被剪掉、设置页的令牌与聊天 ID 输入框）+ Goal 中间轮不报「回复完成」（有 Goal 投影时静默、Goal 停后报最后一条、没有投影的老宿主照旧报），外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。角标用例按会话计数：两个等待会话报 2、同一快照重复不重画、当前会话不算、静音或关掉开关归零、宿主没有 `setAppBadge` 时静默不报错。它还钉住清单：`package.json` 的 `dsh.client.inject` 必须为空、运行时那句 `inject = ["sessions", "locale", "slots"]` 必须原样保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：加载器把清单读成「先到达这些整包」，目标到不了，整个条目静默不跑）。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、Goal 还 `active` 时中间轮不投递（`complete` / `pause` / `block` 之后照常投递，重启后能从会话日志里补出 Goal 状态）、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」、`relay.bodyTemplate` 的模板渲染与 JSON 转义、坏模板启动即不注册、渲染体积上限；1.24.0 又加了两组：完成提醒的正文由宿主从会话日志补齐（保留换行、夹紧后截断、页面已给多行正文不覆盖、`attention` 不动），以及 `snippetLimit: 0` 时只转会话名、从公网名字进来的请求过了闸门也不读日志。
 
@@ -536,6 +537,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/yuexian7"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/yuexian7.png" width="40" height="40" alt="@yuexian7"></a> | [#17](https://github.com/chromoany/dsh-notify-me/issues/17)：手机端收消息的诉求，促成飞书 / Server酱 / WxPusher 三种目标 |
 | <a href="https://github.com/shrekcg"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/shrekcg.png" width="40" height="40" alt="@shrekcg"></a> | [#16](https://github.com/chromoany/dsh-notify-me/pull/16)：离开判定 `idleMinutes`、「回复完成」`donePolicy`、自动消失 `autoDismiss` |
 | <a href="https://github.com/Donald-Yip"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/Donald-Yip.png" width="40" height="40" alt="@Donald-Yip"></a> | #18（原 issue 已删除）：Windows 通知 tag 超 64 字符、审批测试通知被平台拒收的报告 |
+| <a href="https://github.com/thissensen"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/thissensen.png" width="40" height="40" alt="@thissensen"></a> | [#19](https://github.com/chromoany/dsh-notify-me/issues/19)：被别的插件包装出来的子代理会话被当成独立对话、照常提醒的报障，划清了「判定只能依赖宿主给的 `origin`」这条边界 |
 | <a href="https://github.com/dunxuan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dunxuan.png" width="40" height="40" alt="@dunxuan"></a> | [#20](https://github.com/chromoany/dsh-notify-me/issues/20)：当前会话的通知正文用占位符、未取会话标题的报告 |
 | <a href="https://github.com/unnamed42"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/unnamed42.png" width="40" height="40" alt="@unnamed42"></a> | [#21](https://github.com/chromoany/dsh-notify-me/issues/21) / [#22](https://github.com/chromoany/dsh-notify-me/pull/22)：Linux 上深链抬窗失效的报障与补丁（1.14.4 恢复） |
 | <a href="https://github.com/LIEGU0317"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/LIEGU0317.png" width="40" height="40" alt="@LIEGU0317"></a> | [#24](https://github.com/chromoany/dsh-notify-me/issues/24) / [#25](https://github.com/chromoany/dsh-notify-me/pull/25) / [#29](https://github.com/chromoany/dsh-notify-me/issues/29) / [#30](https://github.com/chromoany/dsh-notify-me/pull/30)：宿主兜底推送与同源中继两个模块（1.15.0），以及兜底漏读转发开关的修复（1.19.0） |
@@ -555,6 +557,8 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/01101sam"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/01101sam.png" width="40" height="40" alt="@01101sam"></a> | [#45](https://github.com/chromoany/dsh-notify-me/pull/45) / [#46](https://github.com/chromoany/dsh-notify-me/pull/46)：连续 Goal 中间轮次误报「回复完成」的诊断与首版补丁、Telegram 外部推送（1.22.0 收编） |
 | <a href="https://github.com/CheungPuiKwan"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/CheungPuiKwan.png" width="40" height="40" alt="@CheungPuiKwan"></a> | [#49](https://github.com/chromoany/dsh-notify-me/issues/49) / [#50](https://github.com/chromoany/dsh-notify-me/pull/50)：macOS 通知只剩对话名、正文取不到回复内容的定位，与把对话名抬进 subtitle、宿主补回复摘要的补丁（1.23.0 收编） |
 | <a href="https://github.com/wx233Github"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/wx233Github.png" width="40" height="40" alt="@wx233Github"></a> | [#51](https://github.com/chromoany/dsh-notify-me/issues/51)：Android Chrome 里 `new Notification()` 抛 Illegal constructor 的报障、复现与改走 Service Worker 的补丁（1.23.0 修复） |
+| <a href="https://github.com/HowardXue7790"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/HowardXue7790.png" width="40" height="40" alt="@HowardXue7790"></a> | [#53](https://github.com/chromoany/dsh-notify-me/issues/53) / [#54](https://github.com/chromoany/dsh-notify-me/issues/54)：审批 Toast 在 Windows 上几秒就被收走（「从不关闭」同时失效）、点按钮弹 Microsoft Store 的报障，以及直接指到计时器与 VBS 那一行的定位（1.25.0 修复） |
+| <a href="https://github.com/dsadw"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dsadw.png" width="40" height="40" alt="@dsadw"></a> | [#55](https://github.com/chromoany/dsh-notify-me/issues/55) / [#56](https://github.com/chromoany/dsh-notify-me/pull/56)：任务栏 / Dock 未读角标的诉求与首版实现（1.25.0 收编，改成按会话计数） |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 
