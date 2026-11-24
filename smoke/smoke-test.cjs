@@ -5082,6 +5082,16 @@ async function dockBadgeChannel() {
   assert(now === 0, 'reading everything clears the badge, got ' + now);
   assert(writes.length > 0, 'the badge surface was actually driven');
 
+  // 6b) the manual test writes a number the sessions do not explain, and a
+  //     host update must not wipe it while the user is looking at the Dock
+  const verdict = win.__dshNotifyMe.testBadge(2);
+  assert(/^badge set to 2/.test(verdict), 'testBadge reports what it wrote, got ' + verdict);
+  assert(now === 2, 'the test writes the badge immediately, got ' + now);
+  host.setStatus(new Map([['s2', row({ completionUnread: true })]]));
+  host.notifyStatus();
+  assert(now === 2, 'a host update leaves the test value alone, got ' + now);
+  assert(win.__dshNotifyMe.debug().dockBadgeTesting === true, 'debug() says the test owns the icon');
+
   // 7) an environment without the Badging API stays silent instead of throwing
   const plain = bootBundle();
   const host2 = buildHost({ withSessionStatus: true });
@@ -5092,6 +5102,8 @@ async function dockBadgeChannel() {
     'a page without setAppBadge reports the badge as unsupported');
   assert(plain.win.__dshNotifyMe.debug().dockBadge === -1,
     'and never writes a value');
+  assert(/^unsupported/.test(plain.win.__dshNotifyMe.testBadge(3)),
+    'the manual test reports the missing API instead of throwing');
 
   console.log('dock badge OK: unread + waits counted per session, current/muted rows excluded, switches and read-state clear it, unsupported pages inert');
 }

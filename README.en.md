@@ -182,7 +182,7 @@ The settings page has a "Muted sessions" card under "When to alert" with the cur
 
 ### Try it
 
-Three buttons send one "needs you", one "reply finished" and one "approval buttons" test alert with the current settings, right away, and deliberately **not** limited by the switches under "when to alert"; the line underneath states which channel can carry approval buttons right now.
+Three buttons send one "needs you", one "reply finished" and one "approval buttons" test alert with the current settings, right away, and deliberately **not** limited by the switches under "when to alert"; the line underneath states which channel can carry approval buttons right now. The fourth, "Test badge", sets the number on the app icon to 3 for eight seconds and then restores the real count — it separates "nothing is waiting" from "this page cannot draw a badge at all"; an ordinary browser tab needs DSH installed as an app, while the desktop shell should just work.
 
 The plugin version is always shown at the bottom of the settings page (`dsh-notify-me v…`) — copy that line when reporting a bug or checking whether an update landed.
 
