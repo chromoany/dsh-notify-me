@@ -139,6 +139,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 - **通知自动消失**（默认「离开时保留」）：离开时保留 / 总是关闭 / 从不关闭，三选一；三种设置只管「时间到点」那一次关闭，你回到页面时残留的通知一律收起；
 - **回到页面也保留提醒**（默认关）：打开后，离开时收到的通知在你回到 DSH 页面后不再被收起，会一直留到你点掉或点「关闭」——适合把系统通知样式设成「持续」、希望提醒常驻屏幕的用法；
 - **子代理会话不提醒**（默认开）：跳过后台子代理（subagent）会话，你正开着的那个照常提醒；
+- **任务栏 / Dock 角标**（默认开）：图标上显示还有几个对话在等你——有待答的、或有完成未读的都算，打开对话、把等待答掉或静音就自己降下去；正在看的那个对话不计，静音会话与后台子代理也不计（与提醒规则同一套判据）。平台没有角标接口（`navigator.setAppBadge`）时这一项不画任何东西，设置页的「测试角标」按钮会灰掉；
 - **点击通知回到对应对话**（默认开）：切到对应对话并把窗口带到前台，Windows 桌面走宿主路由原生抬窗、macOS / Linux 走 `dsh://open` 深链，多个标签页只调起一个。
 
 <details>
@@ -148,7 +149,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 - **「当前对话不弹通知」何时补发**：窗口转到后台或闲置超时后照常提醒；若你已处理掉就作废。
 - **「回复完成」三档**：「仅后台」＝不在看页面才提醒；「仅当前对话静默」＝屏幕上那条静默、别的对话照常提醒，多开对话时有用；「总是提醒」＝从不静默。老配置里的「窗口在前台时也提醒『回复完成』」开关自动迁移到这一项。
 - **Goal 还在跑的时候不报「回复完成」**：连续 Goal 的每一轮在宿主看来都是普通的一轮结束，但它只是中间步骤，下一轮马上接着跑。这类轮次现在不提醒，等 Goal 真的停下（完成、暂停、阻塞）才报最后一条；取不到 Goal 状态时（更老的宿主）照旧提醒。
-- **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。**打开「回到页面也保留提醒」后，回到页面这一条也不再收起**，通知留到你点掉或点「关闭」，系统通知样式设成「持续」时会一直挂在屏幕上。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止（仅 Web 端的 Service Worker 通知如此）；macOS 桌面端画不出按钮的审批通知、以及 Windows 11 桌面端带按钮的原生审批 Toast，都按 12 秒收。宿主发出的原生通知（Windows 原生 Toast、macOS 通知中心）同样归这套记账管：人不在时同样不撤，回到页面同样收起（该开关打开时也保留），「总是关闭 / 从不关闭」也管得到它们。
+- **「离开时保留」**：你人在页面前时，普通通知几秒后自己收；人不在时收到的那条留在通知中心等你回来。回到页面（点任务栏、Alt+Tab、点通知、还原最小化的窗口都算）就立刻收起，三种设置都不影响这一条——不看通知中心，也不会被遗留通知挡着。**打开「回到页面也保留提醒」后，回到页面这一条也不再收起**，通知留到你点掉或点「关闭」，系统通知样式设成「持续」时会一直挂在屏幕上。带「同意 / 拒绝」的通知不设自动撤回，留到你点按钮、回页面把请求答掉、或被新请求顶替为止（仅 Web 端的 Service Worker 通知如此）；macOS 桌面端画不出按钮的审批通知按 12 秒收，Windows 11 桌面端带按钮的原生审批 Toast 则不再自动收——它用 `scenario="reminder"` 发出去，Windows 不会几秒后把它折进操作中心，一直留到你作答、或回到页面时由 `withdrawToasts()` 收（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)）。宿主发出的原生通知（Windows 原生 Toast、macOS 通知中心）同样归这套记账管：人不在时同样不撤，回到页面同样收起（该开关打开时也保留），「总是关闭 / 从不关闭」也管得到它们。
 - **点击通知的兜底**：桌面端抬不起来时只切对话，原因记在 `debug().raiseLast` 里；关掉这一项后点通知不做任何事。
 
 </details>
@@ -385,7 +386,7 @@ Web 端带「同意 / 拒绝」按钮的通知只能由 Service Worker 弹出（
 <details>
 <summary>展开按钮通知的记账与调窗口</summary>
 
-每条按钮通知按交互 key 记账，一次只认领一条等待；请求被页面里答掉、或被新请求顶替之后，残留通知上的按钮再点也不会误裁，只是安静地关掉。Web 端带按钮的通知不设自动撤回，等你点按钮或把请求答掉才消失；普通通知 5 秒自收，macOS 桌面端没有按钮的审批通知与 Windows 11 桌面端带按钮的原生审批 Toast 都 12 秒自收。「通知自动消失」选「从不关闭」时，这两类都不因到点而收；三种设置都只管定时器那一次关闭，你回到页面时残留的通知一律收起（「回到页面也保留提醒」打开时不收起）。没来得及点就回页面里裁决，对话里的审批一直等着你。
+每条按钮通知按交互 key 记账，一次只认领一条等待；请求被页面里答掉、或被新请求顶替之后，残留通知上的按钮再点也不会误裁，只是安静地关掉。Web 端带按钮的通知不设自动撤回，等你点按钮或把请求答掉才消失；普通通知 5 秒自收，macOS 桌面端没有按钮的审批通知 12 秒自收；Windows 11 桌面端带按钮的原生审批 Toast 不挂计时器，用 `scenario="reminder"` 发出去后一直留到你作答或回到页面（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)）。「通知自动消失」选「从不关闭」时，有计时器的两类都不因到点而收；三种设置都只管定时器那一次关闭，你回到页面时残留的通知一律收起（「回到页面也保留提醒」打开时不收起）。没来得及点就回页面里裁决，对话里的审批一直等着你。
 
 点正文的「调窗口 + 切对话」也归 worker 这半侧调度：`client.focus()` 只调起一个窗口（优先当前可见的），也只让那个窗口切对话——多个 DSH 标签页不会互相抢焦点或一起乱切。
 
@@ -435,14 +436,14 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast。**Windows 10 是例外**：那边的系统通知派发不了协议激活，1.21.3 起不再走这条通道，审批提醒留在页面或浮层里（原因见下）。
 
 - **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到插件自己的 AUMID `dsh-notify-me` 下，走同一套系统通知设置。**不能借 DSH 的 AUMID**：那个 AUMID 挂着 COM Toast 激活器，Windows 会把每次点击都交给 DSH 本体，Toast 上的协议按钮永远等不到派发（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
-- **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个写入动作文件、再打开 `dsh://open` 的 VBS），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。这条链路要求 Toast 挂在自己的 AUMID 下，否则点击会被别的应用的激活器截走。
+- **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个只把点到的 URL 写进动作目录的 VBS，不启动任何程序——[#54](https://github.com/chromoany/dsh-notify-me/issues/54)），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。这条链路要求 Toast 挂在自己的 AUMID 下，否则点击会被别的应用的激活器截走。
 - **点正文也会抬窗**：正文点击统一走 `dsh-notify-me://open`（有会话时带 `?session=`，没有会话也保留为一次纯抬窗），不再把 `dsh://open` 当 Windows 抬窗手段——那条深链拉不起最小化窗口，更拉不起 `SW_HIDE` 到托盘的窗口。等待审批期间页面每 1.5 秒取一次动作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切会话；托盘隐藏的窗口由 `focus-window.ps1` 先 `SW_SHOW` 再激活（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - **中文用户名等非 ASCII profile**：处理器脚本按 UTF-16LE + BOM 写盘，动作目录在点击时才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——脚本正文因此全是 ASCII，不会再被 WSH 按系统 ANSI 代码页解码后把路径弄乱（此前每次点按钮都弹 `800A004C` 脚本错误，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修复。升级后重启桌面端即可，第一次发带按钮的 Toast 时会重写这份脚本，不用手动清旧文件。
 - **注册**：第一次发 Toast 前写 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬头，`CustomActivator` = 一个 CLSID），CLSID 只建空的存根、不注册 `LocalServer32`——未打包应用不实现 COM 激活器时，Windows 才会按 XML 把 `activationType="protocol"` 的点击派发出去；随后按 tag 记账到 `ToastNotificationManager.History`。两者都是当前用户级，不需要管理员权限。token 单次、3 分钟有效；动作文件被取走后即删。
 - **Windows 10 没有按钮**：Windows 10（build < 22000）缺 Windows 11 那条「没有 COM 激活器也照 XML 派发协议激活」的实现——修复只落在 18967 之后的预览分支，没进 19041 / 19045 的服务分支（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)）。19045 上实测：自带 AUMID + 空存根 + 开始菜单快捷方式都补齐，点按钮、点正文仍然只把通知收掉（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）。所以 1.21.3 起在 build < 22000 上不发原生 Toast：路由回 `enabled: false`、`reason: "windows-10"`，审批提醒回到页面自己的通知与浮层——宁可没有按钮，也不给一个按下去没反应的。
 - **不弹的场合**：非 Windows 桌面宿主、`winToast.enabled: false`、`powershell.exe` 不存在（`reason` 分别是 `disabled` / `helper-missing`），或 Windows 10（见上一条），路由报 `enabled: false`（`501`），页面继续用自己那条不带按钮的通知，行为与改动前一致。
 - **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `winToast: { enabled: false }`，审批提醒回到页面自己的通知（无按钮）。
-- **自动消失与收起**：原生 Toast 归 `trackToast()` 记账，普通通知 5 秒、带按钮的审批 12 秒（「总是关闭 / 从不关闭」照旧），回到页面（`keepOnReturn` 关闭时）同样收起。
+- **自动消失与收起**：原生 Toast 归 `trackToast()` 记账，普通通知 5 秒（「总是关闭 / 从不关闭」照旧），带按钮的审批不挂计时器——它按 `scenario="reminder"` 发，等 `decidePending()` 结算或回到页面（`keepOnReturn` 关闭时）由 `withdrawToasts()` 收起，Windows 不会几秒后把它折进操作中心。
 
 路由只开一个 exact 路径，其余一律拒：非 GET / POST 回 `405`，非 loopback 或未放行的 `Host` / `Origin` 回 `403`，POST 缺 `x-dsh-notify-me-win: toast` 头回 `403`，请求体不合法回 `400`。响应只回报投递状态，不含系统信息。
 

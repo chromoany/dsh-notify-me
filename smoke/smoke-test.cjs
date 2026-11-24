@@ -1060,6 +1060,91 @@ async function completionUnreadChannel() {
   assert(host.listeners.status.length === 0, 'sessionStatus unsubscribed after dispose');
 }
 
+// The dock badge counts conversations waiting, not notifications sent: the two
+// channels differ on purpose (an unanswered approval is one conversation even
+// when it was re-announced three times), which is why it reads the same status
+// snapshot the sidebar does instead of the toast path.
+async function dockBadgeChannel() {
+  console.log('\n— dock badge: one number per waiting conversation, nothing to say when unsupported —');
+  const painted = [];
+  const b = bootBundle({
+    extend(sandbox) {
+      sandbox.navigator = {
+        setAppBadge(n) { painted.push(n); },
+        clearAppBadge() { painted.push(0); },
+      };
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  const { mod } = b;
+  const cur = { running: false, displayTitle: '当前会话', retainedBy: { mainView: 1 } };
+  const other = (extra) => Object.assign({ running: false, displayTitle: '另一个', retainedBy: {} }, extra || {});
+
+  mod.apply(host.ctx);
+  host.setList({ ids: ['s1', 's2', 's3'], byId: { s1: cur, s2: other(), s3: other() }, phase: 'ready', projectionsBySession: {} });
+  host.notifyList();
+
+  // A fresh page starts by clearing whatever the last run left on the icon.
+  assert(painted.length === 1 && painted[0] === 0, 'boot clears a stale badge, got ' + JSON.stringify(painted));
+
+  // one finished-unread conversation and one approval: two, not three
+  host.setStatus(new Map([
+    ['s1', statusRow(null, { running: false })],
+    ['s2', statusRow(null, { running: false, completionUnread: true })],
+    ['s3', statusRow(question('question:200', { sessionId: 's3' }), {})],
+  ]));
+  host.notifyStatus();
+  assert(painted[painted.length - 1] === 2, 'two waiting conversations paint 2, got ' + JSON.stringify(painted));
+
+  const before = painted.length;
+  host.notifyStatus();
+  assert(painted.length === before, 'an unchanged count is not repainted, got ' + JSON.stringify(painted));
+
+  // the conversation on screen is already in view
+  host.setStatus(new Map([
+    ['s1', statusRow(question('question:201', { sessionId: 's1' }), {})],
+    ['s2', statusRow(null, { running: false, completionUnread: true })],
+  ]));
+  host.notifyStatus();
+  assert(painted[painted.length - 1] === 1, 'the session on screen never counts, got ' + JSON.stringify(painted));
+
+  // muting the row lowers the number without answering it
+  b.win.__dshNotifyMe.setConfig({ mutedSessions: ['s2'] });
+  assert(painted[painted.length - 1] === 0, 'a muted row is not the badge\'s business, got ' + JSON.stringify(painted));
+
+  // the switch clears it, and the master switch does too
+  b.win.__dshNotifyMe.setConfig({ mutedSessions: [] });
+  assert(painted[painted.length - 1] === 1, 'unmuting brings the conversation back, got ' + JSON.stringify(painted));
+  b.win.__dshNotifyMe.setConfig({ dockBadge: false });
+  assert(painted[painted.length - 1] === 0, 'the switch clears the badge, got ' + JSON.stringify(painted));
+  b.win.__dshNotifyMe.setConfig({ enabled: false });
+  b.win.__dshNotifyMe.setConfig({ dockBadge: true });
+  assert(painted[painted.length - 1] === 0, 'a disabled plugin paints nothing, got ' + JSON.stringify(painted));
+  b.win.__dshNotifyMe.setConfig({ enabled: true });
+  assert(painted[painted.length - 1] === 1, 're-enabling paints the real count again, got ' + JSON.stringify(painted));
+
+  // the test button paints a number and hands control back on its own
+  const tested = b.win.__dshNotifyMe.testBadge(4);
+  assert(painted[painted.length - 1] === 4, 'testBadge paints the number it was given, got ' + JSON.stringify(painted));
+  assert(/4/.test(String(tested)), 'testBadge reports what it painted, got ' + JSON.stringify(tested));
+  assert(b.win.__dshNotifyMe.debug().dockBadgeSupported === true, 'debug() reports the platform support it found');
+
+  for (const c of [...host.cleanups]) c();
+
+  // A host without the Badging API must stay silent, not throw: the alert path
+  // runs through the same snapshot and must not fail because decoration is out.
+  const bare = bootBundle();
+  const bareHost = buildHost({ withSessionStatus: true });
+  bare.mod.apply(bareHost.ctx);
+  bareHost.setList({ ids: ['s1', 's2'], byId: { s1: cur, s2: other() }, phase: 'ready', projectionsBySession: {} });
+  bareHost.notifyList();
+  bareHost.setStatus(new Map([['s2', statusRow(null, { running: false, completionUnread: true })]]));
+  bareHost.notifyStatus();
+  assert(bare.win.__dshNotifyMe.debug().dockBadgeSupported === false, 'no Badging API is reported as unsupported');
+  assert(/unsupported/.test(String(bare.win.__dshNotifyMe.testBadge(1))), 'the test button says so instead of throwing');
+  for (const c of [...bareHost.cleanups]) c();
+}
+
 // A Goal session ends a turn per round: the round driver queues the next turn
 // as soon as the agent goes idle, and an intermediate round usually writes no
 // `goal/change` at all. The host's goal projection is what says whether the job
@@ -5021,6 +5106,7 @@ function languageModes() {
   await currentSessionTitle();
   await subagentSessions();
   await completionUnreadChannel();
+  await dockBadgeChannel();
   await goalRoundsSilent();
   await quickActionsHost();
   await desktopRaiseChannel();

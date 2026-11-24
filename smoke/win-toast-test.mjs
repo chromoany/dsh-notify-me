@@ -33,6 +33,15 @@ assert(/^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/.test
 const toastPs1 = fs.readFileSync(path.join(ROOT, 'lib', 'win-toast.ps1'), 'utf8');
 assert(!toastPs1.includes('launch="dsh://open"'), 'the toast body never launches dsh://open');
 assert(toastPs1.includes('launch="dsh-notify-me://open"'), 'the toast body launches our own protocol');
+// An approval is the alert Windows must keep on screen (issue #53): the reminder
+// scenario is the only toast shape it does not fold into Action Center after a
+// few seconds. It is the approval's shape, not the generic one, and reminder
+// toasts loop their sound unless told not to.
+const scenarioBlock = toastPs1.slice(toastPs1.indexOf('$scenario ='), toastPs1.indexOf('$xml ='));
+assert(scenarioBlock.includes('$payload.approveToken') && scenarioBlock.includes('scenario="reminder"'),
+  'only an approval asks for the reminder scenario, got ' + JSON.stringify(scenarioBlock));
+assert(scenarioBlock.includes('<audio loop="false"/>'), 'a reminder that keeps its sound chimes once, not forever');
+assert(toastPs1.includes("'<toast' + $scenario + $launch"), 'the scenario attribute reaches the toast element');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-notify-me-win-'));
 // mountWinToast derives its directories from %LOCALAPPDATA% on Windows; point
@@ -189,6 +198,13 @@ try {
   assert(vbsText.includes('sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\\dsh-notify-me\\actions"'),
     'the actions directory is resolved from %LOCALAPPDATA% at click time');
   assert(!vbsText.includes(tmp), 'no profile path is baked into the handler script');
+  // Issue #54: the handler used to end with `sh.Run "dsh://open"`. On a shell
+  // that has not claimed dsh:// Windows answers that launch with the "look for
+  // an app in the Store" dialog on every click, so the click now ends here and
+  // the page raises the window through the host route.
+  assert(!/sh\.Run/.test(vbsText), 'the handler records the click and launches nothing');
+  assert(!vbsText.includes('dsh://open'), 'no dsh:// launch is baked into the handler');
+  assert(vbsText.includes('out.Write url'), 'the handler still writes the clicked URL for the page');
 
   // 3b. Approve click: single use, bound to the approval key.
   writeAction('a1.txt', 'dsh-notify-me://approve?token=' + sentBody.token);

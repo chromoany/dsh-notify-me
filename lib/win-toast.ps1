@@ -52,17 +52,31 @@ if ($payload.approveToken) {
 # click for the page, which raises the window through the host route (the only
 # way that works on Windows) and switches to the session when there is one.
 # dsh://open used to be the launch target with no session; it never raised a
-# minimized or tray-hidden window (issue #40).
+# minimized or tray-hidden window (issue #40), and when the shell had not
+# registered it every click opened the Store dialog instead (issue #54), so the
+# handler now records the click and launches nothing.
 if ($payload.session) {
     $launch = ' launch="dsh-notify-me://open?session=' + [Uri]::EscapeDataString($payload.session) + '" activationType="protocol"'
 } else {
     $launch = ' launch="dsh-notify-me://open" activationType="protocol"'
 }
 
+# An approval is the one alert that has to outlive the next few seconds: the
+# "reminder" scenario is the only toast shape Windows does not fold into Action
+# Center after its short duration, so an unanswered wait stays on screen until
+# it is answered (issue #53). Reminder toasts loop their sound unless told not
+# to, so the cue is pinned either way: silent while the plugin owns the audio, a
+# single default chime when the platform does.
+$scenario = ""
 $audio = ""
-if (-not $payload.sound) { $audio = '<audio silent="true"/>' }
+if ($payload.approveToken) {
+    $scenario = ' scenario="reminder"'
+    if ($payload.sound) { $audio = '<audio loop="false"/>' } else { $audio = '<audio silent="true"/>' }
+} elseif (-not $payload.sound) {
+    $audio = '<audio silent="true"/>'
+}
 
-$xml = '<toast' + $launch + '>' + $visual + $actions + $audio + '</toast>'
+$xml = '<toast' + $scenario + $launch + '>' + $visual + $actions + $audio + '</toast>'
 
 $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
 $doc.LoadXml($xml)

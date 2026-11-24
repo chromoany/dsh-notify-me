@@ -2,6 +2,25 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.25.0] — 2026-11-24
+
+审批等不到回答时通知不再自己消失，点通知按钮不再可能弹「在 Microsoft Store 中查找应用」，任务栏 / Dock 图标开始显示还有几个对话在等你。
+
+### 修复
+
+- **Windows 上「等待审批」的 toast 几秒就被收起，`autoDismiss` 设成「从不」也不管用**（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)，作者 HowardXue7790）：审批走原生 toast 时也挂了 `scheduleNativeClose(..., quick)`，12 秒后连通知中心里那条一起 `History.Remove`；而同一份代码的 Service Worker 分支写着「审批故意不自动关闭，等请求结算再收」——两条路行为相反。设置里的「从不」也只压住了插件自己的计时器：XML 里既没有 `scenario` 也没有 `duration`，Windows 仍按普通通知的短时限把它收进操作中心。现在原生审批 toast 不再挂计时器，收尾交给 `decidePending()` 与回前台时的 `withdrawToasts()`；`lib/win-toast.ps1` 对审批加 `scenario="reminder"`——这是 Windows 唯一不会几秒后折进操作中心的形状。reminder 默认循环响铃，所以出声时补 `<audio loop="false"/>`，静音时仍是 `<audio silent="true"/>`。另外三处 `new Notification` / `showNotification` 补上 `requireInteraction: policy === "never"`：Chromium 里没有它，「从不」只是不调 `close()`，系统照样按默认时限收起。
+- **点通知按钮弹出「在 Microsoft Store 中查找应用」**（[#54](https://github.com/chromoany/dsh-notify-me/issues/54)，作者 HowardXue7790）：注册的协议处理器 `notify-handler.vbs` 末尾有一行 `sh.Run "dsh://open", 0, False`，可 `dsh://` 是桌面壳自己的注册，插件不拥有它；壳没注册（别的构建、挪过安装位置、注册表被清）时每次点击都变成商店搜索。这条 launch 在 Windows 上也从来抬不起最小化 / 托盘里的窗口（[#40](https://github.com/chromoany/dsh-notify-me/issues/40) 实测），抬窗早已改走宿主的 focus 路由。现在处理器只把点到的 URL 写进 actions 目录、什么都不启动，页面下一次 GET（审批待决时是 1.5 秒轮询）取走动作并由 `applyWinAction()` 抬窗——不再依赖一个不属于自己的注册。
+
+### 新增
+
+- **任务栏 / Dock 角标显示等待中的对话数**（[#55](https://github.com/chromoany/dsh-notify-me/issues/55)，收编 [#56](https://github.com/chromoany/dsh-notify-me/pull/56)，作者 dsadw）：`navigator.setAppBadge` / `clearAppBadge`，数字是「有 `pendingInteraction` 或 `completionUnread` 的会话数」，读宿主 `sessionStatus` 的同一条快照，与侧栏「等你」标记同一个来源——同一条等待被撤下再重发三次仍是一个对话，按发出去的通知数会给出与列表对不上的数字。正在看的会话不计（它已经在眼前），静音与后台子代理不计（提醒本来就不响），打开会话、答掉等待、静音都会在下一次快照里让数字自己降下去；关掉这一项或插件总开关则清零。平台没有 Badging API 时整条链路静默（`debug().dockBadgeSupported` 写明），设置页的「测试角标」按钮也只在支持时才亮。默认开启，计数只在页面内存里，刷新后由新的快照重新算。
+
+### 测试
+
+- `smoke/smoke-test.cjs` 新增 `dockBadgeChannel()`：boot 先清掉旧角标、两个等待会话画 2、数字没变不重画、屏幕上的会话不算、静音立刻降、关开关清零、总开关关掉也清零、重新打开恢复、`testBadge(4)` 画 4，以及没有 Badging API 的宿主不抛错、`testBadge()` 回 `unsupported`。
+- `smoke/win-toast-test.mjs` 新增断言：只有审批带 `scenario="reminder"`、出声时 `<audio loop="false"/>`、`scenario` 拼进 `<toast>`；生成的 VBS 里不再有 `sh.Run` / `dsh://open`，但仍把点到的 URL 写给页面。
+- `npm test` 除 `smoke/host-route-test.mjs` 外全绿（该套件在本机沙箱里 spawn 被拒，干净 HEAD 上同样失败，与本次改动无关）。
+
 ## [1.24.0] — 2026-11-24
 
 同源中继补齐「回复完成」的正文：`0.1.6`+ 宿主上完成提醒只剩会话名，手机收到的推送只有标题。
