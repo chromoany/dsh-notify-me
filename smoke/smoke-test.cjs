@@ -5015,7 +5015,7 @@ function languageModes() {
 }
 
 async function dockBadgeChannel() {
-  console.log('\n— Dock badge: unread completions and waits on the app icon —');
+  console.log('\n— Dock badge: one entry per delivered notification —');
   const writes = [];
   let now = null;
   const navStub = {
@@ -5027,6 +5027,16 @@ async function dockBadgeChannel() {
   const { mod, win, doc, events } = b;
   mod.apply(host.ctx);
   const row = (extra) => Object.assign({ running: false, pendingInteraction: null, completionUnread: false }, extra || {});
+  const faceDone = async (sid, text) => {
+    host.setFace({ sessionId: sid, running: true, pending: [], nodes: [], partial: null });
+    host.notifyFace();
+    await sleep(400); // the done edge ignores a completion within 300 ms of an attention alert
+    host.setFace({ sessionId: sid, running: false, nodes: [
+      { kind: 'user', seq: 1, content: [] },
+      { kind: 'assistant', seq: 2, blocks: [{ kind: 'text', text: text || '跑完了' }] },
+    ] });
+    host.notifyFace();
+  };
   host.setList({
     ids: ['s1', 's2', 's3'],
     byId: {
@@ -5038,85 +5048,101 @@ async function dockBadgeChannel() {
   });
   host.notifyList();
 
-  // 1) nothing to come back to: the icon is cleared, not left at a stale count
-  host.setStatus(new Map([['s1', row()]]));
+  // 1) a completion while the page is being watched raises no toast, so it must
+  //    not put a number on the icon either — the two counts are one count
+  host.setStatus(new Map([['s2', row({ completionUnread: true })]]));
   host.notifyStatus();
-  assert(now === 0, 'an empty status map clears the badge, got ' + now);
+  await sleep(400);
+  assert(now === 0, 'a suppressed toast leaves the badge alone, got ' + now);
 
-  // 2) a background completion is one item; the open conversation never counts
-  host.setStatus(new Map([
-    ['s1', row({ completionUnread: true })],
-    ['s2', row({ completionUnread: true })],
-  ]));
+  // 2) the same completion while away is a notification, and one badge entry
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  host.setStatus(new Map([['s2', row({ completionUnread: false })]]));
   host.notifyStatus();
-  assert(now === 1, 'only the background unread counts, got ' + now);
+  await sleep(400);
+  events.length = 0;
+  host.setStatus(new Map([['s2', row({ completionUnread: true })]]));
+  host.notifyStatus();
+  assert(events.filter((e) => e.kind === 'done').length >= 1, 'the away completion alerts');
+  assert(now === 1, 'the alert becomes exactly one badge entry, got ' + now);
 
-  // 3) a wait outside the conversation is another item, and one session with
-  //    both facts still counts once
+  // 3) a wait in another session is a second notification and a second entry
   host.setStatus(new Map([
-    ['s1', row({ completionUnread: true })],
     ['s2', row({ completionUnread: true })],
     ['s3', row({ pendingInteraction: { key: 'k3', kind: 'question' } })],
   ]));
   host.notifyStatus();
-  assert(now === 2, 'a background wait adds one, got ' + now);
+  assert(now === 2, 'the wait adds its own entry, got ' + now);
 
-  // 4) a muted row is one the user asked not to hear about
+  // 4) the conversation left open is not special: its completion arrives by the
+  //    running edge and counts like any other notification
+  await faceDone('s1');
+  assert(now === 3, 'a notification about the open conversation still counts, got ' + now);
+
+  // 5) muting a session takes its entries off the icon, unmuting brings them back
   win.__dshNotifyMe.setConfig({ mutedSessions: ['s2'] });
-  assert(now === 1, 'muting a session drops it from the badge, got ' + now);
+  assert(now === 2, 'muting drops that session\'s entries, got ' + now);
   win.__dshNotifyMe.setConfig({ mutedSessions: [] });
-  assert(now === 2, 'unmuting brings it back, got ' + now);
+  assert(now === 3, 'unmuting restores them, got ' + now);
 
-  // 5) both switches clear the icon immediately, without waiting for a host update
+  // 6) both switches clear the icon immediately, without waiting for an update
   win.__dshNotifyMe.setConfig({ dockBadge: false });
   assert(now === 0, 'the switch clears the badge, got ' + now);
   win.__dshNotifyMe.setConfig({ dockBadge: true });
-  assert(now === 2, 'turning it back on restores the count, got ' + now);
+  assert(now === 3, 'turning it back on restores the count, got ' + now);
   win.__dshNotifyMe.setConfig({ enabled: false });
-  assert(now === 0, 'the master switch clears the badge too, got ' + now);
+  assert(now === 0, 'the master switch clears it too, got ' + now);
   win.__dshNotifyMe.setConfig({ enabled: true });
+  assert(now === 3, 'and restores it again, got ' + now);
 
-  // 6) the count goes away when the host says everything was read
-  host.setStatus(new Map([['s1', row()]]));
-  host.notifyStatus();
-  assert(now === 0, 'reading everything clears the badge, got ' + now);
-  assert(writes.length > 0, 'the badge surface was actually driven');
-
-  // 6b) an alert raised while away badges the conversation left open: the host
-  //     never flags that one unread, but the user did get the toast
-  doc.hidden = true; doc.visibilityState = 'hidden';
-  host.setStatus(new Map([['s1', row({ running: true })]]));
-  host.notifyStatus();
-  host.setFace({ sessionId: 's1', running: true, pending: [], nodes: [], partial: null });
-  host.notifyFace();
-  // The completion edge is ignored within 300 ms of an attention alert (same
-  // tick dedupe), and this test drives several alerts in a row.
-  await sleep(400);
-  events.length = 0;
-  host.setFace({ sessionId: 's1', running: false, nodes: [
-    { kind: 'user', seq: 1, content: [] },
-    { kind: 'assistant', seq: 2, blocks: [{ kind: 'text', text: '跑完了' }] },
-  ] });
-  host.notifyFace();
-  assert(events.filter((e) => e.kind === 'done').length === 1, 'the away completion still alerts');
-  assert(now === 1, 'the away alert badges the open conversation, got ' + now);
-
-  // 6c) coming back to the page retires it, like the toast being withdrawn
+  // 7) coming back to the page retires everything, like the toasts being withdrawn
   doc.hidden = false; doc.visibilityState = 'visible';
   b.fireVisibility();
-  assert(now === 0, 'returning to the page clears the away mark, got ' + now);
+  assert(now === 0, 'returning to the page clears the count, got ' + now);
 
-  // 6d) the manual test writes a number the sessions do not explain, and a
-  //     host update must not wipe it while the user is looking at the Dock
+  // 8) opening a conversation acknowledges the notifications it owned
+  doc.hidden = true; doc.visibilityState = 'hidden';
+  host.setStatus(new Map([['s2', row({ completionUnread: false })]]));
+  host.notifyStatus();
+  await sleep(400);
+  host.setStatus(new Map([['s2', row({ completionUnread: true })]]));
+  host.notifyStatus();
+  assert(now === 1, 'a new completion while away counts again, got ' + now);
+  host.setList({
+    ids: ['s1', 's2', 's3'],
+    byId: {
+      s1: { displayTitle: '当前会话', retainedBy: {} },
+      s2: { displayTitle: '后台任务', retainedBy: { mainView: 1 } },
+      s3: { displayTitle: '另一个任务', retainedBy: {} },
+    },
+    phase: 'ready',
+  });
+  host.notifyList();
+  assert(now === 0, 'opening the conversation acknowledges it, got ' + now);
+
+  // 9) answering a wait removes only that wait's entry; a completion in another
+  //    conversation is a separate notification and stays
+  host.setStatus(new Map([
+    ['s1', row({ completionUnread: true })],
+    ['s3', row({ pendingInteraction: { key: 'k4', kind: 'question' } })],
+  ]));
+  host.notifyStatus();
+  assert(now === 2, 'the completion and the new wait are two entries, got ' + now);
+  host.setStatus(new Map([['s1', row({ completionUnread: true })]]));
+  host.notifyStatus();
+  assert(now === 1, 'answering the wait removes only its entry, got ' + now);
+
+  // 10) the manual test writes a number the sessions do not explain, and a host
+  //     update must not wipe it while the user is looking at the Dock
   const verdict = win.__dshNotifyMe.testBadge(2);
   assert(/^badge set to 2/.test(verdict), 'testBadge reports what it wrote, got ' + verdict);
   assert(now === 2, 'the test writes the badge immediately, got ' + now);
-  host.setStatus(new Map([['s2', row({ completionUnread: true })]]));
+  host.setStatus(new Map([['s3', row({ completionUnread: true })]]));
   host.notifyStatus();
   assert(now === 2, 'a host update leaves the test value alone, got ' + now);
   assert(win.__dshNotifyMe.debug().dockBadgeTesting === true, 'debug() says the test owns the icon');
 
-  // 7) an environment without the Badging API stays silent instead of throwing
+  // 11) an environment without the Badging API stays silent instead of throwing
   const plain = bootBundle();
   const host2 = buildHost({ withSessionStatus: true });
   plain.mod.apply(host2.ctx);
@@ -5129,7 +5155,8 @@ async function dockBadgeChannel() {
   assert(/^unsupported/.test(plain.win.__dshNotifyMe.testBadge(3)),
     'the manual test reports the missing API instead of throwing');
 
-  console.log('dock badge OK: unread + waits counted per session, current/muted rows excluded, switches and read-state clear it, unsupported pages inert');
+  assert(writes.length > 0, 'the badge surface was actually driven');
+  console.log('dock badge OK: one entry per delivered notification, muted rows and switches filter it, returning or opening a conversation retires it, unsupported pages inert');
 }
 
 (async () => {
