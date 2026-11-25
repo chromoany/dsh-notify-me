@@ -50,7 +50,7 @@ DSH Web / Desktop 的通知插件，讓你敢不開完整存取，也不必一�
 
 > **macOS 桌面端（DSH Desktop）** 的系統通知由宿主拉起的小助手 `DSH Notify.app` 發出，需先執行一次 `bash macos/build.sh` 並在系統設定裡允許它發通知（見 [macOS 桌面端怎麼發系統通知](#macos-桌面端怎麼發系統通知)）。
 
-> 頁面或桌面應用需保持執行（後台 / 最小化可以）；系統通知需要通知權限。核准按鈕在 Web 與 Windows 11 桌面端可用，macOS 桌面端、Windows 10 與沒有 Service Worker 的頁面點通知回對話裡裁決（見[提醒渠道](#提醒渠道)）。開啟宿主側兜底後，頁面關閉仍能收到外部推送——本地通知與核准按鈕仍要頁面在。
+> 頁面或桌面應用需保持執行（後台 / 最小化可以）；系統通知需要通知權限。核准按鈕在 Web 與 Windows 桌面端（Windows 11 / 10）可用，macOS 桌面端與沒有 Service Worker 的頁面點通知回對話裡裁決（見[提醒渠道](#提醒渠道)）。開啟宿主側兜底後，頁面關閉仍能收到外部推送——本地通知與核准按鈕仍要頁面在。
 
 ## 安裝
 
@@ -79,7 +79,7 @@ dsh plugin --profile web add dsh-notify-me
 2. 開啟 **設定 → 通知提醒**，確認出現該區段及底部插件版本號，保持「啟用提醒」「提示音」開啟。
 3. 點選設定頁的「測試『回覆完成』」按鈕：應出現一條測試通知，並按目前音效設定播放聲音。這個本地測試不會轉發到外部通知端點，也不受「視窗在前台時也提醒」開關限制。
 
-Web 使用者可再測核准按鈕，通知上會帶「同意 / 拒絕」。Windows 11 桌面端由宿主發原生 Toast，同樣帶按鈕（Windows 10 不發出帶按鈕的原生通知，見[下文](#windows-桌面端怎麼發出帶按鈕的通知)）；macOS 桌面端只發普通通知（渠道差異見[提醒渠道](#提醒渠道)）。
+Web 使用者可再測核准按鈕，通知上會帶「同意 / 拒絕」。Windows 桌面端由宿主發原生 Toast，同樣帶按鈕——Windows 11 走協議派發，Windows 10 由掛在 Toast 上的 COM 啟用器接住點選（見[下文](#windows-桌面端怎麼發出帶按鈕的通知)）；macOS 桌面端只發普通通知（渠道差異見[提醒渠道](#提醒渠道)）。
 
 <details>
 <summary>控制台驗證（可選）</summary>
@@ -113,7 +113,7 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 | 🔔 需要你操作 | 頁面可見也提醒；目前對話只留標題標記 |
 | ✅ 回覆完成 | 頁面隱藏 / 後台時提醒（可選「僅目前對話靜默」或「總是提醒」） |
 
-**需要你操作**包括核准請求、方案待確認（plan review）和提問（`ask_user_question`）。帶按鈕的快速裁決在 Web 與 Windows 11 桌面端可用（Windows 由宿主發原生 Toast），macOS 桌面端與沒有 Service Worker 的頁面點通知回到對話裡裁決（見[已知限制](#已知限制)）。
+**需要你操作**包括核准請求、方案待確認（plan review）和提問（`ask_user_question`）。帶按鈕的快速裁決在 Web 與 Windows 桌面端可用（Windows 由宿主發原生 Toast），macOS 桌面端與沒有 Service Worker 的頁面點通知回到對話裡裁決（見[已知限制](#已知限制)）。
 
 **回覆完成**也覆蓋後台對話；完成但還沒看時，標題帶 `✅ 回覆完成 ·` 標記，開啟對應對話即撤。標題標記不受提醒策略限制。
 
@@ -129,7 +129,7 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 
 - **啟用提醒** 總開關：關閉後不彈通知、不響提示音，也不改分頁標題；
 - **提示音 / 音量**：開關直接切；音量滑桿收在該行裡，點一下標題（▸ 變成 ▾）展開。具體播什麼由「進階設定 → 音效來源」決定；
-- **核准通知上直接裁決**（預設開）：核准帶「同意 / 拒絕」，點一下即完成裁決，不用切回頁面。Web 走帶按鈕的系統通知；Windows 11 桌面端由宿主發原生 Toast，按鈕是真的原生按鈕；Windows 10 的系統通知派發不了按鈕點選，核准仍在頁面或浮層裡裁決；macOS 桌面端 `dsh-app://` 註冊不了 Service Worker、原生助手也不帶按鈕，點通知回到對話裡裁決。設定頁「試一試」下面那行會如實說明目前環境能不能給按鈕。
+- **核准通知上直接裁決**（預設開）：核准帶「同意 / 拒絕」，點一下即完成裁決，不用切回頁面。Web 走帶按鈕的系統通知；Windows 桌面端由宿主發原生 Toast，按鈕是真的原生按鈕（Windows 11 走協議派發，Windows 10 走 COM 啟用器）；macOS 桌面端 `dsh-app://` 註冊不了 Service Worker、原生助手也不帶按鈕，點通知回到對話裡裁決。設定頁「試一試」下面那行會如實說明目前環境能不能給按鈕。
 
 ### 什麼時候提醒
 
@@ -150,7 +150,7 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 - **「目前對話不彈通知」何時補發**：視窗轉到後台或閒置超時後照常提醒；若你已處理掉就作廢。
 - **「回覆完成」三檔**：「僅後台」＝不在看頁面才提醒；「僅目前對話靜默」＝螢幕上那條靜默、別的對話照常提醒，多開對話時有用；「總是提醒」＝從不靜默。舊設定裡的「視窗在前台時也提醒『回覆完成』」開關自動遷移到這一項。
 - **Goal 還在跑的時候不報「回覆完成」**：連續 Goal 的每一輪在宿主看來都是普通的一輪結束，但它只是中間步驟，下一輪馬上接著跑。這類輪次現在不提醒，等 Goal 真的停下（完成、暫停、阻塞）才報最後一條；取不到 Goal 狀態時（更老的宿主）照舊提醒。
-- **「離開時保留」**：你人在頁面前時，普通通知幾秒後自己收；人不在時收到的那條留在通知中心等你回來。回到頁面（點工作列、Alt+Tab、點通知、還原最小化的視窗都算）就立刻收起，三種設定都不影響這一條——不看通知中心，也不會被遺留通知擋著。**開啟「回到頁面也保留提醒」後，回到頁面這一條也不再收起**，通知留到你點掉或點「關閉」，系統通知樣式設成「持續」時會一直掛在螢幕上。帶「同意 / 拒絕」的通知不設自動撤回，留到你點按鈕、回頁面把請求答掉、或被新請求頂替為止（僅 Web 端的 Service Worker 通知如此）；macOS 桌面端畫不出按鈕的核准通知按 12 秒收，Windows 11 桌面端帶按鈕的原生核准 Toast 則不再自動收——它用 `scenario="reminder"` 送出，Windows 不會幾秒後把它折進操作中心，一直留到你作答、或回到頁面時由 `withdrawToasts()` 收（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)）。宿主發出的原生通知（Windows 原生 Toast、macOS 通知中心）同樣歸這套記賬管：人不在時同樣不撤，回到頁面同樣收起（該開關開啟時也保留），「總是關閉 / 從不關閉」也管得到它們。
+- **「離開時保留」**：你人在頁面前時，普通通知幾秒後自己收；人不在時收到的那條留在通知中心等你回來。回到頁面（點工作列、Alt+Tab、點通知、還原最小化的視窗都算）就立刻收起，三種設定都不影響這一條——不看通知中心，也不會被遺留通知擋著。**開啟「回到頁面也保留提醒」後，回到頁面這一條也不再收起**，通知留到你點掉或點「關閉」，系統通知樣式設成「持續」時會一直掛在螢幕上。帶「同意 / 拒絕」的通知不設自動撤回，留到你點按鈕、回頁面把請求答掉、或被新請求頂替為止（僅 Web 端的 Service Worker 通知如此）；macOS 桌面端畫不出按鈕的核准通知按 12 秒收，Windows 桌面端帶按鈕的原生核准 Toast 則不再自動收——它用 `scenario="reminder"` 送出，Windows 不會幾秒後把它折進操作中心，一直留到你作答、或回到頁面時由 `withdrawToasts()` 收（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)）。宿主發出的原生通知（Windows 原生 Toast、macOS 通知中心）同樣歸這套記賬管：人不在時同樣不撤，回到頁面同樣收起（該開關開啟時也保留），「總是關閉 / 從不關閉」也管得到它們。
 - **點選通知的兜底**：桌面端抬不起來時只切對話，原因記在 `debug().raiseLast` 裡；關掉這一項後點通知不做任何事。
 
 </details>
@@ -213,7 +213,7 @@ dsh-notify-me 把「監督」和「守在螢幕前」解耦：只在真的出現
 
 #### 執行環境與診斷
 
-在「進階設定」最後一塊。預設自動識別目前是 Web 端還是桌面端（DSH Desktop，`dsh-app://`）；識別不準時可手動指定——Windows 桌面點通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深鏈（見[桌面端怎麼抬窗的](#桌面端怎麼抬窗的)）；抬窗通道本身不帶快速裁決按鈕——按鈕來自 Web 的 Service Worker 橋，或 Windows 11 桌面端的宿主原生 Toast。手動覆蓋與自動識別不一致時，設定頁會明示檢測結果。
+在「進階設定」最後一塊。預設自動識別目前是 Web 端還是桌面端（DSH Desktop，`dsh-app://`）；識別不準時可手動指定——Windows 桌面點通知走宿主路由做原生抬窗、macOS / Linux 走 `dsh://open` 深鏈（見[桌面端怎麼抬窗的](#桌面端怎麼抬窗的)）；抬窗通道本身不帶快速裁決按鈕——按鈕來自 Web 的 Service Worker 橋，或 Windows 桌面端的宿主原生 Toast。手動覆蓋與自動識別不一致時，設定頁會明示檢測結果。
 
 <details>
 <summary>通知語言、桌面端抬窗與恢復預設</summary>
@@ -344,7 +344,7 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 
 | 渠道 | 表現 |
 | --- | --- |
-| 系統通知 | 經瀏覽器進 Windows / macOS / Linux 的系統通知中心，點選回到對應對話；macOS 桌面端由宿主拉起 `DSH Notify.app` 發（見 [macOS 桌面端怎麼發系統通知](#macos-桌面端怎麼發系統通知)）；Windows 11 桌面端的核准提醒由宿主發原生 Toast，帶「同意 / 拒絕」按鈕（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)）；Web 端可帶「同意 / 拒絕」 |
+| 系統通知 | 經瀏覽器進 Windows / macOS / Linux 的系統通知中心，點選回到對應對話；macOS 桌面端由宿主拉起 `DSH Notify.app` 發（見 [macOS 桌面端怎麼發系統通知](#macos-桌面端怎麼發系統通知)）；Windows 桌面端的核准提醒由宿主發原生 Toast，帶「同意 / 拒絕」按鈕（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)）；Web 端可帶「同意 / 拒絕」 |
 | 手機瀏覽器 | Android Chrome 不能 `new Notification()`（`Illegal constructor`），插件改用頁面自帶的 Service Worker 發通知，點一下回對應對話；`debug().bridge` 與 `debug().lastToastReject` 會說明是走了 Worker 還是被拒 |
 | 提示音 | 預設 WebAudio 合成音，「需要你」與「完成」音型不同；可換自定義音訊，或交給系統通知音 |
 | 分頁標題 | `🔔 需要你 · …` / `✅ 回覆完成 · …`（隨通知語言切換），開啟對應對話即消失；兩種標記可同時出現 |
@@ -382,12 +382,12 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 
 ### 快速裁決怎麼走通的
 
-Web 端帶「同意 / 拒絕」按鈕的通知只能由 Service Worker 彈出（往 `new Notification()` 裡傳 `actions` 會直接拋 `TypeError`），所以 bundle 的同一份檔案再註冊成一個只幹轉信的 worker，把「點了哪個按鈕」帶回頁面；Windows 11 桌面端改由宿主發原生 Toast，按鈕同樣是「同意 / 拒絕」。**裁決仍在頁面裡發生**，調的是核准面板裡「允許一次 / 拒絕」用的同一個 `PendingApproval.answer('allowed-once' | 'rejected')`——「同意」就是「允許一次」，不多放行任何東西。
+Web 端帶「同意 / 拒絕」按鈕的通知只能由 Service Worker 彈出（往 `new Notification()` 裡傳 `actions` 會直接拋 `TypeError`），所以 bundle 的同一份檔案再註冊成一個只幹轉信的 worker，把「點了哪個按鈕」帶回頁面；Windows 桌面端改由宿主發原生 Toast，按鈕同樣是「同意 / 拒絕」。**裁決仍在頁面裡發生**，調的是核准面板裡「允許一次 / 拒絕」用的同一個 `PendingApproval.answer('allowed-once' | 'rejected')`——「同意」就是「允許一次」，不多放行任何東西。
 
 <details>
 <summary>展開按鈕通知的記賬與調視窗</summary>
 
-每條按鈕通知按互動 key 記賬，一次只認領一條等待；請求被頁面裡答掉、或被新請求頂替之後，殘留通知上的按鈕再點也不會誤裁，只是安靜地關掉。Web 端帶按鈕的通知不設自動撤回，等你點按鈕或把請求答掉才消失；普通通知 5 秒自收，macOS 桌面端沒有按鈕的核准通知 12 秒自收；Windows 11 桌面端帶按鈕的原生核准 Toast 不掛計時器，用 `scenario="reminder"` 送出後一直留到你作答或回到頁面（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)）。「通知自動消失」選「從不關閉」時，有計時器的兩類都不因到點而收；三種設定都只管定時器那一次關閉，你回到頁面時殘留的通知一律收起（「回到頁面也保留提醒」開啟時不收起）。沒來得及點就回頁面裡裁決，對話裡的核准一直等著你。
+每條按鈕通知按互動 key 記賬，一次只認領一條等待；請求被頁面裡答掉、或被新請求頂替之後，殘留通知上的按鈕再點也不會誤裁，只是安靜地關掉。Web 端帶按鈕的通知不設自動撤回，等你點按鈕或把請求答掉才消失；普通通知 5 秒自收，macOS 桌面端沒有按鈕的核准通知 12 秒自收；Windows 桌面端帶按鈕的原生核准 Toast 不掛計時器，用 `scenario="reminder"` 送出後一直留到你作答或回到頁面（[#53](https://github.com/chromoany/dsh-notify-me/issues/53)）。「通知自動消失」選「從不關閉」時，有計時器的兩類都不因到點而收；三種設定都只管定時器那一次關閉，你回到頁面時殘留的通知一律收起（「回到頁面也保留提醒」開啟時不收起）。沒來得及點就回頁面裡裁決，對話裡的核准一直等著你。
 
 點正文的「調視窗 + 切對話」也歸 worker 這半側排程：`client.focus()` 只調起一個視窗（優先目前可見的），也只讓那個視窗切對話——多個 DSH 分頁不會互相搶焦點或一起亂切。
 
@@ -434,15 +434,16 @@ Windows 的啟用順序是實的：已經在前台就什麼都不做（最常見
 
 ### Windows 桌面端怎麼發出帶按鈕的通知
 
-頁面裡的 `new Notification()` 在 Windows 桌面端不會被拒，但它帶不了按鈕：Electron 的渲染行程收到通知請求後只把 title / body / tag / icon / silent 抄給平臺，`actions` 陣列整個丟掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 頁面又註冊不了 Service Worker，而按鈕通知只有 Service Worker 才畫得出來。於是插件把核准提醒改由宿主發原生 Toast。**Windows 10 是例外**：那邊的系統通知派發不了協議啟用，1.21.3 起不再走這條通道，核准提醒留在頁面或浮層裡（原因見下）。
+頁面裡的 `new Notification()` 在 Windows 桌面端不會被拒，但它帶不了按鈕：Electron 的渲染行程收到通知請求後只把 title / body / tag / icon / silent 抄給平臺，`actions` 陣列整個丟掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 頁面又註冊不了 Service Worker，而按鈕通知只有 Service Worker 才畫得出來。於是插件把核准提醒改由宿主發原生 Toast。Windows 11 與 Windows 10 走兩條不同的啟用路線：Windows 11 在 AUMID 不掛 COM 啟用器時，系統仍會照 XML 派發協議點選；Windows 10 不派發，必須把 AUMID 指向真實的 COM 啟用器、按鈕改用後台啟用（[#58](https://github.com/chromoany/dsh-notify-me/issues/58)）。
 
 - **誰去彈**：宿主半（`lib/index.js`）註冊 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知發到插件自己的 AUMID `dsh-notify-me` 下，走同一套系統通知設定。**不能借 DSH 的 AUMID**：那個 AUMID 掛著 COM Toast 啟用器，Windows 會把每次點選都交給 DSH 本體，Toast 上的協議按鈕永遠等不到派發（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
 - **按鈕怎麼裁決**：Toast 的兩個按鈕是 `activationType="protocol"`，分別指向 `dsh-notify-me://approve?token=…` / reject。點按鈕後系統調起註冊在這個協議下的處理器（一個只把點到的 URL 寫進動作目錄的 VBS，不啟動任何程式——[#54](https://github.com/chromoany/dsh-notify-me/issues/54)），宿主在頁面下一次探針時把動作交回頁面；頁面仍走核准面板裡同一個 `decidePending()`——「同意」就是「允許一次」，不多放行任何東西。這條鏈路要求 Toast 掛在自己的 AUMID 下，否則點選會被別的應用的啟用器截走。
 - **點正文也會抬窗**：正文點選統一走 `dsh-notify-me://open`（有對話時帶 `?session=`，沒有對話也保留為一次純抬窗），不再把 `dsh://open` 當 Windows 抬窗手段——那條深鏈拉不起最小化視窗，更拉不起 `SW_HIDE` 到系統匣的視窗。等待核准期間頁面每 1.5 秒取一次動作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切對話；系統匣隱藏的視窗由 `focus-window.ps1` 先 `SW_SHOW` 再啟用（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
+- **Windows 10 的點選走 COM 啟用器**：AUMID 的 `CustomActivator` 指向 `{F0C6A9D2-4B7E-4D1A-9C53-8E2B6F7A0D41}`，這個 CLSID 的 `LocalServer32` 是 `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File lib/win-toast-activator.ps1 -ActionDir <動作目錄>`，按鈕改成 `activationType="background"`。點下去時系統按需拉起這支指令碼（冷啟動幾十毫秒，不需要開機常駐，10 分鐘沒有新點選就自己結束），指令碼用 `CoRegisterClassObject(REGCLS_MULTIPLEUSE)` 註冊 `INotificationActivationCallback`（IID `53E31837-6600-4A81-9395-75CFFE746F94`，系統自帶封送，不用自建 proxy/stub），把 `dsh-notify-me://<參數>` 寫進同一個動作目錄；之後的認領、token 校驗與 `decidePending()` 跟 Windows 11 共用一套。回呼的兩個字串必須按 `LPWStr` 封送——.NET 預設按 BSTR 解釋，會讓 `appUserModelId` 與 `invokedArgs` 都變成空字串：點選明明到了伺服器，核准參數卻是空的，這是整條鏈路裡最容易卡住的一步。
 - **中文使用者名等非 ASCII profile**：處理器指令碼按 UTF-16LE + BOM 寫盤，動作目錄在點選時才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——指令碼正文因此全是 ASCII，不會再被 WSH 按系統 ANSI 內碼表解碼後把路徑弄亂（此前每次點按鈕都彈 `800A004C` 指令碼錯誤，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修復。升級後重啟桌面端即可，第一次發出帶按鈕的 Toast 時會重寫這份指令碼，不用手動清舊檔案。
-- **註冊**：第一次發 Toast 前寫 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬頭，`CustomActivator` = 一個 CLSID），CLSID 只建空的存根、不註冊 `LocalServer32`——未打包應用不實現 COM 啟用器時，Windows 才會按 XML 把 `activationType="protocol"` 的點選派發出去；隨後按 tag 記賬到 `ToastNotificationManager.History`。兩者都是目前使用者級，不需要管理員權限。token 單次、3 分鐘有效；動作檔案被取走後即刪。
-- **Windows 10 沒有按鈕**：Windows 10（build < 22000）缺 Windows 11 那條「沒有 COM 啟用器也照 XML 派發協議啟用」的實現——修復只落在 18967 之後的預覽分支，沒進 19041 / 19045 的服務分支（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)）。19045 上實測：自帶 AUMID + 空存根 + 開始選單快捷方式都補齊，點按鈕、點正文仍然只把通知收掉（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）。所以 1.21.3 起在 build < 22000 上不發原生 Toast：路由回 `enabled: false`、`reason: "windows-10"`，核准提醒回到頁面自己的通知與浮層——寧可沒有按鈕，也不給一個按下去沒反應的。
-- **不彈的場合**：非 Windows 桌面宿主、`winToast.enabled: false`、`powershell.exe` 不存在（`reason` 分別是 `disabled` / `helper-missing`），或 Windows 10（見上一條），路由報 `enabled: false`（`501`），頁面繼續用自己那條不帶按鈕的通知，行為與改動前一致。
+- **註冊**：第一次發 Toast 前寫 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬頭，`CustomActivator` = 啟用器 CLSID）。Windows 11 只建 CLSID 的空存根、不寫 `LocalServer32`——未打包應用不實現 COM 啟用器時，Windows 才會按 XML 把 `activationType="protocol"` 的點選派發出去；Windows 10 則把 `LocalServer32` 寫成上面那條啟用器命令列。隨後按 tag 記賬到 `ToastNotificationManager.History`。兩者都是目前使用者級，不需要管理員權限。token 單次、3 分鐘有效；動作檔案被取走後即刪。
+- **為什麼 Windows 10 要單獨一條路**：Windows 10（build < 22000）缺 Windows 11 那條「沒有 COM 啟用器也照 XML 派發協議啟用」的實現——修復只落在 18967 之後的預覽分支，沒進 19041 / 19045 的服務分支（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)）。19045 上實測：自帶 AUMID + 空存根 + 開始選單快捷方式都補齊，點按鈕、點正文仍然只把通知收掉（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）。1.21.3 到 1.25.0 索性在 build < 22000 上不發 Toast；現在改成裝一個真實 COM 啟用器，點下去就進 `INotificationActivationCallback`，不依賴系統對未打包應用的寬容。
+- **不彈的場合**：非 Windows 桌面宿主、`winToast.enabled: false`、`powershell.exe` 不存在、或 Windows 10 上啟用器指令碼缺失（`reason` 分別是 `disabled` / `helper-missing`），路由報 `enabled: false`（`501`），頁面繼續用自己那條不帶按鈕的通知，行為與改動前一致。
 - **關掉它**：在 profile 的 patch 層給 `notify-me` 加 `winToast: { enabled: false }`，核准提醒回到頁面自己的通知（無按鈕）。
 - **自動消失與收起**：原生 Toast 歸 `trackToast()` 記賬，普通通知 5 秒（「總是關閉 / 從不關閉」照舊），帶按鈕的核准不掛計時器——它按 `scenario="reminder"` 送出，等 `decidePending()` 結算或回到頁面（`keepOnReturn` 關閉時）由 `withdrawToasts()` 收起，Windows 不會幾秒後把它折進操作中心。
 
@@ -459,12 +460,12 @@ Windows 的啟用順序是實的：已經在前台就什麼都不做（最常見
 
 **平臺差異**
 
-- 快速裁決按鈕要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 這類區域網路位址不行；**桌面端（`dsh-app://`）已實測無法註冊 Service Worker**（宿主未開放 `allowServiceWorkers` 特權）。因此 Windows 11 桌面端的核准按鈕改由宿主發原生 Toast（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)），macOS 桌面端仍無按鈕、點通知回對話裁決。宿主不渲染通知按鈕時，`debug()` 的 `bridge` 欄位會說明原因，其餘功能不受影響。
-- **Windows 10 沒有原生核准按鈕**：Windows 10（build < 22000）的系統通知不派發 `activationType="protocol"` 的點選，插件在那邊不發出帶按鈕的原生 Toast（路由 `reason` 報 `windows-10`），核准仍在頁面或浮層裡裁決（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.3 起）。
+- 快速裁決按鈕要 Service Worker：`http://127.0.0.1`、`https` 可用，`http://192.168.x.x` 這類區域網路位址不行；**桌面端（`dsh-app://`）已實測無法註冊 Service Worker**（宿主未開放 `allowServiceWorkers` 特權）。因此 Windows 桌面端的核准按鈕改由宿主發原生 Toast（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)），macOS 桌面端仍無按鈕、點通知回對話裁決。宿主不渲染通知按鈕時，`debug()` 的 `bridge` 欄位會說明原因，其餘功能不受影響。
+- **Windows 10 / 11 各走一條啟用路線**：Windows 11 靠協議派發，Windows 10 靠 COM 啟用器（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)）。兩者最終落到同一個動作目錄、同一套 token 與 `decidePending()`，`debug()` 的 `winNative` 會說明目前走哪條。
 - Windows 的系統通知標籤上限 64 字元，而 Chromium 交給平臺的是 `n#<origin>#<tag>` 整串——桌面頁面 `dsh-app://app` 一項就佔去 16 個。插件按目前 `location.origin` 算剩餘預算，超長時保留可讀字首、尾部換成短雜湊，所以 `debug()` 裡看到的標籤可能被截短；平臺仍然拒發時，原文記在 `debug().lastToastReject`，設定頁的測試按鈕也會如實報出來，不再「提示已傳送但什麼都沒彈」。
 - 桌面端（Windows）點通知後視窗仍可能抬不起來：目標視窗屬於更高完整性級別（提權 / UAC）、在另一個虛擬桌面、或前台被別的行程反覆搶回去時，宿主腳本回 `FOCUSED=0`、路由回 `202`，對話照常切（詳見[桌面端怎麼抬窗的](#桌面端怎麼抬窗的)）。`SW_HIDE` 到系統匣的隱藏視窗 1.21.0 起先 `SW_SHOW` 再抬，不再屬於這一條（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - 桌面端（macOS / Linux）點通知依賴 `dsh://open` 深鏈：系統未註冊 `x-scheme-handler/dsh`、或外殼沒有 `second-instance` / `open-url` 處理時抬不起來；Linux 上已實測正常，macOS 未實測。
-- macOS 桌面端：頁面自帶的 `new Notification()` 進不了通知中心（`Notification.permission` 報 `granted` 卻什麼也不彈），所以插件改由宿主拉起助手發通知，需要先 `bash macos/build.sh`（見 [macOS 桌面端怎麼發系統通知](#macos-桌面端怎麼發系統通知)）。助手未編譯時退回原行為，即桌面端彈不出系統通知。核准按鈕在 macOS 桌面宿主上仍然不渲染；Windows 11 桌面端改由宿主發原生 Toast，按鈕可用（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)）。
+- macOS 桌面端：頁面自帶的 `new Notification()` 進不了通知中心（`Notification.permission` 報 `granted` 卻什麼也不彈），所以插件改由宿主拉起助手發通知，需要先 `bash macos/build.sh`（見 [macOS 桌面端怎麼發系統通知](#macos-桌面端怎麼發系統通知)）。助手未編譯時退回原行為，即桌面端彈不出系統通知。核准按鈕在 macOS 桌面宿主上仍然不渲染；Windows 桌面端改由宿主發原生 Toast，按鈕可用（見 [Windows 桌面端怎麼發出帶按鈕的通知](#windows-桌面端怎麼發出帶按鈕的通知)）。
 - Android Chrome 只允許安全上下文註冊 Service Worker（`https` 或 `http://localhost`）；用 `http://192.168.x.x` 開啟時通知發不出，只剩提示音與標題標記，`debug().bridge` / `debug().lastToastReject` 會寫明原因。關掉快速裁決不影響這條退路——普通通知與核准通知都會自己註冊那個 Service Worker。
 - 「繁體中文」這一檔是插件自帶的（宿主語言包只有簡體中文與 English）：它只管本插件的通知文字、標題標記與設定介面，宿主其餘介面仍按宿主自己的語言顯示。`auto` 下 `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 這類標籤都按繁體處理。
 
@@ -506,7 +507,7 @@ npm pack --dry-run               # 預覽釋出包
 
 語言四檔與 Android 退路各自有獨立用例：`smoke/smoke-test.cjs` 的 `languageModes()` 走 `auto` 的兩條識別來源（宿主 locale 與 `document.documentElement.lang`）、`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都算繁體、`zh-CN` 仍是簡體、無資訊時回落簡體、釘死某一檔後通知與設定頁都跟著變、三份字典鍵集完全一致；`androidWorkerFallback()` 三條：Android UA 下 `new Notification` 一次都不碰、只註冊一個 Service Worker、通知引數（tag / renotify / silent / data）與「只註冊一次」；桌面 UA 下建構子拋 `Illegal constructor` 時先照常呼叫、再回落 Worker 並記住失敗；Worker 也拒收時錯誤進 `debug().lastToastReject` 而不是被吞。`smoke/page-bridge-test.mjs` 另釘住心跳帶 `zh-TW` 被接受、未知語言被忽略、宿主兜底文案與 `pickLanguage` 的優先順序。
 
-`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面門控、`GET` 探針、`405` / `403` / `501` / `400` 的拒絕、核准 payload 與 base64 傳遞、首次發 Toast 前的六條註冊命令（`HKCU\Software\Classes\dsh-notify-me` 的三條協議鍵、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 與 `CustomActivator`、以及只建不寫 `LocalServer32` 的空 `CLSID\{…}` 存根）、Windows 10 門控下既不寫登錄檔也不發 Toast、approve / reject / open 動作單次認領、token 過期與 `{remove}` 撤回。它用假的 `spawn` 驅動 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外斷言處理器指令碼是 UTF-16LE + BOM、正文純 ASCII、含 `ExpandEnvironmentStrings` 表示式、不烘入 profile 路徑，且正文點選只發 `dsh-notify-me://open`（不得再出現 `dsh://open`）；`dsh-notify-me://open` 不帶 session 時仍解析為一次純抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
+`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面門控、`GET` 探針、`405` / `403` / `501` / `400` 的拒絕、核准 payload 與 base64 傳遞、首次發 Toast 前的七條註冊命令（`HKCU\Software\Classes\dsh-notify-me` 的三條協議鍵、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 與 `CustomActivator`、以及 `CLSID\{…}` 下指向 `lib/win-toast-activator.ps1` 的 `LocalServer32`）、payload 裡的 `comActivation`、啟用器回呼的 `LPWStr` 封送註解、approve / reject / open 動作單次認領、token 過期與 `{remove}` 撤回。它用假的 `spawn` 驅動 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外斷言處理器指令碼是 UTF-16LE + BOM、正文純 ASCII、含 `ExpandEnvironmentStrings` 表示式、不烘入 profile 路徑，且正文點選只發 `dsh-notify-me://open`（不得再出現 `dsh://open`）；`dsh-notify-me://open` 不帶 session 時仍解析為一次純抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
 改到 `lib/focus-window.ps1` 時（僅 Windows），另需手動跑一次：
 
@@ -559,6 +560,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行應是 F
 | <a href="https://github.com/wx233Github"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/wx233Github.png" width="40" height="40" alt="@wx233Github"></a> | [#51](https://github.com/chromoany/dsh-notify-me/issues/51)：Android Chrome 裡 `new Notification()` 拋 Illegal constructor 的報障、重現與改走 Service Worker 的補丁（1.23.0 修復） |
 | <a href="https://github.com/HowardXue7790"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/HowardXue7790.png" width="40" height="40" alt="@HowardXue7790"></a> | [#53](https://github.com/chromoany/dsh-notify-me/issues/53) / [#54](https://github.com/chromoany/dsh-notify-me/issues/54)：核准 Toast 在 Windows 上幾秒就被收走（「從不關閉」同時失效）、點按鈕彈 Microsoft Store 的報障，以及直接指到計時器與 VBS 那一行的定位（1.25.0 修復） |
 | <a href="https://github.com/dsadw"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dsadw.png" width="40" height="40" alt="@dsadw"></a> | [#55](https://github.com/chromoany/dsh-notify-me/issues/55) / [#56](https://github.com/chromoany/dsh-notify-me/pull/56)：工作列 / Dock 未讀角標的訴求與首版實作（1.25.0 收編，改成按對話計數） |
+| <a href="https://github.com/ceh-ylhy"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ceh-ylhy.png" width="40" height="40" alt="@ceh-ylhy"></a> | [#58](https://github.com/chromoany/dsh-notify-me/issues/58)：Windows 10 上原生核准按鈕點不動的第一手實測與改法建議（1.26.0 修復，一併更正 interface IID 與 `LPWStr` 封送兩處） |
 
 署名口徑：本倉庫收編外部 PR 時以維護者提交落地——不沿用原 commit、不掛 Co-authored-by，GitHub 的 contributors 圖只顯示維護者，貢獻者以上面的致謝署名。
 

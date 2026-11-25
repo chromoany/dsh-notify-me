@@ -2,6 +2,24 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.26.0] — 2026-11-25
+
+Windows 10 桌面端的审批按钮重新能点了：不再指望系统「没挂 COM 激活器就照 XML 派发协议点击」，改为装一个真实的 COM 激活器接住点击。1.21.3 起那边干脆不发带按钮的 Toast，这条回退在这次收掉。
+
+### 新增
+
+- **Windows 10 桌面端恢复原生审批按钮**（[#58](https://github.com/chromoany/dsh-notify-me/issues/58)，作者 ceh-ylhy）：Windows 10（build < 22000）缺 Windows 11 那条「AUMID 不挂 COM 激活器也照 XML 派发协议激活」的实现（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939) 只落在 18967 之后的预览分支），1.21.3 起插件在那边的路由直接答 `enabled: false` / `reason: "windows-10"`，审批留在页面与浮层里。现在改成装一个真的 COM 激活器：AUMID 的 `CustomActivator` 指向 `{F0C6A9D2-4B7E-4D1A-9C53-8E2B6F7A0D41}`，该 CLSID 的 `LocalServer32` 写 `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File lib/win-toast-activator.ps1 -ActionDir <动作目录>`，按钮改用 `activationType="background"`。点下去时系统按需拉起脚本（冷启动几十毫秒，不需要开机常驻，10 分钟没有新点击就自己退出），脚本用 `CoRegisterClassObject(REGCLS_MULTIPLEUSE)` 注册 `INotificationActivationCallback`，把 `dsh-notify-me://<参数>` 写进同一个动作目录；后面的认领、token 校验与 `decidePending()` 跟 Windows 11 共用一套，不需要第二份裁决逻辑。不用预编译二进制、不用 midl、不用自建 proxy/stub：系统自带的封送就够。路由的去留也从「build < 22000 一律拒发」改成「两条激活路线」，`reason` 只剩 `disabled` / `helper-missing` 两种。
+
+### 修复
+
+- **#58 正文里那条接口 IID 是错的**：`INotificationActivationCallback` 的正确 IID 是 `53E31837-6600-4A81-9395-75CFFE746F94`，issue 里写的 `53E31837-6600-4A81-9395-75CFF7E24005` 在注册表里根本不存在，照它注册必然跨进程 QI 失败、`Activate()` 永不到达——reporter 那条「必须自建 proxy/stub、必须常驻、会 120 秒超时」的结论就建立在这个错 IID 上。按正确 IID 实测：删掉自建 proxy/stub 注册后点击照样进回调，冷启动 20 毫秒内注册完成。
+- **回调用 .NET 实现时两个字符串要按 `LPWStr` 封送**：不标 `[MarshalAs(UnmanagedType.LPWStr)]` 时 .NET 默认按 BSTR 解释，`appUserModelId` 与 `invokedArgs` 都读成空串——点击明明到了服务器，审批参数却是空的。这是整条链路里最容易卡住的一步，激活器脚本与 smoke 断言都锁住了它。
+
+### 测试
+
+- `smoke/win-toast-test.mjs`：Windows 10 分支从「断言拒绝发送」改成「断言照发」——`enabled: true`、POST 200、payload 带 `comActivation`、七条注册命令（多出指向 `lib/win-toast-activator.ps1` 的 `LocalServer32`）；新增两条断言读激活器脚本，锁住 `LPWStr` 封送注解。
+- 本机 Windows 11 26200 实测全链路：点 Toast 按钮 → 系统冷启动激活器 → `ACTIVATE aumid=… args=…` → 动作目录出现 `dsh-notify-me://approve?token=…`；真实路由（伪造 `osBuild: 19045`）连跑三次，每次都认领到动作并走完 `decidePending()`。
+
 ## [1.25.0] — 2026-11-24
 
 审批等不到回答时通知不再自己消失，点通知按钮不再可能弹「在 Microsoft Store 中查找应用」，任务栏 / Dock 图标开始显示还有几个对话在等你。

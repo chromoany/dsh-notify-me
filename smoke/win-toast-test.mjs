@@ -5,9 +5,10 @@
 // PowerShell helper cannot reasonably run in CI, so spawn/exec are injected:
 // what is pinned here is the route contract (405/403/501/400, GET actions,
 // POST send/remove), the decoded toast payload, the HKCU registrations (the
-// protocol handler, the plugin's own AUMID and its empty activator CLSID), the
-// encoding of the generated VBS handler, and the token rules — single use,
-// bound to one approval key, expiring.
+// protocol handler, the plugin's own AUMID, the empty activator CLSID on
+// Windows 11 and its LocalServer32 on Windows 10), the encoding of the generated
+// VBS handler, and the token rules — single use, bound to one approval key,
+// expiring.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -42,6 +43,10 @@ assert(scenarioBlock.includes('$payload.approveToken') && scenarioBlock.includes
   'only an approval asks for the reminder scenario, got ' + JSON.stringify(scenarioBlock));
 assert(scenarioBlock.includes('<audio loop="false"/>'), 'a reminder that keeps its sound chimes once, not forever');
 assert(toastPs1.includes("'<toast' + $scenario + $launch"), 'the scenario attribute reaches the toast element');
+// Windows 10 has no protocol activation for unpackaged apps: there the buttons
+// and the body activate in the background, into the COM server the AUMID names.
+assert(toastPs1.includes('if ($payload.comActivation) { $activation = "background" }'),
+  'the helper switches the activation type for the Windows 10 COM route');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-notify-me-win-'));
 // mountWinToast derives its directories from %LOCALAPPDATA% on Windows; point
@@ -177,6 +182,7 @@ try {
   assert(payload.approveToken === sentBody.token && payload.rejectToken.length === 32, 'both buttons carry tokens');
   assert(payload.approveText === '同意' && payload.rejectText === '拒绝', 'button labels reach the helper');
   assert(payload.sound === false, 'the sound flag is off unless the cue is system');
+  assert(payload.comActivation === false, 'Windows 11 keeps protocol activation, not COM');
 
   assert(execCalls.length === 6, 'the first toast registers the protocol, the AUMID and the activator stub');
   const regs = execCalls.map((c) => c.args.join(' '));
@@ -296,19 +302,39 @@ try {
     'without an injected AUMID the registration writes the plugin-owned one');
   assert(!plainRegs.some((line) => line.includes('electron.app')), 'the DSH shell AUMID is never registered here');
 
-  // 3i. Windows 10: the route stays mounted (so debug() can say why) but the
-  // helper never claims to be usable — posting would only yield buttons whose
-  // clicks Windows 10 drops (issue #41).
+  // 3i. Windows 10: it has no protocol activation for an unpackaged app, so the
+  // same route registers a real COM server as the AUMID's activator and the
+  // buttons activate in the background. Nothing is refused — the click comes back
+  // through INotificationActivationCallback instead of the protocol handler.
+  // Issue #58 got stuck here because its registration named an IID that exists on
+  // no machine; the interface itself is what the shell calls, not a missing stub.
   const regsBeforeTen = execCalls.length;
+  const spawnedBeforeTen = spawned.length;
   const tenRoutes = mount({}, { osBuild: 19045 });
   assert(tenRoutes.length === 1, 'the route still answers on Windows 10');
   const tenProbe = JSON.parse((await call(tenRoutes[0].handler, 'GET')).body);
-  assert(tenProbe.ok === true && tenProbe.enabled === false && tenProbe.reason === 'windows-10',
-    'a Windows 10 helper reports enabled:false and the reason');
-  const tenPost = await post(tenRoutes[0].handler, { title: 't', approvalKey: 'approval:sess-1:1' });
-  assert(tenPost.status === 501 && JSON.parse(tenPost.body).reason === 'windows-10', 'Windows 10 refuses to post');
-  assert(execCalls.length === regsBeforeTen && spawned.length === plainSpawned,
-    'Windows 10 registers nothing and posts no toast');
+  assert(tenProbe.ok === true && tenProbe.enabled === true && tenProbe.reason === '',
+    'a Windows 10 helper reports enabled:true');
+  const tenPost = await post(tenRoutes[0].handler, { ...APPROVAL, tag: 'tag-10' });
+  assert(tenPost.status === 200 && JSON.parse(tenPost.body).ok === true, 'Windows 10 posts the toast');
+  assert(spawned.length === spawnedBeforeTen + 1, 'Windows 10 spawns the toast helper');
+  const tenPayload = decodePayload(spawned[spawned.length - 1]);
+  assert(tenPayload.comActivation === true, 'the helper is told the click comes back through COM');
+  const tenRegs = execCalls.slice(regsBeforeTen).map((c) => c.args.join(' '));
+  assert(tenRegs.length === 7, 'Windows 10 registers one more key: the local server');
+  assert(tenRegs[6].startsWith('add HKCU\\Software\\Classes\\CLSID\\' + win.ACTIVATOR_CLSID + '\\LocalServer32'),
+    'the activator CLSID gains a LocalServer32 on Windows 10');
+  assert(tenRegs[6].includes('win-toast-activator.ps1'), 'the local server is the activator script');
+  assert(tenRegs[6].includes(actionsDir), 'the local server is pointed at the actions directory');
+  // The callback's strings are LPWStr on the wire. .NET marshals a bare string
+  // as a BSTR by default, so without the annotation the shell's call arrives
+  // with an empty appUserModelId and an empty invokedArgs: the click reaches the
+  // server but the approval key never does.
+  const activatorPs1 = fs.readFileSync(path.join(ROOT, 'lib', 'win-toast-activator.ps1'), 'utf8');
+  assert(activatorPs1.includes('[MarshalAs(UnmanagedType.LPWStr)] string appUserModelId'),
+    'the callback declares the AUMID as LPWStr');
+  assert(activatorPs1.includes('[MarshalAs(UnmanagedType.LPWStr)] string invokedArgs'),
+    'the callback declares the arguments as LPWStr');
 } finally {
   if (realLocalAppData === undefined) delete process.env.LOCALAPPDATA;
   else process.env.LOCALAPPDATA = realLocalAppData;
@@ -318,4 +344,4 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-console.log('win toast route OK: desktop gate, 405/403/501/400, payload, HKCU protocol + app identity, Windows 10 gate, tokens (single-use/TTL), remove');
+console.log('win toast route OK: desktop gate, 405/403/501/400, payload, HKCU protocol + app identity, COM activation on Windows 10, tokens (single-use/TTL), remove');

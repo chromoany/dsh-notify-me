@@ -5,12 +5,13 @@
 #       -Base64 <base64 JSON payload> [-RemoveTag <history tag>]
 #
 # The toast is posted under dsh-notify-me's own AUMID: lib/win-toast.js
-# registers it (a DisplayName plus a stub CustomActivator with no LocalServer32)
-# before the first toast goes out. Borrowing the DSH shell's AUMID instead made
-# Windows route every activation to DSH's COM activator, which silently dropped
-# it — the buttons only dismissed the toast (issue #41). Approval buttons and
-# the body both use protocol activation, so the click comes back through the
-# dsh-notify-me:// handler registered in HKCU (see lib/win-toast.js).
+# registers it (a DisplayName plus a CustomActivator) before the first toast goes
+# out. Borrowing the DSH shell's AUMID instead made Windows route every
+# activation to DSH's COM activator, which silently dropped it — the buttons only
+# dismissed the toast (issue #41). On Windows 11 the CustomActivator names an
+# empty CLSID and clicks come back through the dsh-notify-me:// handler registered
+# in HKCU; on Windows 10 it names a real COM server (lib/win-toast-activator.ps1)
+# and the buttons activate in the background instead.
 
 param(
     [Parameter(Mandatory = $true)][string]$Base64,
@@ -41,11 +42,20 @@ $body = XmlEscape $payload.body
 
 $visual = '<visual><binding template="ToastGeneric"><text>' + $title + '</text><text>' + $body + '</text></binding></visual>'
 
+# How a click comes back depends on the Windows branch (see lib/win-toast.js):
+# Windows 11 dispatches the protocol handler registered for dsh-notify-me://,
+# while Windows 10 has no protocol activation for an unpackaged app and hands the
+# click to the COM server named by the AUMID's CustomActivator instead. Buttons
+# reach that server as background activations.
+$activation = "protocol"
+if ($payload.comActivation) { $activation = "background" }
+$activationAttribute = ' activationType="' + $activation + '"'
+
 $actions = ""
 if ($payload.approveToken) {
     $approveArgs = "dsh-notify-me://approve?token=" + $payload.approveToken
     $rejectArgs = "dsh-notify-me://reject?token=" + $payload.rejectToken
-    $actions = '<actions><action content="' + (XmlEscape $payload.approveText) + '" activationType="protocol" arguments="' + $approveArgs + '"/><action content="' + (XmlEscape $payload.rejectText) + '" activationType="protocol" arguments="' + $rejectArgs + '"/></actions>'
+    $actions = '<actions><action content="' + (XmlEscape $payload.approveText) + '"' + $activationAttribute + ' arguments="' + $approveArgs + '"/><action content="' + (XmlEscape $payload.rejectText) + '"' + $activationAttribute + ' arguments="' + $rejectArgs + '"/></actions>'
 }
 
 # Body click: always go through our own protocol handler. The host records the
@@ -56,9 +66,9 @@ if ($payload.approveToken) {
 # registered it every click opened the Store dialog instead (issue #54), so the
 # handler now records the click and launches nothing.
 if ($payload.session) {
-    $launch = ' launch="dsh-notify-me://open?session=' + [Uri]::EscapeDataString($payload.session) + '" activationType="protocol"'
+    $launch = ' launch="dsh-notify-me://open?session=' + [Uri]::EscapeDataString($payload.session) + '"' + $activationAttribute
 } else {
-    $launch = ' launch="dsh-notify-me://open" activationType="protocol"'
+    $launch = ' launch="dsh-notify-me://open"' + $activationAttribute
 }
 
 # An approval is the one alert that has to outlive the next few seconds: the
