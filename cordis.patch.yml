@@ -73,7 +73,7 @@
           includeSubagents: false
           turnEndThrottleMs: 15000
           titlePrefix: 'DSH'
-          language: 'auto'      # auto | zh | zh-TW | en
+          language: 'auto'      # auto | zh | zh-TW | en | ru
           pageLeaseMs: 60000    # 0 = no coordination with the page (duplicates while it is open)
           healthPath: '/__dsh-notify-me/host-fallback'
         # Patch 2: same-origin relay (page -> host -> gateway, host adds the
