@@ -2,6 +2,10 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.28.1] — 2026-11-26
+
+文档修正，无行为变化：1.28.0 的致谢表在四份 README 里多了两个空行，新加的两行（[#64](https://github.com/chromoany/dsh-notify-me/pull/64)、[#66](https://github.com/chromoany/dsh-notify-me/issues/66)）因此脱离表格、按普通段落渲染，`|` 分隔符露在正文里。现在两行接回表格，GitHub 与 npm 包页都正常显示。
+
 ## [1.28.0] — 2026-11-26
 
 Windows 桌面端的原生通道补齐三处（[#64](https://github.com/chromoany/dsh-notify-me/pull/64) 由 Yan-Jack-jie 提出，[#66](https://github.com/chromoany/dsh-notify-me/issues/66)、[#67](https://github.com/chromoany/dsh-notify-me/issues/67)）：不带按钮的提醒也走宿主、通知图标换成插件自己的、合成音不再被迟到唤醒截断。
