@@ -215,6 +215,31 @@ async function main() {
     }
   }
 
+  // Host whose nested `sessionStatus` read is refused: on a real 0.2.x desktop
+  // shell `uiSession` comes back through a scoped proxy, and touching the nested
+  // service throws `cannot get property "uiSession.sessionStatus" without
+  // inject` even though the service itself resolved. `pendingInteractions` is
+  // still a plain property, so the plugin has to fall back to it instead of
+  // dying at boot (the #68 regression).
+  class FakeUiSessionGuarded extends Service {
+    constructor(ctx) {
+      super(ctx, 'uiSession');
+      this.snapshot = new Map();
+      this.listeners = new Set();
+      this.pendingInteractions = {
+        getSnapshot: () => this.snapshot,
+        subscribe: (fn) => { this.listeners.add(fn); return () => this.listeners.delete(fn); },
+      };
+    }
+    get sessionStatus() {
+      throw new Error('cannot get property "uiSession.sessionStatus" without inject');
+    }
+    publish(map) {
+      this.snapshot = map;
+      for (const fn of [...this.listeners]) fn();
+    }
+  }
+
   const localeStub = {
     register() {}, bind: () => (k) => k,
     subscribe: () => () => {}, getSnapshot: () => ({ active: 'zh' }),
@@ -222,7 +247,8 @@ async function main() {
   };
   const slotsStub = { inject() {}, register() {} };
 
-  // mode: 'pendingInteractions' (0.1.2-0.1.5) | 'status' (0.1.6+) | 'legacy'.
+  // mode: 'pendingInteractions' (0.1.2-0.1.5) | 'status' (0.1.6+) |
+  // 'guarded' (0.2.x scoped proxy, nested read refused) | 'legacy'.
   async function runHost({ mode, withNotification }) {
     const b = bootBundle({ withNotification });
     const controller = makeController({ withOpen: mode !== 'status' });
@@ -243,6 +269,7 @@ async function main() {
           uiService = new FakeUiSessionStatus(ctx);
           ctx.provide('uiWorkspace', { openSession: (id) => { controller.opened.push(id); } });
         }
+        if (mode === 'guarded') uiService = new FakeUiSessionGuarded(ctx);
       },
     });
 
@@ -488,6 +515,34 @@ async function main() {
     await tick();
     assert(h.getTitle().indexOf('✅') === -1, 'opening the session releases the unread mark');
     console.log('completionUnread latch + release OK');
+  }
+
+  // ── 0.2.x host whose nested sessionStatus read is refused (#68) ─────
+  console.log('\n— real cordis host that refuses the nested uiSession.sessionStatus read —');
+  {
+    const h = await runHost({ mode: 'guarded', withNotification: true });
+    const dbg = h.win.__dshNotifyMe.debug();
+    // The regression: this read throws inside apply(), the watcher aborted at
+    // boot and every notification afterwards was dead. The store must bind
+    // through the legacy shape instead.
+    assert(dbg.uiSession === 'bound',
+      'a refused sessionStatus read must not leave the watcher unbound (debug: ' + JSON.stringify(dbg) + ')');
+    assert(dbg.uiSessionSource === 'pendingInteractions',
+      'it must fall back to pendingInteractions, got ' + dbg.uiSessionSource);
+    console.log('refused nested read fell back OK (source=' + dbg.uiSessionSource + ')');
+
+    // ...and the fallback store is live, not just recorded.
+    h.doc.hidden = true; h.doc.visibilityState = 'hidden';
+    const appr = new FakeApproval('approval:guarded', 's1', 'pwsh', 'nested read refused');
+    h.uiService.publish(new Map([['s1', appr]]));
+    await tick();
+    const att = h.events.filter((e) => e.kind === 'attention');
+    assert(att.length === 1,
+      'the watcher must stay alive and alert through the fallback store (got ' + att.length + ')');
+    assert(h.getTitle().indexOf('需要你') !== -1, 'tab marker still works on the fallback store');
+    console.log('fallback store alerts OK:', JSON.stringify(att[0].title));
+    h.uiService.publish(new Map());
+    await tick();
   }
 
   // The host-half focus route moved to smoke/host-route-test.mjs: it needs no

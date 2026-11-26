@@ -4,10 +4,11 @@ All notable changes to **dsh-notify-me** are documented here.
 
 ## [1.28.2] — 2026-11-27
 
-一次代码复查的六处收口（清单由 chromoany 提供）：宿主侧两个可选模块各一处健壮性缺口、Windows 原生通道一处静默失效、模板与包页各一处文档缺口。
+一次代码复查的七处收口（清单由 chromoany 提供；其中「DSH 0.2.x 桌面壳上整条通知链静默」一处由 [Yan-Jack-jie](https://github.com/Yan-Jack-jie) 在 [#68](https://github.com/chromoany/dsh-notify-me/pull/68) 中定位并修复）：宿主侧两个可选模块各一处健壮性缺口、一条启动即熔断的绑定路径、Windows 原生通道一处静默失效、模板与包页各一处文档缺口。
 
 ### 修复
 
+- **DSH 0.2.x 桌面壳上「需要你」与「回复完成」从不触发**（[#68](https://github.com/chromoany/dsh-notify-me/pull/68)，作者 [Yan-Jack-jie](https://github.com/Yan-Jack-jie)）：`apply()` 启动时 `bindUiSession()` 读取 `uiSession.sessionStatus`，而在把 `uiSession` 解析为 scoped 代理的宿主上，这个嵌套服务的读取被 cordis 守卫抛出 `cannot get property "uiSession.sessionStatus" without inject`；异常冒泡到 watcher 外层 `catch`，`init failed` 直接把整个提醒 watcher 关掉，`debug().uiSession` 恒为 `unbound`。现在 `interactionStore()` 对 `sessionStatus` 与 `pendingInteractions` 各读各的 guard，读不到前者就回退后者；`apply()` 与 1.5 秒重试两处的 `bindUiSession()` 也加了 guard，一次绑定失败不再拖垮控制器路径。不改 `inject`：0.1.0/0.1.1 宿主没有 `uiSession`，硬加会把它们全部 gate 掉。
 - **Windows Toast 激活注册失败一次就永久失效**：`registerToastApp()` 把 `false` 缓存进 `appReady`，调用处又丢掉返回值，所以杀软拦 `reg.exe`、注册表被锁这类瞬时失败之后，本次宿主生命周期内所有原生 Toast 的按钮与正文点击静默失灵，日志里一个字都没有，`debug().winNative.last` 也看不出原因。现在失败不缓存、记一行 warning（含失败的 `reg` 子命令与 stderr 首行）、5 分钟后随下一次 Toast 整轮重试，只有成功才缓存；页面侧会看到 `ok:activation-unavailable`。顺手补掉两处会让整个 POST 挂掉的同步抛错（`execFile` 抛而非回调、幂等的 `reg add` 之外没有任何兜底）。
 - **同源中继没有速率限制**：本机同源页面可以无限 POST，每一次都真实转发到网关。闸门已经把来源锁死在本机，正常页面不会这样；但页面一旦被注入或脚本跑成循环，网关就会被刷。现在同一来源地址每分钟最多 60 次转发，超出回 `429 {reason:'rate-limited'}`，这一次既不读 body 也不碰网关，日志留一行 warning。限流排在闸门与意图头之后，被拒的跨站请求不消耗配额。
 - **`attentionKeysFired` 只增不删**：见过一个 pending key 就留一条布尔，桌面端常驻整天会攒到几千条，严格说是无界的。现在按 FIFO 淘汰、上限 4000 条；key 全局单调递增（`approval:N`），被淘汰的老 key 不可能还在待处理列表里，所以不会重复提醒。
@@ -24,6 +25,7 @@ All notable changes to **dsh-notify-me** are documented here.
 - `smoke/win-toast-test.mjs` 新增注册失败段：失败仍回 200 且带 `detail: "activation-unavailable"`、warning 里有 stderr 原文、冷却窗口内不再 spawn `reg`、窗口过后整轮重试成功并缓存。
 - `smoke/relay-route-test.mjs` 新增节流段：连发 61 次转发，第 61 次回 429 且网关只收到 60 次。
 - `smoke/host-fallback-test.mjs` 新增超长日志段：Goal 落在扫描窗口之外时，重启后的 `turn/end` 照常提醒。
+- `smoke/cordis-host-test.mjs` 新增「嵌套读受守卫」宿主：`uiSession.sessionStatus` 一读就抛 `without inject`，断言 watcher 仍绑上 `pendingInteractions`、`debug().uiSessionSource` 为 `pendingInteractions`、审批照常提醒。
 
 ## [1.28.1] — 2026-11-26
 
