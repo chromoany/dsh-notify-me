@@ -19,6 +19,7 @@ All notable changes to **dsh-notify-me** are documented here.
 - **npm 包页显示的一直是繁体 README**：`files` 白名单把四份 README 都打进包，而 npm 在发布目录里 glob `{README,README.*}`、取第一个匹配 `.md` 的文件，实测顺序是逆字典序，`README.zh-TW.md` 因此长期胜出（1.23.0 加入繁中之后就存在，只是没人注意）。三份译文移进 `docs/`（`docs/README.{en,zh-TW,ru}.md`），根目录只剩 `README.md`；语言切换、`docs/` 内部的相对链接与回跳、`CONTRIBUTING` 与 PR 模板里的引用一并改，`files` 白名单与 `docs/README.md` 补上「别把译文放回根目录」的原因。
 - `cordis.patch.yml` 的 relay 段补上 `snippetLimit`：README 与 `DEFAULTS` 一直有这个键（默认 3000，`0` = 不补正文），模板漏了，照模板配置的运维看不到这个隐私开关。
 - 四份 README 的 relay 回包口径补 `429` 并说明节流边界；Windows 节补上注册失败的重试与 `ok:activation-unavailable`。
+- 四份 README 的致谢区改成「外排头像 + 折叠明细」：正文外只留一排 40×40 头像（悬停显示用户名），四十多行具体贡献折进 `<details>`，默认不占屏；`docs/README.md` 里的加人流程同步成「图片 + 头像排 + 折叠表格行」三处。
 
 ### 测试
 

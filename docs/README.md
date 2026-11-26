@@ -9,7 +9,7 @@
 | `listing.md` | 各插件市场条目的文案与提交状态 | 提交或修改市场条目时 |
 | [`README.en.md`](README.en.md) · [`README.zh-TW.md`](README.zh-TW.md) · [`README.ru.md`](README.ru.md) | 仓库 `README.md` 的英 / 繁 / 俄三份译文 | `README.md` 改动后同步 |
 | `brand/` | 图标源文件、各尺寸位图、仓库头图与社交预览、重新生成脚本 | 改图标或换头图时，取舍见 [`brand/README.md`](brand/README.md) |
-| `contributors/` | README 致谢表用的头像 | 有人新增贡献、要进致谢表时 |
+| `contributors/` | README 致谢区用的头像 | 有人新增贡献、要进致谢区时 |
 | `screenshots/` | README 里的界面截图 | DSH 设置界面改版后重拍 |
 | [`compatibility.md`](compatibility.md) · [`compatibility.en.md`](compatibility.en.md) · [`compatibility.ru.md`](compatibility.ru.md) | 宿主兼容性全篇：逐版实测记录、代际形状差异、两个会静默失效的坑 | 适配新宿主版本后 |
 | [`console-config.md`](console-config.md) · [`console-config.en.md`](console-config.en.md) · [`console-config.ru.md`](console-config.ru.md) | 控制台配置键、`decide()` / `testExternal()` 接口、外部通知目标字段 | 新增或改名配置项时 |
@@ -36,4 +36,4 @@ README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown �
 
 ## 头像
 
-`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。四角必须透明、整张呈圆形：4× 超采样画圆再缩到 48，边缘才平滑；GitHub 返回的头像常是带底色的正方形，落盘后要重做圆形遮罩。加人时改动两处：这里的图片，和四份 README（根目录 `README.md` 与这里的三份译文）的致谢表——四份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。
+`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。四角必须透明、整张呈圆形：4× 超采样画圆再缩到 48，边缘才平滑；GitHub 返回的头像常是带底色的正方形，落盘后要重做圆形遮罩。加人时改动三处：这里的图片；四份 README（根目录 `README.md` 与这里的三份译文）致谢区**正文外那排头像**里加一个 `<a href="https://github.com/用户名"><img src="…/contributors/用户名.png" width="40" height="40" alt="@用户名" title="用户名"></a>`；同一节 `<details>` 折叠表格里加一行 `| [@用户名](https://github.com/用户名) | 贡献 |`。四份行数与顺序必须一致，头像排和表格行一一对应，顺序沿用首次贡献的先后。致谢区只把头像排留在正文外、明细一律折进 `<details>`，是为了让人一眼看见「都有谁」而不被四十多行贡献说明占掉两屏。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。
