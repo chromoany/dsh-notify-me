@@ -2,6 +2,20 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.27.2] — 2026-11-26
+
+角标（[#62](https://github.com/chromoany/dsh-notify-me/issues/62)）：宿主会话状态读不到时，测试角标不再停在测试值上，设置页开关也照常刷新。
+
+### 修复
+
+- **测试角标不会停在测试数字上**：四秒后的恢复路径在计数读不到时直接清角标，不再把 3 留在任务栏上。
+- **角标刷新不再拖垮设置页**：`syncDockBadge()` 把宿主异常收在自己内部（记进 `debug().dockBadgeError`，只 warn 一次），`setConfigLocal()` 的调用点再加一层保护，点角标开关或插件总开关后界面照常重绘。
+- **只暴露一半 Badging API 的宿主**（Electron 有 `setAppBadge`、没有 `clearAppBadge`）改走 `setAppBadge(0)`，关掉角标开关后任务栏数字一定会消失。
+
+### 测试
+
+- 新增 `dockBadgeHostFailures()`：`getSnapshot` 抛异常的宿主仍能改开关、错误进 `debug()`、恢复后自动清掉；只有 `setAppBadge` 的宿主用 `0` 清除角标。
+
 ## [1.27.1] — 2026-11-26
 
 界面语言是插件没有语言包的语种时，通知与设置页不再回落中文，改为英文。

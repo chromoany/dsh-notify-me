@@ -1145,6 +1145,76 @@ async function dockBadgeChannel() {
   for (const c of [...bareHost.cleanups]) c();
 }
 
+// The badge runs inside setConfigLocal(), before the settings page swaps in the
+// new config: anything that escapes there leaves the switch showing the old
+// value while storage already holds the new one (issue #62, where a 1.26.0 host
+// both wedged the switch and left the test number on the icon). Neither a host
+// store that throws nor a Badging API that ships only half its surface may
+// reach that call site.
+async function dockBadgeHostFailures() {
+  console.log('\n— dock badge: a throwing host store and a half Badging API stay contained —');
+  const painted = [];
+  const b = bootBundle({
+    extend(sandbox) {
+      sandbox.navigator = {
+        setAppBadge(n) { painted.push(n); },
+        clearAppBadge() { painted.push(0); },
+      };
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  host.setStatus(new Map([['s2', statusRow(null, { running: false, completionUnread: true })]]));
+  host.notifyStatus();
+  assert(painted[painted.length - 1] === 1, 'baseline paints the waiting conversation, got ' + JSON.stringify(painted));
+
+  // 1) a store whose getSnapshot throws must not escape the config patch: the
+  //    switch repaints from the returned config, so the caller keeps working
+  const status = host.ctx.uiSession.sessionStatus;
+  const realSnapshot = status.getSnapshot;
+  status.getSnapshot = () => { throw new Error('store exploded'); };
+  let boom = null;
+  let returned = null;
+  try { returned = b.win.__dshNotifyMe.setConfig({ dockBadge: false }); } catch (e) { boom = e; }
+  assert(!boom, 'a throwing status store must not escape setConfig, got ' + (boom && boom.message));
+  assert(returned && returned.dockBadge === false, 'the patch still returns the new config, got ' + JSON.stringify(returned));
+  const dbg = b.win.__dshNotifyMe.debug();
+  assert(/store exploded/.test(String(dbg.dockBadgeError)),
+    'the refusal is recorded for debug(), got ' + JSON.stringify(dbg.dockBadgeError));
+
+  // 2) the failure is not sticky: a healthy store paints again and clears it
+  status.getSnapshot = realSnapshot;
+  b.win.__dshNotifyMe.setConfig({ dockBadge: true });
+  assert(painted[painted.length - 1] === 1, 'the switch paints the real count again, got ' + JSON.stringify(painted));
+  assert(b.win.__dshNotifyMe.debug().dockBadgeError === null, 'a successful repaint clears the recorded error');
+  for (const c of [...host.cleanups]) c();
+
+  // 3) Electron builds ship setAppBadge without clearAppBadge: clearing still
+  //    has to reach the icon, so 0 goes through setAppBadge
+  const halfPainted = [];
+  const half = bootBundle({
+    extend(sandbox) {
+      sandbox.navigator = { setAppBadge(n) { halfPainted.push(n); } };
+    },
+  });
+  const halfHost = buildHost({ withSessionStatus: true, withWorkspace: true });
+  half.mod.apply(halfHost.ctx);
+  halfHost.setStatus(new Map([['s2', statusRow(null, { running: false, completionUnread: true })]]));
+  halfHost.notifyStatus();
+  assert(halfPainted[halfPainted.length - 1] === 1, 'the half API paints through setAppBadge, got ' + JSON.stringify(halfPainted));
+  half.win.__dshNotifyMe.setConfig({ dockBadge: false });
+  assert(halfPainted[halfPainted.length - 1] === 0,
+    'without clearAppBadge the switch still clears with setAppBadge(0), got ' + JSON.stringify(halfPainted));
+  const halfTest = half.win.__dshNotifyMe.testBadge(3);
+  assert(/3/.test(String(halfTest)), 'the test button paints its number, got ' + JSON.stringify(halfTest));
+  half.win.__dshNotifyMe.setConfig({ dockBadge: true });
+  assert(halfPainted[halfPainted.length - 1] === 1 && halfPainted[halfPainted.length - 2] === 3,
+    'the test number goes through setAppBadge and the real count returns after it, got ' + JSON.stringify(halfPainted));
+  for (const c of [...halfHost.cleanups]) c();
+
+  console.log('dock badge containment OK: throwing store recorded, repaint survives, half API clears with setAppBadge(0)');
+}
+
 // A Goal session ends a turn per round: the round driver queues the next turn
 // as soon as the agent goes idle, and an intermediate round usually writes no
 // `goal/change` at all. The host's goal projection is what says whether the job
@@ -5163,6 +5233,7 @@ function languageModes() {
   await subagentSessions();
   await completionUnreadChannel();
   await dockBadgeChannel();
+  await dockBadgeHostFailures();
   await goalRoundsSilent();
   await quickActionsHost();
   await desktopRaiseChannel();
