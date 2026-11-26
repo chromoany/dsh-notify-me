@@ -376,7 +376,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 - **其它已列会话**摘要：`running` true→false（或旧宿主的 `completed` 边沿）= 后台工作提醒。宿主的「完成未读」级别标志负责补漏与标题标记：`≥ 0.1.6` 用 `sessionStatus` 行的 `completionUnread`（后台会话完成即点亮、打开该会话/再次开跑/会话消失即清零），旧宿主用列表行的 `completed` 提醒位（选中会话即清零）；页面没看见的完成边沿（插件热重载中途、快照合并跳变）由此补报一次，边沿与级别标志同来时按短时间窗合并，只响一声。
 - **子代理会话**：列表行带 `origin: 'subagent'`（并有 `parentId`）的**后台**会话默认静音；你正打开着的那个子代理会话不算静音对象，它的提醒走当前对话的常规规则（页面可见时默认只留标题标记、转后台补发），切进来时积压的等待同样补上，切走后重新静音。只有 `parentId`、没有 `origin` 的分支（fork）会话属于你自己的对话，始终照常提醒。
 
-提醒核心仍然零第三方运行时依赖、完全自包含：通知文字按所选语言（跟随界面 / 简体中文 / 繁體中文 / English）即时解析。设置页是**可选**的 React 呈现层——当 DSH web profile 提供 `slots` / `locale` / `react` 时才注册进「设置 → 通知提醒」，缺任一能力时插件自动降级为纯提醒（无设置页），不影响功能。
+提醒核心仍然零第三方运行时依赖、完全自包含：通知文字按所选语言（跟随界面 / 简体中文 / 繁體中文 / English / Русский）即时解析。设置页是**可选**的 React 呈现层——当 DSH web profile 提供 `slots` / `locale` / `react` 时才注册进「设置 → 通知提醒」，缺任一能力时插件自动降级为纯提醒（无设置页），不影响功能。
 
 </details>
 
@@ -497,7 +497,7 @@ npm pack --dry-run               # 预览发布包
 <details>
 <summary>各测试套件覆盖范围与手动检查</summary>
 
-`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 语言五档用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状 + 外部推送（含 Telegram 的报文形状、`ok` / `error_code` 判决、429 与 5xx 重试、4096 截断、半配置目标被剪掉、设置页的令牌与聊天 ID 输入框）+ Goal 中间轮不报「回复完成」（有 Goal 投影时静默、Goal 停后报最后一条、没有投影的老宿主照旧报），外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。角标用例按会话计数：两个等待会话报 2、同一快照重复不重画、当前会话不算、静音或关掉开关归零、宿主没有 `setAppBadge` 时静默不报错。它还钉住清单：`package.json` 的 `dsh.client.inject` 必须为空、运行时那句 `inject = ["sessions", "locale", "slots"]` 必须原样保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：加载器把清单读成「先到达这些整包」，目标到不了，整个条目静默不跑）。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
+`smoke/smoke-test.cjs` 是离线状态机测试：三代宿主 + 主开关 + 语言五档用例 + 快捷裁决桥（Service Worker 半侧一并跑）+ 闲置判定与通知自收 + 回到页面即收起残留通知 + 通知标签长度收口 + 页面侧 host-bridge 探测/心跳/释放与 `debug().hostBridge` 形状 + 外部推送（含 Telegram 的报文形状、`ok` / `error_code` 判决、429 与 5xx 重试、4096 截断、半配置目标被剪掉、设置页的令牌与聊天 ID 输入框）+ Goal 中间轮不报「回复完成」（有 Goal 投影时静默、Goal 停后报最后一条、没有投影的老宿主照旧报），外加两条桌面原生通道用例——Windows 原生审批 Toast 正文点击只走宿主 focus 路由才切会话（无 session 时只抬窗不切），macOS 前台点击只靠 1 秒轮询切会话并在读走后停止。角标用例按会话计数：两个等待会话报 2、同一快照重复不重画、当前会话不算、静音或关掉开关归零、宿主没有 `setAppBadge` 时静默不报错。`dockBadgeHostFailures()` 再补一组失败面：宿主快照抛异常时设置页开关照样生效、错误记进 `debug().dockBadgeError`、存储恢复后重画真数，只暴露 `setAppBadge` 的宿主改用它清零。它还钉住清单：`package.json` 的 `dsh.client.inject` 必须为空、运行时那句 `inject = ["sessions", "locale", "slots"]` 必须原样保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：加载器把清单读成「先到达这些整包」，目标到不了，整个条目静默不跑）。`smoke/host-route-test.mjs` 不需要本机 DSH，`lib/index.js` 的路由、探针与 403/405/501 闸门在任何平台都会跑。
 
 新增的三个套件同样自带假 `ctx`、不联网、不需要本机 DSH：`smoke/page-bridge-test.mjs` 跑页面桥接路由的状态回包形状、心跳与释放、缺意图头 `403`、跨源 `403`、坏 JSON `400`、超长 `413`，以及 `allowedOrigins` 派生的 `Host`（模拟隧道）放行与路径冲突；`smoke/host-fallback-test.mjs` 跑宿主兜底——审批去重、`turn/end` 节流、子代理跳过、Goal 还 `active` 时中间轮不投递（`complete` / `pause` / `block` 之后照常投递，重启后能从会话日志里补出 Goal 状态）、租约新鲜时不发、租约过期后发、`alive:false` 后立刻发、语言跟随心跳、401 后重读凭据、健康探针；`smoke/relay-route-test.mjs` 跑中继——`GET` 探针、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 映射与「401 只重试一次」、`relay.bodyTemplate` 的模板渲染与 JSON 转义、坏模板启动即不注册、渲染体积上限；1.24.0 又加了两组：完成提醒的正文由宿主从会话日志补齐（保留换行、夹紧后截断、页面已给多行正文不覆盖、`attention` 不动），以及 `snippetLimit: 0` 时只转会话名、从公网名字进来的请求过了闸门也不读日志。
 
@@ -562,6 +562,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/dsadw"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dsadw.png" width="40" height="40" alt="@dsadw"></a> | [#55](https://github.com/chromoany/dsh-notify-me/issues/55) / [#56](https://github.com/chromoany/dsh-notify-me/pull/56)：任务栏 / Dock 未读角标的诉求与首版实现（1.25.0 收编，改成按会话计数） |
 | <a href="https://github.com/ceh-ylhy"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ceh-ylhy.png" width="40" height="40" alt="@ceh-ylhy"></a> | [#58](https://github.com/chromoany/dsh-notify-me/issues/58)：Windows 10 上原生审批按钮点不动的一手实测与改法建议（1.26.0 修复，顺带纠正 interface IID 与 `LPWStr` 封送两处） |
 | <a href="https://github.com/aleXela17"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/aleXela17.png" width="40" height="40" alt="@aleXela17"></a> | [#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60) / [#61](https://github.com/chromoany/dsh-notify-me/issues/61)：俄语界面、通知文案与五档语言的整套接线（1.27.0 收编），以及未知界面语言改为回落英文的提案（1.27.1 修复） |
+| <a href="https://github.com/YellowRandy"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/YellowRandy.png" width="40" height="40" alt="@YellowRandy"></a> | [#62](https://github.com/chromoany/dsh-notify-me/issues/62)：1.26.0 上「测试角标」卡在 3、角标与插件总开关点后界面不刷新的报障，以及把根因指到 `setCfg(setConfigLocal(...))` 的静态定位（1.27.2 修复，顺带补上缺 `clearAppBadge` 时的清角标退路） |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 
