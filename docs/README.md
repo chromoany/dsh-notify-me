@@ -1,6 +1,6 @@
 # docs
 
-这里放的是仓库自己的材料，插件运行用不到：npm 包的 `files` 白名单只有 `lib/`、`cordis.patch.yml`、三份 README（`README.md` / `README.en.md` / `README.zh-TW.md`）、`CHANGELOG.md` 和 `LICENSE`。
+这里放的是仓库自己的材料，插件运行用不到：npm 包的 `files` 白名单只有 `lib/`、`cordis.patch.yml`、四份 README（`README.md` / `README.en.md` / `README.zh-TW.md` / `README.ru.md`）、`CHANGELOG.md` 和 `LICENSE`。
 
 | 路径 | 内容 | 什么时候要动 |
 | --- | --- | --- |
@@ -8,10 +8,10 @@
 | `brand/` | 图标源文件、各尺寸位图、仓库头图与社交预览、重新生成脚本 | 改图标或换头图时，取舍见 [`brand/README.md`](brand/README.md) |
 | `contributors/` | README 致谢表用的头像 | 有人新增贡献、要进致谢表时 |
 | `screenshots/` | README 里的界面截图 | DSH 设置界面改版后重拍 |
-| [`compatibility.md`](compatibility.md) · [`compatibility.en.md`](compatibility.en.md) | 宿主兼容性全篇：逐版实测记录、代际形状差异、两个会静默失效的坑 | 适配新宿主版本后 |
-| [`console-config.md`](console-config.md) · [`console-config.en.md`](console-config.en.md) | 控制台配置键、`decide()` / `testExternal()` 接口、外部通知目标字段 | 新增或改名配置项时 |
+| [`compatibility.md`](compatibility.md) · [`compatibility.en.md`](compatibility.en.md) · [`compatibility.ru.md`](compatibility.ru.md) | 宿主兼容性全篇：逐版实测记录、代际形状差异、两个会静默失效的坑 | 适配新宿主版本后 |
+| [`console-config.md`](console-config.md) · [`console-config.en.md`](console-config.en.md) · [`console-config.ru.md`](console-config.ru.md) | 控制台配置键、`decide()` / `testExternal()` 接口、外部通知目标字段 | 新增或改名配置项时 |
 
-README 只保留这两节的摘要与链接，完整内容在对应的 `.md` / `.en.md` 里。
+README 只保留这两节的摘要与链接，完整内容在对应的 `.md` / `.en.md` / `.ru.md` 里。
 
 ## 截图
 
@@ -30,4 +30,4 @@ README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown �
 
 ## 头像
 
-`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。加人时改动两处：这里的图片，和 README 三份（`README.md` / `README.en.md` / `README.zh-TW.md`）的致谢表——三份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。
+`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。加人时改动两处：这里的图片，和 README 四份（`README.md` / `README.en.md` / `README.zh-TW.md` / `README.ru.md`）的致谢表——四份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。

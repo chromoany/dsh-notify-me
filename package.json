@@ -21,6 +21,7 @@
     "README.md",
     "README.en.md",
     "README.zh-TW.md",
+    "README.ru.md",
     "CHANGELOG.md",
     "LICENSE",
     "smoke/mac-notify-test.mjs",

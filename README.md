@@ -6,7 +6,7 @@
 
 **离开 DSH 页面，也能及时知道何时需要回来。**
 
-简体中文 | [繁體中文](README.zh-TW.md) | [English](README.en.md)
+简体中文 | [繁體中文](README.zh-TW.md) | [English](README.en.md) | [Русский](README.ru.md)
 
 [![npm version](https://img.shields.io/npm/v/dsh-notify-me?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads%2Fmonth&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
