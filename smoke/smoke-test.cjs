@@ -2869,6 +2869,27 @@ function toastTagLimits() {
   assert(feedback.indexOf('已发送测试提醒') === -1, 'no "sent" feedback survives a refusal');
   settings.cleanup();
 
+  // 7) no permission at all: the alert is refused, not silently dropped
+  function UngrantedNotification() {}
+  UngrantedNotification.permission = 'default';
+  UngrantedNotification.requestPermission = () => Promise.resolve('default');
+  const blocked = bootBundle({
+    withNotification: true,
+    extend(sandbox, windowStub) {
+      sandbox.Notification = UngrantedNotification;
+      windowStub.Notification = UngrantedNotification;
+    },
+  });
+  const bhost = buildHost({ withUiSession: false });
+  blocked.mod.apply(bhost.ctx);
+  const blockedSaid = blocked.win.__dshNotifyMe.test('done');
+  const blockedReject = blocked.win.__dshNotifyMe.debug().lastToastReject;
+  assert(blockedReject && blockedReject.message.indexOf('not permitted') !== -1,
+    'an alert with no permission records why it never appeared, got ' + JSON.stringify(blockedReject));
+  assert(blockedSaid.indexOf('refused=') !== -1,
+    'api.test() names the permission block instead of a bare sent, got ' + blockedSaid);
+  for (const c of [...bhost.cleanups]) c();
+
   console.log('toast tag limits OK: desktop budget=' + desktopBudget + ' test=' + testTag
     + ' long=' + longTag + ' web=' + webTag + ' refused=' + rejected.message);
 }

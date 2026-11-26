@@ -12,6 +12,7 @@ Windows 桌面端的原生通道补齐三处（[#64](https://github.com/chromoan
 - **通知图标是 DSH 的黑底鲸鱼**：三处通知构造都拿 `location.origin + "/favicon.svg"` 当图标，深色通知上看不清，而插件包内本来就没有图片。现在随包发一张透明底的铃铛（`assets/toast-icon.png`，由宿主以 `/__dsh-notify-me/icon.png` 提供），页面通道用它；原生 Toast 的图标改由 AUMID 注册项的 `IconUri` 指向同一文件——通知平台不读页面的 `icon` 字段。
 - **「回复完成」的第二声被截断**：合成音按墙钟在最后一声后 0.25 秒挂起音频上下文，但页面在后台时 `resume()` 要等设备唤醒才生效；唤醒慢于 0.25 秒、又快于挂起时刻时，`suspend()` 正好切在第二声中间（实测 260 ms 的尾音只剩 113 ms，间隔越久、设备越冷越容易）。现在挂起改按音频时钟，等 `currentTime` 越过末声结束再 `suspend()`；唤醒迟迟不落地时由计时器兜底（约 12 秒后照常挂起，不占着设备）。
 - **「从不关闭」在原生通道不成立**：无按钮提醒按 `persist` 标记随 `scenario="reminder"` 发，跟页面通道一样常驻到点掉或回到页面。
+- **没弹出来却报「已发送」**：页面通道在 `canToast()` 不通过时直接返回，`debug().lastToastReject` 停在 null，`api.test()` 照样回 `sent …`。现在这一步记下拒绝原因（`notifications are not permitted (permission=default)`），控制台接口与 `debug()` 都如实报 `refused=…`；声音与标题标记照旧触发，不受影响。
 
 ### 文档
 
@@ -21,7 +22,7 @@ Windows 桌面端的原生通道补齐三处（[#64](https://github.com/chromoan
 
 ### 测试
 
-- 新增：无按钮原生 Toast 的 POST 形状、轮询取回 `open` 后停、`persist` 标记、宿主 5xx 回退；通知图标走宿主路由；迟到唤醒下最后一声完整。
+- 新增：无按钮原生 Toast 的 POST 形状、轮询取回 `open` 后停、`persist` 标记、宿主 5xx 回退；通知图标走宿主路由；迟到唤醒下最后一声完整；权限没给时 `api.test()` 报 `refused=` 而不是干说 `sent`。
 - `smoke/win-toast-test.mjs` 补 `IconUri`、`persist`、缺图标与 Windows 10 第八条注册；`smoke/host-route-test.mjs` 补图标路由。
 
 ### 致谢
