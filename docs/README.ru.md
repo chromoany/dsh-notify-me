@@ -594,8 +594,6 @@ npm pack --dry-run               # посмотреть, что попадёт �
 
 ## Благодарности и как принимаются вклады
 
-Отчёты об ошибках, повторные проверки и патчи: все эти люди приложили руку.
-
 <a href="https://github.com/MengHsir"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/MengHsir.png" width="40" height="40" alt="@MengHsir" title="MengHsir"></a>
 <a href="https://github.com/edision"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/edision.png" width="40" height="40" alt="@edision" title="edision"></a>
 <a href="https://github.com/azy2"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/azy2.png" width="40" height="40" alt="@azy2" title="azy2"></a>
