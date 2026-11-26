@@ -30,4 +30,4 @@ README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown �
 
 ## 头像
 
-`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。加人时改动两处：这里的图片，和 README 四份（`README.md` / `README.en.md` / `README.zh-TW.md` / `README.ru.md`）的致谢表——四份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。
+`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。四角必须透明、整张呈圆形：4× 超采样画圆再缩到 48，边缘才平滑；GitHub 返回的头像常是带底色的正方形，落盘后要重做圆形遮罩。加人时改动两处：这里的图片，和 README 四份（`README.md` / `README.en.md` / `README.zh-TW.md` / `README.ru.md`）的致谢表——四份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。
