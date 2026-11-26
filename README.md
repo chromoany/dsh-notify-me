@@ -6,7 +6,7 @@
 
 **离开 DSH 页面，也能及时知道何时需要回来。**
 
-简体中文 | [繁體中文](README.zh-TW.md) | [English](README.en.md) | [Русский](README.ru.md)
+简体中文 | [繁體中文](docs/README.zh-TW.md) | [English](docs/README.en.md) | [Русский](docs/README.ru.md)
 
 [![npm version](https://img.shields.io/npm/v/dsh-notify-me?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads%2Fmonth&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
@@ -334,9 +334,11 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 - `POST` → 读 body（上限 64 KiB）、要求是 JSON 对象（完成提醒缺正文时先由宿主从会话日志补齐，见上），映射成网关的 `{title, body, type:'info'}`（配了 `relay.bodyTemplate` 时改为按模板渲染出的 JSON 对象；页面载荷里的 `tag` 一律不透传：Apprise 把 tag 当服务过滤，不匹配会回 424），附上 `gateway.headers` 与凭据；请求必须带 `x-dsh-notify-me-relay: relay` 意图头，缺了回 `403 {reason:'missing-intent'}`——跨站表单发不出自定义头，要发就得多一次预检，而预检在网关这里必然失败；
 - `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字符）＝转发成功；上游非 2xx 回 `502`，同为这一形状；
 - `500 {reason}`：模板配错（`invalid-body-template` / `template-too-large` / `rendered-body-too-large`）——前两种正常在宿主启动校验时就拦下了，这里只是运行期的兜底，且什么都不发；
-- `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝或缺少意图头）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常或网关回了 3xx——跳转不跟，因为跟过去会把 body 和 `Authorization` 重放到别处）。
+- `400`（坏 JSON 或空 body）、`413`（body 超限）、`405`（方法不对）、`403`（闸门拒绝或缺少意图头）、`429 {reason:'rate-limited'}`（同一来源地址一分钟内转发超过 60 次）、`503`（配了凭据文件但读不出来）、`502 {reason:'upstream-error'}`（上游异常或网关回了 3xx——跳转不跟，因为跟过去会把 body 和 `Authorization` 重放到别处）。
 
 凭据只在宿主：页面拿不到它，它也不会回显在响应或日志里。`POST` 走与其它宿主入口同一道闸门，所以跨站页面或 DNS rebinding 的伪造来源即使猜到路径也会被拒。
+
+转发另有一道节流：同一来源地址每分钟最多 60 次，第 61 次回 `429`，这一次既不读 body、也不碰网关，日志里留一行 warning。闸门已经把非本机来源全挡在外面，这层针对的是页面自己被注入或脚本跑成循环的情况——每一次转发都会变成网关上的真通知，而网关是外部服务、有自己的配额。页面一次事件只发一条、失败按退避重试，正常使用碰不到这个上限。
 
 </details>
 
@@ -443,7 +445,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 - **点正文也会抬窗**：正文点击统一走 `dsh-notify-me://open`（有会话时带 `?session=`，没有会话也保留为一次纯抬窗），不再把 `dsh://open` 当 Windows 抬窗手段——那条深链拉不起最小化窗口，更拉不起 `SW_HIDE` 到托盘的窗口。等待审批期间页面每 1.5 秒取一次动作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切会话；不带按钮的提醒也按同样的间隔取，只是最多取 60 秒，点过正文就停（审批取到裁决为止，上限 180 秒）。托盘隐藏的窗口由 `focus-window.ps1` 先 `SW_SHOW` 再激活（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - **Windows 10 的点击走 COM 激活器**：AUMID 的 `CustomActivator` 指向 `{F0C6A9D2-4B7E-4D1A-9C53-8E2B6F7A0D41}`，这个 CLSID 的 `LocalServer32` 是 `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File lib/win-toast-activator.ps1 -ActionDir <动作目录>`，按钮改成 `activationType="background"`。点下去时系统按需拉起这个脚本（冷启动几十毫秒，不需要开机常驻，10 分钟没有新点击就自己退出），脚本用 `CoRegisterClassObject(REGCLS_MULTIPLEUSE)` 注册 `INotificationActivationCallback`（IID `53E31837-6600-4A81-9395-75CFFE746F94`，系统自带封送，不用自建 proxy/stub），把 `dsh-notify-me://<参数>` 写进同一个动作目录；之后的认领、token 校验与 `decidePending()` 跟 Windows 11 共用一套。回调的两个字符串必须按 `LPWStr` 封送——.NET 默认按 BSTR 解释，会让 `appUserModelId` 与 `invokedArgs` 都变成空串：点击明明到了服务器，审批参数却是空的，这是整条链路里最容易卡住的一步。
 - **中文用户名等非 ASCII profile**：处理器脚本按 UTF-16LE + BOM 写盘，动作目录在点击时才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——脚本正文因此全是 ASCII，不会再被 WSH 按系统 ANSI 代码页解码后把路径弄乱（此前每次点按钮都弹 `800A004C` 脚本错误，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修复。升级后重启桌面端即可，第一次发带按钮的 Toast 时会重写这份脚本，不用手动清旧文件。
-- **注册**：第一次发 Toast 前写 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬头，`IconUri` = 随包发的 `assets/toast-icon.png`，`CustomActivator` = 激活器 CLSID）。Windows 11 只建 CLSID 的空存根、不写 `LocalServer32`——未打包应用不实现 COM 激活器时，Windows 才会按 XML 把 `activationType="protocol"` 的点击派发出去；Windows 10 则把 `LocalServer32` 写成上面那条激活器命令行。两者都是当前用户级，不需要管理员权限。随后按 tag 记账到 `ToastNotificationManager.History`。token 单次、3 分钟有效；动作文件被取走后即删。
+- **注册**：第一次发 Toast 前写 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me`（`DisplayName` = 通知抬头，`IconUri` = 随包发的 `assets/toast-icon.png`，`CustomActivator` = 激活器 CLSID）。Windows 11 只建 CLSID 的空存根、不写 `LocalServer32`——未打包应用不实现 COM 激活器时，Windows 才会按 XML 把 `activationType="protocol"` 的点击派发出去；Windows 10 则把 `LocalServer32` 写成上面那条激活器命令行。两者都是当前用户级，不需要管理员权限。随后按 tag 记账到 `ToastNotificationManager.History`。token 单次、3 分钟有效；动作文件被取走后即删。注册失败不再永久作废：杀软拦 `reg.exe`、注册表被锁这类瞬时失败会记一行 warning（带上失败的子命令与 stderr 首行），5 分钟后随下一次 Toast 重试，成功才缓存；期间按钮与正文点击不生效，`debug().winNative.last` 显示 `ok:activation-unavailable`。
 - **为什么 Windows 10 要单独一条路**：Windows 10（build < 22000）缺 Windows 11 那条「没有 COM 激活器也照 XML 派发协议激活」的实现——修复只落在 18967 之后的预览分支，没进 19041 / 19045 的服务分支（[microsoft-ui-xaml#1939](https://github.com/microsoft/microsoft-ui-xaml/issues/1939)）。19045 上实测过：AUMID + 空存根 + 开始菜单快捷方式都补齐，点按钮、点正文仍然只把通知收掉（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)）。1.21.3 到 1.25.0 索性在 build < 22000 上不发 Toast；现在改成装一个真实 COM 激活器，点下去就进 `INotificationActivationCallback`，不依赖系统对未打包应用的宽容。
 - **不弹的场合**：非 Windows 桌面宿主、`winToast.enabled: false`、`powershell.exe` 不存在、或 Windows 10 上激活器脚本缺失（`reason` 分别是 `disabled` / `helper-missing`），路由报 `enabled: false`（`501`），页面继续用自己那条不带按钮的通知，行为与改动前一致。
 - **关掉它**：在 profile 的 patch 层给 `notify-me` 加 `winToast: { enabled: false }`，三种提醒都回到页面自己的通知（审批没有按钮）。

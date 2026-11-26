@@ -31,4 +31,4 @@
 
 ---
 
-[← Вернуться к README](../README.ru.md)
+[← Вернуться к README](README.ru.md)

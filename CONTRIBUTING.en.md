@@ -25,7 +25,7 @@ When `lib/focus-window.ps1` changes, also run the raise script manually; it has 
 - New setting: a default in `DEFAULTS`, a row in the settings panel, and a state-machine case in `smoke/smoke-test.cjs`.
 - `lib/index.js`: host-side logic and the raise-window loopback route. Explain the motive before changing its gate; that route is the plugin's external security boundary.
 - `package.json`: the `files` whitelist decides what ships, so add new files there if they should be published. The `dsh.compatibility` release table is filled by the maintainer after real testing; do not add unverified versions.
-- Docs: `README.md` and `README.en.md` change together.
+- Docs: `README.md` and the three translations under `docs/` (`README.en.md`, `README.zh-TW.md`, `README.ru.md`) change together.
 - Do not commit `AGENTS.md`, `temp-*`, `node_modules/`, or `.npm-cache/`; `.gitignore` already covers them.
 
 ## Tests

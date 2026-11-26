@@ -85,6 +85,7 @@
           path: ''              # exact route, e.g. /__dsh-notify-me/relay/<32 hex token>
           target: ''
           credentialsFile: ''
+          snippetLimit: 3000    # completion body excerpt cap (0 = off; else 100..10000)
           bodyTemplate: ''      # optional JSON template, see "Same-origin relay"
         # Native Windows toasts posted by the host. On by default whenever the
         # host runs the Windows desktop shell: the host posts them through

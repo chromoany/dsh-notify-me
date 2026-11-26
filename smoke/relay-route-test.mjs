@@ -587,7 +587,33 @@ try {
     globalThis.fetch = realFetch;
   }
 
-  console.log('relay route OK: probe, gate, 405/413/400/503, payload mapping, 200/502, single retry');
+  // 10) The gate keeps other machines out; the throttle is for this page. A
+  // loop in the injected page would otherwise become one real gateway
+  // notification per request. Local callers share one socket address, so one
+  // bucket covers them: the request past the allowance is refused before its
+  // body is read, and a refused request neither forwards nor reopens the bucket.
+  {
+    const calls = captureFetch(() => ({ status: 200, text: 'Sent (1/1)' }));
+    const relay = bootRelay({ target: TARGET, credentialsFile: credFile });
+    const handle = relay.route(RELAY);
+    let refused = null;
+    for (let i = 0; i < 61; i += 1) {
+      const answer = await call(handle, { method: 'POST', body: eventBody() });
+      if (answer.status === 429) refused = answer;
+    }
+    assert(calls.length === 60, 'exactly the allowance reaches the gateway (got ' + calls.length + ')');
+    assert(refused !== null && refused.body.reason === 'rate-limited',
+      'the request past the allowance answers 429 rate-limited (got ' + JSON.stringify(refused) + ')');
+    assert(relay.warnings.some((message) => message.includes('dropping forwards')),
+      'and the host says once why it is dropping them, got ' + JSON.stringify(relay.warnings));
+    const again = await call(handle, { method: 'POST', body: eventBody() });
+    assert(again.status === 429 && again.body.reason === 'rate-limited',
+      'the bucket stays closed for the rest of the window (got ' + again.status + ' ' + JSON.stringify(again.body) + ')');
+    assert(calls.length === 60, 'nothing more is forwarded (got ' + calls.length + ')');
+    globalThis.fetch = realFetch;
+  }
+
+  console.log('relay route OK: probe, gate, 405/413/400/503, payload mapping, 200/502, single retry, forward throttle');
 } finally {
   globalThis.fetch = realFetch;
   fs.rmSync(tempDir, { recursive: true, force: true });

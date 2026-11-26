@@ -25,7 +25,7 @@ npm run pack      # 确认发布包里没有意外文件
 - 新增设置项：在 `DEFAULTS` 加默认值，设置面板渲染与 `smoke/smoke-test.cjs` 的状态机用例各补一处。
 - `lib/index.js`：宿主侧逻辑与抬窗回环路由。改动其鉴权条件前请先说明动机，这条路径是插件对外的安全边界。
 - `package.json`：`files` 白名单决定 npm 包内容，新增文件若要随包发布需同步加入；`dsh.compatibility` 的宿主版本表由维护者实测后追加，请勿在 PR 中填写未验证的版本。
-- 文档：`README.md` 与 `README.en.md` 同步修改，只改一份需要补充另一份。
+- 文档：`README.md` 与 `docs/` 下三份译文（`README.en.md` / `README.zh-TW.md` / `README.ru.md`）同步修改，只改一份需要补充另一份。
 - 不要提交 `AGENTS.md`、`temp-*`、`node_modules/`、`.npm-cache/`，`.gitignore` 已覆盖这些路径。
 
 ## 测试

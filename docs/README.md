@@ -1,10 +1,13 @@
 # docs
 
-这里放的是仓库自己的材料，插件运行用不到：npm 包的 `files` 白名单只有 `lib/`、`cordis.patch.yml`、四份 README（`README.md` / `README.en.md` / `README.zh-TW.md` / `README.ru.md`）、`CHANGELOG.md` 和 `LICENSE`。
+这里放的是仓库自己的材料，插件运行用不到：npm 包的 `files` 白名单只有 `lib/`、`cordis.patch.yml`、`README.md`、`CHANGELOG.md` 和 `LICENSE`。
+
+三份译文（`README.en.md` / `README.zh-TW.md` / `README.ru.md`）也在这个目录，**不要放回仓库根目录**：npm 打包时在根目录 glob `{README,README.*}`，取第一个匹配到的 `.md`（实测是逆字典序，`README.zh-TW.md` 排在 `README.md` 前面），四份并排时 npm 页面上展示的会是繁体版。放在子目录里 glob 不递归，根目录只剩 `README.md`，展示才稳定。
 
 | 路径 | 内容 | 什么时候要动 |
 | --- | --- | --- |
 | `listing.md` | 各插件市场条目的文案与提交状态 | 提交或修改市场条目时 |
+| [`README.en.md`](README.en.md) · [`README.zh-TW.md`](README.zh-TW.md) · [`README.ru.md`](README.ru.md) | 仓库 `README.md` 的英 / 繁 / 俄三份译文 | `README.md` 改动后同步 |
 | `brand/` | 图标源文件、各尺寸位图、仓库头图与社交预览、重新生成脚本 | 改图标或换头图时，取舍见 [`brand/README.md`](brand/README.md) |
 | `contributors/` | README 致谢表用的头像 | 有人新增贡献、要进致谢表时 |
 | `screenshots/` | README 里的界面截图 | DSH 设置界面改版后重拍 |
@@ -33,4 +36,4 @@ README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown �
 
 ## 头像
 
-`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。四角必须透明、整张呈圆形：4× 超采样画圆再缩到 48，边缘才平滑；GitHub 返回的头像常是带底色的正方形，落盘后要重做圆形遮罩。加人时改动两处：这里的图片，和 README 四份（`README.md` / `README.en.md` / `README.zh-TW.md` / `README.ru.md`）的致谢表——四份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。
+`contributors/` 里每位贡献者一张 48×48 PNG（32 位带 alpha，与其余头像同尺寸），文件名就是 GitHub 用户名，README 里按 40×40 显示。四角必须透明、整张呈圆形：4× 超采样画圆再缩到 48，边缘才平滑；GitHub 返回的头像常是带底色的正方形，落盘后要重做圆形遮罩。加人时改动两处：这里的图片，和四份 README（根目录 `README.md` 与这里的三份译文）的致谢表——四份行数与顺序必须一致。GitHub 的 `avatars.githubusercontent.com` 有时不管扩展名直接返回 JPEG（`dsadw` 那次就是），落盘后按 PNG 重存一遍再进仓库。

@@ -6,12 +6,12 @@
 
 **離開 DSH 頁面，也能及時知道何時需要回來。**
 
-[简体中文](README.md) | 繁體中文 | [English](README.en.md) | [Русский](README.ru.md)
+[简体中文](../README.md) | 繁體中文 | [English](README.en.md) | [Русский](README.ru.md)
 
 [![npm version](https://img.shields.io/npm/v/dsh-notify-me?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads%2Fmonth&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm total downloads](https://img.shields.io/npm/dt/dsh-notify-me?style=flat-square&label=total%20downloads&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](../LICENSE)
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#安裝)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
@@ -20,7 +20,7 @@
 
 </div>
 
-[效果預覽](#效果預覽) · [安裝](#安裝) · [設定](#在-dsh-設定裡調整) · [相容性](#相容性) · [已知限制](#已知限制) · [更新日誌](CHANGELOG.md)
+[效果預覽](#效果預覽) · [安裝](#安裝) · [設定](#在-dsh-設定裡調整) · [相容性](#相容性) · [已知限制](#已知限制) · [更新日誌](../CHANGELOG.md)
 
 DSH Web / Desktop 的通知插件，讓你敢不開完整存取，也不必一直守著頁面。
 
@@ -334,9 +334,11 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 - `POST` → 讀 body（上限 64 KiB）、要求是 JSON 物件，對映成閘道的 `{title, body, type:'info'}`（配了 `relay.bodyTemplate` 時改為按模板渲染出的 JSON 物件；頁面載荷裡的 `tag` 一律不透傳：Apprise 把 tag 當服務過濾，不匹配會回 424），附上 `gateway.headers` 與憑證；請求必須帶 `x-dsh-notify-me-relay: relay` 意圖頭，缺了回 `403 {reason:'missing-intent'}`——跨站表單發不出自定義頭，要發就得多一次預檢，而預檢在閘道這裡必然失敗；
 - `200 {ok, upstreamStatus, upstreamBody}`（`upstreamBody` 最多 500 字元）＝轉發成功；上游非 2xx 回 `502`，同為這一形狀；
 - `500 {reason}`：模板配錯（`invalid-body-template` / `template-too-large` / `rendered-body-too-large`）——前兩種正常在宿主啟動校驗時就攔下了，這裡只是執行期的兜底，且什麼都不發；
-- `400`（壞 JSON 或空 body）、`413`（body 超限）、`405`（方法不對）、`403`（閘門拒絕或缺少意圖頭）、`503`（配了憑證檔案但讀不出來）、`502 {reason:'upstream-error'}`（上游異常或閘道回了 3xx——跳轉不跟，因為跟過去會把 body 和 `Authorization` 重放到別處）。
+- `400`（壞 JSON 或空 body）、`413`（body 超限）、`405`（方法不對）、`403`（閘門拒絕或缺少意圖頭）、`429 {reason:'rate-limited'}`（同一來源位址一分鐘內轉發超過 60 次）、`503`（配了憑證檔案但讀不出來）、`502 {reason:'upstream-error'}`（上游異常或閘道回了 3xx——跳轉不跟，因為跟過去會把 body 和 `Authorization` 重放到別處）。
 
 憑證只在宿主：頁面拿不到它，它也不會回顯在回應或日誌裡。`POST` 走與其它宿主入口同一道閘門，所以跨站頁面或 DNS rebinding 的偽造來源即使猜到路徑也會被拒。
+
+轉發另有一道節流：同一來源位址每分鐘最多 60 次，第 61 次回 `429`，這一次既不讀 body、也不碰閘道，日誌裡留一行 warning。閘門已經把非本機來源全擋在外面，這層針對的是頁面自己被注入或腳本跑成迴圈的情況——每一次轉發都會變成閘道上的真通知，而閘道是外部服務、有自己的配額。頁面一次事件只送一條、失敗按退避重試，正常使用碰不到這個上限。
 
 </details>
 
@@ -356,11 +358,11 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 
 ## 相容性
 
-已逐版實測在 `0.1.1-rc.2` 到 `0.2.2-rc.5` 上真正啟用，含 npm `next` 渠道的 `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5`（判定標準：插件條目進啟動頁 `__DSH_BOOT__`、執行時服務依賴 `sessions` / `locale` / `slots` 解析通過、`/plugins/??dsh-notify-me/client.js` 返回含新程式碼的構建、設定裡出現「通知提醒」區段）。`0.2.2-rc.3` 這版在隔離宿主裡除了上述四條，還實測了設定區段渲染與「啟用提醒」開關往返、四條宿主路由的掛載，宿主日誌零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的報告人在同一版本上驗過原生 Toast 與抬窗（1.21.3 只加了 Windows 10 的 build 判定，沒有碰宿主 API）。2026-11-19 又對當時的 `latest` `0.2.2-rc.5` 與前一版 `0.2.2-rc.4` 各跑了一輪隔離驗證：兩版都是 76 個啟動條目、插件在 index 65，清單 `dsh.client.inject` 自 1.21.6 起為空、載入器不再把別的插件包目前置條件（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)），無頭 Edge 載入帶 token 的真實頁面後 `apply` 正常執行（`debug()` 報 `version: 1.21.5`、`uiSession: bound`，控制台零報錯；改完 #44 之後又在 `0.2.2-rc.5` 上用 1.21.6 複測一輪，同樣 `apply`、`uiSession: bound`、`hostEnv: web`），宿主側十項 API / 槽位與核准契約 `allowed-once` 全在，九套件 `npm test` 在宿主自帶的 cordis 4.1.0 上也全過。逐版適配記錄、宿主代際的形狀差異與兩個會靜默失效的坑，見 **[docs/compatibility.md](docs/compatibility.md)**。
+已逐版實測在 `0.1.1-rc.2` 到 `0.2.2-rc.5` 上真正啟用，含 npm `next` 渠道的 `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5`（判定標準：插件條目進啟動頁 `__DSH_BOOT__`、執行時服務依賴 `sessions` / `locale` / `slots` 解析通過、`/plugins/??dsh-notify-me/client.js` 返回含新程式碼的構建、設定裡出現「通知提醒」區段）。`0.2.2-rc.3` 這版在隔離宿主裡除了上述四條，還實測了設定區段渲染與「啟用提醒」開關往返、四條宿主路由的掛載，宿主日誌零告警；桌面端另有 [#41](https://github.com/chromoany/dsh-notify-me/issues/41) 的報告人在同一版本上驗過原生 Toast 與抬窗（1.21.3 只加了 Windows 10 的 build 判定，沒有碰宿主 API）。2026-11-19 又對當時的 `latest` `0.2.2-rc.5` 與前一版 `0.2.2-rc.4` 各跑了一輪隔離驗證：兩版都是 76 個啟動條目、插件在 index 65，清單 `dsh.client.inject` 自 1.21.6 起為空、載入器不再把別的插件包目前置條件（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)），無頭 Edge 載入帶 token 的真實頁面後 `apply` 正常執行（`debug()` 報 `version: 1.21.5`、`uiSession: bound`，控制台零報錯；改完 #44 之後又在 `0.2.2-rc.5` 上用 1.21.6 複測一輪，同樣 `apply`、`uiSession: bound`、`hostEnv: web`），宿主側十項 API / 槽位與核准契約 `allowed-once` 全在，九套件 `npm test` 在宿主自帶的 cordis 4.1.0 上也全過。逐版適配記錄、宿主代際的形狀差異與兩個會靜默失效的坑，見 **[compatibility.md](compatibility.md)**。
 
 ## 控制台進階設定
 
-設定頁是第一入口。想指令碼化批次改、恢復預設，或查外部通知目標的欄位，見 **[docs/console-config.md](docs/console-config.md)**——完整的設定鍵、`decide()` / `testExternal()` 介面、外部通知測試的開關邊界，以及自定義音效和 `debug().hostBridge` 的讀法都在那裡。
+設定頁是第一入口。想指令碼化批次改、恢復預設，或查外部通知目標的欄位，見 **[console-config.md](console-config.md)**——完整的設定鍵、`decide()` / `testExternal()` 介面、外部通知測試的開關邊界，以及自定義音效和 `debug().hostBridge` 的讀法都在那裡。
 
 ## 工作原理
 
@@ -369,7 +371,7 @@ YAML 的單引號裡模板原樣保留；頁面設定裡把「自定義 Webhook�
 <details>
 <summary>展開事件來源與降級說明</summary>
 
-提醒核心按宿主代際取源（對照表見 [docs/compatibility.md](docs/compatibility.md)），目前對話一律來自客戶端 `sessions` 服務：
+提醒核心按宿主代際取源（對照表見 [compatibility.md](compatibility.md)），目前對話一律來自客戶端 `sessions` 服務：
 
 - **目前對話** `SessionSnapshot`：`running` true→false = 回覆完成；
 - **待辦互動**：`uiSession` 的 `sessionStatus`（`≥ 0.1.6`，逐對話 `pendingInteraction`）或 `pendingInteractions`（`0.1.2 .. 0.1.5`）出現新 key = 模型在等你，容器裡帶上核准工具名 / 理由、提問文本；舊宿主回落到控制器快照的 `pending[]`；
@@ -485,7 +487,7 @@ Windows 的啟用順序是實的：已經在前台就什麼都不做（最常見
 
 **設定頁圖示補丁**
 
-- 左側導航行圖示靠 DOM 補丁：外殼按區段 id 硬編碼圖示且 `settings.section` 沒有圖示欄位，插件只能在面板渲染後把那一行的 `<svg>` 換成鈴鐺。命中依賴宿主目前的面板結構（`data-shortcut-modal="settings"` + 導航按鈕裡的標籤 `<span>`），DSH 改了這套結構就會靜默回落到預設齒輪，其餘功能不受影響。標誌與命名的取捨見 [docs/brand/README.md](docs/brand/README.md)。
+- 左側導航行圖示靠 DOM 補丁：外殼按區段 id 硬編碼圖示且 `settings.section` 沒有圖示欄位，插件只能在面板渲染後把那一行的 `<svg>` 換成鈴鐺。命中依賴宿主目前的面板結構（`data-shortcut-modal="settings"` + 導航按鈕裡的標籤 `<span>`），DSH 改了這套結構就會靜默回落到預設齒輪，其餘功能不受影響。標誌與命名的取捨見 [brand/README.md](brand/README.md)。
 
 ## 開發自檢
 
@@ -496,7 +498,7 @@ npm test                         # smoke-test（狀態機）+ host-route-test（
 npm pack --dry-run               # 預覽釋出包
 ```
 
-各套件覆蓋範圍、手動檢查與失敗排查見 [docs/testing.md](docs/testing.md)。
+各套件覆蓋範圍、手動檢查與失敗排查見 [testing.md](testing.md)。
 
 ## 致謝與貢獻須知
 
@@ -564,4 +566,4 @@ npm pack --dry-run               # 預覽釋出包
 
 ## License
 
-MIT — 見 [LICENSE](LICENSE)。
+MIT — 見 [LICENSE](../LICENSE)。

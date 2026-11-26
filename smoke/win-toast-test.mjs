@@ -87,13 +87,13 @@ function decodePayload(call) {
   return JSON.parse(Buffer.from(call.args[at + 1], 'base64').toString('utf8'));
 }
 
-function mount(config = {}, deps = {}, shared = { bindHost: undefined, allowedOrigins: [] }) {
+function mount(config = {}, deps = {}, shared = { bindHost: undefined, allowedOrigins: [] }, logger) {
   const routes = [];
   const ctx = {
     effect(fn) { fn(); return () => {}; },
     webServer: { register(route) { routes.push(route); return () => {}; } },
   };
-  win.mountWinToast(ctx, config, shared, undefined, {
+  win.mountWinToast(ctx, config, shared, logger, {
     spawn: fakeSpawn,
     execFile: fakeExec,
     psPath: psPath,
@@ -360,6 +360,44 @@ try {
     'the callback declares the AUMID as LPWStr');
   assert(activatorPs1.includes('[MarshalAs(UnmanagedType.LPWStr)] string invokedArgs'),
     'the callback declares the arguments as LPWStr');
+
+  // 3j. A refused registration is retried, not cached for the life of the host:
+  // one transient `reg add` refusal (an antivirus holding the key open, a locked
+  // hive) used to leave every native button and body click dead until the app
+  // restarted, with nothing in the log to say why.
+  let regClock = 0;
+  let regRefused = true;
+  const retryRegs = [];
+  const warnings = [];
+  const refusal = Object.assign(new Error('reg failed'), { stderr: 'ERROR: Access is denied.' });
+  const flaky = mount({}, {
+    now: () => regClock,
+    retryMs: 60000,
+    execFile(file, args, cb) {
+      retryRegs.push(args.join(' '));
+      if (typeof cb === 'function') cb(regRefused ? refusal : null);
+    },
+  }, undefined, { warn(message) { warnings.push(message); } });
+  const denied = await post(flaky[0].handler, { ...APPROVAL, tag: 'flaky-1' });
+  const deniedBody = JSON.parse(denied.body);
+  assert(denied.status === 200 && deniedBody.ok === true, 'a toast still posts when the registration is refused');
+  assert(deniedBody.detail === 'activation-unavailable', 'the page is told the click path is missing');
+  assert(retryRegs.length === 1, 'the refused attempt stops at the first key');
+  assert(warnings.length === 1 && warnings[0].includes('registration failed') && warnings[0].includes('Access is denied'),
+    'the host log names the refusal, got ' + JSON.stringify(warnings));
+  const quiet = JSON.parse((await post(flaky[0].handler, { ...APPROVAL, tag: 'flaky-2' })).body);
+  assert(quiet.detail === 'activation-unavailable' && retryRegs.length === 1,
+    'a second toast inside the cooldown does not hammer reg.exe');
+  regClock += 60000;
+  regRefused = false;
+  const recovered = JSON.parse((await post(flaky[0].handler, { ...APPROVAL, tag: 'flaky-3' })).body);
+  assert(recovered.detail === undefined, 'a retry after the cooldown reaches a working registration');
+  const fullRun = retryRegs.length;
+  assert(fullRun > 1, 'the retry runs the whole registration, got ' + fullRun);
+  assert(warnings.length === 1, 'a recovered registration adds no second warning');
+  const cached = JSON.parse((await post(flaky[0].handler, { ...APPROVAL, tag: 'flaky-4' })).body);
+  assert(cached.detail === undefined && retryRegs.length === fullRun,
+    'a success is cached: not one registration per toast');
 } finally {
   if (realLocalAppData === undefined) delete process.env.LOCALAPPDATA;
   else process.env.LOCALAPPDATA = realLocalAppData;

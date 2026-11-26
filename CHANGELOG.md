@@ -2,6 +2,29 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.28.2] — 2026-11-27
+
+一次代码复查的六处收口（清单由 chromoany 提供）：宿主侧两个可选模块各一处健壮性缺口、Windows 原生通道一处静默失效、模板与包页各一处文档缺口。
+
+### 修复
+
+- **Windows Toast 激活注册失败一次就永久失效**：`registerToastApp()` 把 `false` 缓存进 `appReady`，调用处又丢掉返回值，所以杀软拦 `reg.exe`、注册表被锁这类瞬时失败之后，本次宿主生命周期内所有原生 Toast 的按钮与正文点击静默失灵，日志里一个字都没有，`debug().winNative.last` 也看不出原因。现在失败不缓存、记一行 warning（含失败的 `reg` 子命令与 stderr 首行）、5 分钟后随下一次 Toast 整轮重试，只有成功才缓存；页面侧会看到 `ok:activation-unavailable`。顺手补掉两处会让整个 POST 挂掉的同步抛错（`execFile` 抛而非回调、幂等的 `reg add` 之外没有任何兜底）。
+- **同源中继没有速率限制**：本机同源页面可以无限 POST，每一次都真实转发到网关。闸门已经把来源锁死在本机，正常页面不会这样；但页面一旦被注入或脚本跑成循环，网关就会被刷。现在同一来源地址每分钟最多 60 次转发，超出回 `429 {reason:'rate-limited'}`，这一次既不读 body 也不碰网关，日志留一行 warning。限流排在闸门与意图头之后，被拒的跨站请求不消耗配额。
+- **`attentionKeysFired` 只增不删**：见过一个 pending key 就留一条布尔，桌面端常驻整天会攒到几千条，严格说是无界的。现在按 FIFO 淘汰、上限 4000 条；key 全局单调递增（`approval:N`），被淘汰的老 key 不可能还在待处理列表里，所以不会重复提醒。
+- **重启后首次 `turn/end` 会全量倒扫日志**：会话有 10 万事件时从 `seq-1` 一路走到 0。现在扫描窗口封顶 5 万条，超出按「这一刻没有 Goal」处理——fail-open，宁可多提醒一次也不吞掉提醒；每个会话仍然只扫一次。
+
+### 文档
+
+- **npm 包页显示的一直是繁体 README**：`files` 白名单把四份 README 都打进包，而 npm 在发布目录里 glob `{README,README.*}`、取第一个匹配 `.md` 的文件，实测顺序是逆字典序，`README.zh-TW.md` 因此长期胜出（1.23.0 加入繁中之后就存在，只是没人注意）。三份译文移进 `docs/`（`docs/README.{en,zh-TW,ru}.md`），根目录只剩 `README.md`；语言切换、`docs/` 内部的相对链接与回跳、`CONTRIBUTING` 与 PR 模板里的引用一并改，`files` 白名单与 `docs/README.md` 补上「别把译文放回根目录」的原因。
+- `cordis.patch.yml` 的 relay 段补上 `snippetLimit`：README 与 `DEFAULTS` 一直有这个键（默认 3000，`0` = 不补正文），模板漏了，照模板配置的运维看不到这个隐私开关。
+- 四份 README 的 relay 回包口径补 `429` 并说明节流边界；Windows 节补上注册失败的重试与 `ok:activation-unavailable`。
+
+### 测试
+
+- `smoke/win-toast-test.mjs` 新增注册失败段：失败仍回 200 且带 `detail: "activation-unavailable"`、warning 里有 stderr 原文、冷却窗口内不再 spawn `reg`、窗口过后整轮重试成功并缓存。
+- `smoke/relay-route-test.mjs` 新增节流段：连发 61 次转发，第 61 次回 429 且网关只收到 60 次。
+- `smoke/host-fallback-test.mjs` 新增超长日志段：Goal 落在扫描窗口之外时，重启后的 `turn/end` 照常提醒。
+
 ## [1.28.1] — 2026-11-26
 
 文档修正，无行为变化：1.28.0 的致谢表在四份 README 里多了两个空行，新加的两行（[#64](https://github.com/chromoany/dsh-notify-me/pull/64)、[#66](https://github.com/chromoany/dsh-notify-me/issues/66)）因此脱离表格、按普通段落渲染，`|` 分隔符露在正文里。现在两行接回表格，GitHub 与 npm 包页都正常显示。

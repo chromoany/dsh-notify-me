@@ -31,4 +31,4 @@ Two traps are worth remembering: a package listed in `dsh.client.inject` is read
 
 ---
 
-[← Back to README](../README.en.md)
+[← Back to README](README.en.md)

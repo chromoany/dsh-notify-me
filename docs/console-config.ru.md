@@ -61,4 +61,4 @@ window.__dshNotifyMe.testExternal()               // explicit outbound test to v
 
 ---
 
-[← Назад к README](../README.ru.md)
+[← Назад к README](README.ru.md)

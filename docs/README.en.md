@@ -6,12 +6,12 @@
 
 **Step away from DSH and know when to come back.**
 
-[简体中文](README.md) | [繁體中文](README.zh-TW.md) | English | [Русский](README.ru.md)
+[简体中文](../README.md) | [繁體中文](README.zh-TW.md) | English | [Русский](README.ru.md)
 
 [![npm version](https://img.shields.io/npm/v/dsh-notify-me?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-notify-me?style=flat-square&label=downloads%2Fmonth&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
 [![npm total downloads](https://img.shields.io/npm/dt/dsh-notify-me?style=flat-square&label=total%20downloads&color=1F883D)](https://www.npmjs.com/package/dsh-notify-me)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](../LICENSE)
 [![test](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml/badge.svg)](https://github.com/chromoany/dsh-notify-me/actions/workflows/test.yml)
 [![DSH Web and Desktop](https://img.shields.io/badge/DSH-Web%20%7C%20Desktop-blue?style=flat-square)](#installation)
 [![Package size](https://img.shields.io/npm/unpacked-size/dsh-notify-me?style=flat-square&label=package%20size)](https://www.npmjs.com/package/dsh-notify-me)
@@ -20,7 +20,7 @@
 
 </div>
 
-[Preview](#ui-preview) · [Install](#installation) · [Settings](#configure-it-from-dsh-settings) · [Compatibility](#compatibility) · [Known limitations](#known-limitations) · [Changelog](CHANGELOG.md)
+[Preview](#ui-preview) · [Install](#installation) · [Settings](#configure-it-from-dsh-settings) · [Compatibility](#compatibility) · [Known limitations](#known-limitations) · [Changelog](../CHANGELOG.md)
 
 A notification plugin for DSH Web / Desktop, so you can afford to keep full access off without watching the page all day.
 
@@ -334,9 +334,11 @@ What comes back (which is how the page turns "sent but unverifiable" into someth
 - `POST` → reads the body (64 KiB cap), requires a JSON object (a completion's missing body is filled in from the session log first, see above), maps it onto the gateway's `{title, body, type:'info'}` (or onto a rendered `relay.bodyTemplate` JSON object when one is configured; the payload's `tag` is deliberately never forwarded: Apprise treats a tag as a service filter, and an unmatched one answers 424), and attaches `gateway.headers` plus the credentials; the request must carry the `x-dsh-notify-me-relay: relay` intent header, without it the answer is `403 {reason:'missing-intent'}` — a cross-site form post cannot set a custom header, and setting one costs a preflight the gateway always fails;
 - `200 {ok, upstreamStatus, upstreamBody}` (with `upstreamBody` at most 500 characters) — the forward succeeded; a non-2xx from the gateway answers `502` in the same shape;
 - `500 {reason}`: a template that cannot be used (`invalid-body-template` / `template-too-large` / `rendered-body-too-large`) — the first two are normally caught at boot; this is the runtime backstop, and nothing is sent;
-- `400` (bad or empty JSON body), `413` (body over the cap), `405` (wrong method), `403` (refused by the gate, or a missing intent header), `503` (a credentials file is configured but cannot be read), `502 {reason:'upstream-error'}` (the upstream call itself failed, or the gateway answered 3xx — redirects are not followed, because following one would replay the body and the `Authorization` header somewhere else).
+- `400` (bad or empty JSON body), `413` (body over the cap), `405` (wrong method), `403` (refused by the gate, or a missing intent header), `429 {reason:'rate-limited'}` (more than 60 forwards from one address in a minute), `503` (a credentials file is configured but cannot be read), `502 {reason:'upstream-error'}` (the upstream call itself failed, or the gateway answered 3xx — redirects are not followed, because following one would replay the body and the `Authorization` header somewhere else).
 
 Credentials stay in the host: the page cannot read them, and they are never echoed into a response or a log line. The `POST` goes through the same gate as the other host entry points, so a forged caller (a cross-site page, a DNS-rebinding page) is refused even if it learns the path.
+
+Forwards are throttled too: one address may forward 60 times a minute, and the request past that answers `429` without its body being read and without touching the gateway, with one warning line in the host log. The gate already keeps every non-local caller out, so this covers the page itself being injected into or scripted into a loop, where each forward would become a real notification on the gateway — an external service with its own quota. The page sends one per event and retries with backoff, so normal use never comes close.
 
 </details>
 
@@ -356,11 +358,11 @@ This is primarily a **browser-layer** plugin: local toasts, sound and the title 
 
 ## Compatibility
 
-Every release from `0.1.1-rc.2` through `0.2.2-rc.5` was tested to actually activate, including the npm `next` channel's `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its runtime service inject `sessions` / `locale` / `slots` resolves, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). On `0.2.2-rc.3` the isolated run also exercised the settings section rendering, an enable-switch round trip and all four host routes, with no warnings in the host log; on the desktop side the reporter of [#41](https://github.com/chromoany/dsh-notify-me/issues/41) separately verified native toasts and window raising on the same version (1.21.3 only adds the Windows 10 build gate and touches no host API). On 2026-11-19 the then-`latest` `0.2.2-rc.5` and its predecessor `0.2.2-rc.4` each got an isolated run: both keep the 76 boot entries with the plugin at index 65 — the manifest's `dsh.client.inject` has been empty since 1.21.6, so the loader no longer treats other plugin bundles as a precondition ([#44](https://github.com/chromoany/dsh-notify-me/issues/44)) — a real `?token=` page loaded through headless Edge ran `apply` (`debug()` reports `version: 1.21.5` and `uiSession: bound`, no console errors; after the #44 fix it was re-run on `0.2.2-rc.5` with 1.21.6, again `apply`, `uiSession: bound`, `hostEnv: web`), all ten host APIs / slots plus the `allowed-once` approval contract are present, and the nine `npm test` suites pass against the cordis 4.1.0 the host ships. Per-release records, the host-generation shape differences and the two traps that fail silently are in **[docs/compatibility.en.md](docs/compatibility.en.md)**.
+Every release from `0.1.1-rc.2` through `0.2.2-rc.5` was tested to actually activate, including the npm `next` channel's `0.2.2-rc.3` / `0.2.2-rc.4` / `0.2.2-rc.5` (the criteria: the plugin entry lands in the boot page's `__DSH_BOOT__`, its runtime service inject `sessions` / `locale` / `slots` resolves, `/plugins/??dsh-notify-me/client.js` serves a build containing the new code, and the "Notify me" section appears in Settings). On `0.2.2-rc.3` the isolated run also exercised the settings section rendering, an enable-switch round trip and all four host routes, with no warnings in the host log; on the desktop side the reporter of [#41](https://github.com/chromoany/dsh-notify-me/issues/41) separately verified native toasts and window raising on the same version (1.21.3 only adds the Windows 10 build gate and touches no host API). On 2026-11-19 the then-`latest` `0.2.2-rc.5` and its predecessor `0.2.2-rc.4` each got an isolated run: both keep the 76 boot entries with the plugin at index 65 — the manifest's `dsh.client.inject` has been empty since 1.21.6, so the loader no longer treats other plugin bundles as a precondition ([#44](https://github.com/chromoany/dsh-notify-me/issues/44)) — a real `?token=` page loaded through headless Edge ran `apply` (`debug()` reports `version: 1.21.5` and `uiSession: bound`, no console errors; after the #44 fix it was re-run on `0.2.2-rc.5` with 1.21.6, again `apply`, `uiSession: bound`, `hostEnv: web`), all ten host APIs / slots plus the `allowed-once` approval contract are present, and the nine `npm test` suites pass against the cordis 4.1.0 the host ships. Per-release records, the host-generation shape differences and the two traps that fail silently are in **[compatibility.en.md](compatibility.en.md)**.
 
 ## Advanced console configuration
 
-The Settings page is the first entry point. To script or bulk-edit preferences, reset them, or look up the external-target fields, see **[docs/console-config.en.md](docs/console-config.en.md)** — the full config keys, `decide()` / `testExternal()`, the external-test switch boundary, and how to read custom sounds and `debug().hostBridge`.
+The Settings page is the first entry point. To script or bulk-edit preferences, reset them, or look up the external-target fields, see **[console-config.en.md](console-config.en.md)** — the full config keys, `decide()` / `testExternal()`, the external-test switch boundary, and how to read custom sounds and `debug().hostBridge`.
 
 ## How it works
 
@@ -369,7 +371,7 @@ The reminder core watches session state and pending interactions; approval decis
 <details>
 <summary>Event sources and graceful degradation</summary>
 
-The reminder core picks its interaction source per host generation (see the table in [docs/compatibility.en.md](docs/compatibility.en.md)); the current session always comes from the client `sessions` service:
+The reminder core picks its interaction source per host generation (see the table in [compatibility.en.md](compatibility.en.md)); the current session always comes from the client `sessions` service:
 
 - **The current session's** `SessionSnapshot`: a `running: true → false` edge means a reply finished;
 - **pending interactions**: a new key in `uiSession`'s `sessionStatus` (`>= 0.1.6`, per-session `pendingInteraction`) or in `pendingInteractions` (`0.1.2 .. 0.1.5`) means the agent is waiting on you — the container carries the approval tool name / reason or the question text; older hosts fall back to the controller snapshot's `pending[]`;
@@ -485,7 +487,7 @@ Like the other routes, this one registers exactly one exact path and refuses eve
 
 **Settings icon patch**
 
-- The sidebar row icon relies on a DOM patch: the shell hard-codes an icon per section id and `settings.section` has no icon field, so the plugin can only swap that row's `<svg>` for a bell after the panel renders. It hinges on the host's current panel structure (`data-shortcut-modal="settings"` plus a label `<span>` inside the nav button); if DSH changes that structure it silently falls back to the default gear and nothing else is affected. The logo and naming decisions are in [docs/brand/README.md](docs/brand/README.md).
+- The sidebar row icon relies on a DOM patch: the shell hard-codes an icon per section id and `settings.section` has no icon field, so the plugin can only swap that row's `<svg>` for a bell after the panel renders. It hinges on the host's current panel structure (`data-shortcut-modal="settings"` plus a label `<span>` inside the nav button); if DSH changes that structure it silently falls back to the default gear and nothing else is affected. The logo and naming decisions are in [brand/README.md](brand/README.md).
 
 ## Development
 
@@ -496,7 +498,7 @@ npm test                         # smoke-test (state machine) + host-route-test 
 npm pack --dry-run               # preview the published tarball
 ```
 
-What each suite covers, plus the manual checks, lives in [docs/testing.en.md](docs/testing.en.md).
+What each suite covers, plus the manual checks, lives in [testing.en.md](testing.en.md).
 
 ## Credits & how contributions land
 
@@ -564,4 +566,4 @@ Attribution policy: external PRs are landed as maintainer commits — the origin
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](../LICENSE).

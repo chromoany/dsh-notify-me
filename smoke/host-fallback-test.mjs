@@ -653,6 +653,23 @@ try {
     hostHalf.emit(resumed, { type: 'goal/change', data: { kind: 'goal/change', version: 1, operation: 'block', goal: { id: 'g2', revision: 2, objective: 'resume', phase: 'blocked', blockedReason: { code: 'model-reported', message: 'cannot reach the gateway' } } } });
     hostHalf.emit(resumed, { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } });
     await waitFor(() => calls.length === 1, 'the round that blocked the goal');
+
+    // The restart scan is bounded, and the bound fails toward announcing: a log
+    // long enough that the only lifecycle change sits outside the window reads
+    // as "no goal", so the turn end is reported rather than swallowed, and the
+    // first turn end after a restart never walks an unbounded log.
+    calls.length = 0;
+    const beyondSeq = 50001;
+    const beyond = {
+      header: { id: 'sess-goal-beyond', cwd: '/home/liegu/projects/atlas' },
+      seq: beyondSeq,
+      // Seq 0 is the only lifecycle change, and the window does not reach it.
+      eventAt: (seq) => (seq === 0
+        ? { type: 'goal/change', data: { kind: 'goal/change', version: 1, operation: 'create', goal: { id: 'g3', revision: 1, objective: 'ancient', phase: 'active' } } }
+        : { type: 'turn/end', data: { turn: seq, reason: { kind: 'completed' } } }),
+    };
+    hostHalf.emit(beyond, { type: 'turn/end', data: { turn: beyondSeq, reason: { kind: 'completed' } } });
+    await waitFor(() => calls.length === 1, 'a goal older than the restart scan window');
     globalThis.fetch = realFetch;
   }
 

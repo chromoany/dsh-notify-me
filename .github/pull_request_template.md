@@ -14,4 +14,4 @@
 
 - 涉及的 DSH 宿主版本：
 - 是否改动 `package.json` 的 `files` 或 `dsh.compatibility`：否 / 是（说明）
-- 双语文档：不涉及 / 已同步 `README.md` 与 `README.en.md`
+- 双语文档：不涉及 / 已同步 `README.md` 与 `docs/` 下三份译文
