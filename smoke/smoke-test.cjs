@@ -4967,14 +4967,15 @@ async function androidWorkerFallback() {
   console.log('android fallback OK: worker registered at boot, plain toasts posted there, ctor refusal remembered, dead worker recorded');
 }
 
-// Traditional Chinese is a language, not a script substitution: the page picks
-// 'zh-TW' from the UI language tag (zh-TW / zh-HK / zh-MO / zh-Hant), keeps it
-// pinned in config.language, and draws its settings copy from its own
-// dictionary. The host's locale catalog has no zh-TW, so that copy can only come
-// from UI_DICTS — the settings case below runs with a host bind() that knows
-// only zh, which is exactly the real host's shape.
+// Traditional Chinese and Russian are languages, not script substitutions: the
+// page picks the id from the UI language tag, keeps it pinned in
+// config.language, and draws its settings copy from its own dictionary. The
+// host's locale catalog has no zh-TW (and no ru in the builds the plugin
+// supports), so that copy can only come from UI_DICTS — the settings cases
+// below run with a host bind() that knows only zh, which is exactly the real
+// host's shape.
 function languageModes() {
-  console.log('\n— Traditional Chinese: language ids, copy tables and settings copy —');
+  console.log('\n— Language tables: zh-TW and ru —');
 
   function coreBoot({ active, langAttr, seed } = {}) {
     const b = bootBundle({
@@ -5035,16 +5036,21 @@ function languageModes() {
     'a pinned zh-TW still draws Traditional copy (got ' + lastTitle(pinned) + ')');
   const plain = coreBoot();
   assert(apiOf(plain).debug().language === 'zh', 'with no locale information the default stays zh');
+  // An unrecognised UI language must not turn into English by accident: it is
+  // simply not one of the tables, so the zh default stands.
+  const unknownTag = coreBoot({ active: 'de' });
+  assert(apiOf(unknownTag).debug().language === 'zh',
+    'an unknown UI tag keeps the zh default (got ' + apiOf(unknownTag).debug().language + ')');
 
   // 5) The settings page renders its own zh-TW copy, keyset-identical to zh.
   //    The runtime / language / reset rows live behind the advanced toggle, so
   //    this page opens it the way a user would first.
   const page = settingsBoot(null, null, { locale: 'zh-TW', advanced: true });
   const dict = page.dictNow();
-  assert(dict && dict.zh && dict['zh-TW'] && dict.en,
-    'the page registers zh, zh-TW and en (got ' + JSON.stringify(dict ? Object.keys(dict) : null) + ')');
+  assert(dict && dict.zh && dict['zh-TW'] && dict.en && dict.ru,
+    'the page registers zh, zh-TW, en and ru (got ' + JSON.stringify(dict ? Object.keys(dict) : null) + ')');
   const zhKeys = Object.keys(dict.zh).sort();
-  for (const id of ['zh-TW', 'en']) {
+  for (const id of ['zh-TW', 'en', 'ru']) {
     const keys = Object.keys(dict[id]).sort();
     assert(JSON.stringify(keys) === JSON.stringify(zhKeys),
       'UI_' + id + ' defines exactly the zh key set (' + keys.length + ' vs ' + zhKeys.length + ')');
@@ -5064,11 +5070,14 @@ function languageModes() {
   const options = [];
   page.walk(sel, (n) => { if (n.type === 'option') options.push(n); });
   const values = options.map((o) => o.props.value);
-  assert(JSON.stringify(values) === JSON.stringify(['auto', 'zh', 'zh-TW', 'en']),
-    'the picker lists auto / zh / zh-TW / en (got ' + JSON.stringify(values) + ')');
+  assert(JSON.stringify(values) === JSON.stringify(['auto', 'zh', 'zh-TW', 'en', 'ru']),
+    'the picker lists auto / zh / zh-TW / en / ru (got ' + JSON.stringify(values) + ')');
   const twOption = options.find((o) => o.props.value === 'zh-TW');
   assert(twOption && collectText(twOption).join('') === '繁體中文',
     'the zh-TW option is labelled 繁體中文 (got ' + (twOption && collectText(twOption).join('')) + ')');
+  const ruOption = options.find((o) => o.props.value === 'ru');
+  assert(ruOption && collectText(ruOption).join('') === 'Русский',
+    'the ru option is labelled Русский (got ' + (ruOption && collectText(ruOption).join('')) + ')');
   // The language readout names the resolved language in its own script.
   assert(page.text.includes('繁體中文'), 'the resolved-language note names 繁體中文');
   page.cleanup();
@@ -5096,7 +5105,33 @@ function languageModes() {
   assert(backText.includes('恢复默认设置'), 'auto follows the host UI back to Simplified');
   assert(live.configNow().language === 'auto', 'auto is persisted as auto, not as the resolved language');
   live.cleanup();
-  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker, live switch');
+
+  // 7) Russian rides the same rails: the UI tag picks it, a pinned value wins,
+  //    and both the toasts and the settings page read UI_ru alone — the host's
+  //    bind() still knows only zh here.
+  const ru = coreBoot({ active: 'ru' });
+  assert(apiOf(ru).debug().language === 'ru',
+    'the auto language follows a ru UI (got ' + apiOf(ru).debug().language + ')');
+  apiOf(ru).test('done');
+  assert(lastTitle(ru) === 'DSH · Ответ готов', 'the done toast is Russian (got ' + lastTitle(ru) + ')');
+  apiOf(ru).test('attention');
+  assert(lastTitle(ru) === 'DSH · Вопрос', 'the attention toast is Russian (got ' + lastTitle(ru) + ')');
+  const ruPinned = coreBoot({ active: 'en', seed: { language: 'ru' } });
+  apiOf(ruPinned).test('done');
+  assert(lastTitle(ruPinned) === 'DSH · Ответ готов',
+    'a pinned ru wins over an English UI (got ' + lastTitle(ruPinned) + ')');
+
+  const ruPage = settingsBoot(null, null, { locale: 'ru', advanced: true });
+  const ruDict = ruPage.dictNow();
+  assert(ruDict && ruDict.ru, 'the page registers a ru dictionary');
+  assert(ruDict.ru.reset !== ruDict.zh.reset && ruDict.ru.reset !== ruDict.en.reset,
+    'the ru table is translated, not copied from zh or en (got ' + ruDict.ru.reset + ')');
+  assert(ruPage.text.includes('Вернуть по умолчанию'),
+    'the page renders Russian copy (got ' + ruPage.text.slice(0, 160) + ')');
+  assert(!ruPage.text.includes('恢复默认设置'), 'the ru page does not mix Simplified copy in');
+  ruPage.cleanup();
+
+  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker, live switch, ru auto/pinned and its own settings page');
 }
 
 (async () => {

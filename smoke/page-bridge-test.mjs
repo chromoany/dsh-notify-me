@@ -490,7 +490,34 @@ try {
       'an unknown page language falls back to zh');
   }
 
-  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves, external switches, zh-TW');
+  // 17) Russian is the fourth language both halves accept: a `ru` heartbeat is
+  // kept instead of falling back, and the host's copy table speaks Russian for
+  // an alert it has to build itself.
+  {
+    const bridgeLib = await import(pathToFileURL(path.join(ROOT, 'lib', 'page-bridge.js')).href);
+    const ruBeat = await call(bridge, {
+      method: 'POST',
+      headers: { 'x-dsh-notify-me-page': 'bridge' },
+      body: JSON.stringify({ alive: true, language: 'ru' }),
+    });
+    assert(ruBeat.status === 200 && ruBeat.body && ruBeat.body.ok === true,
+      'a ru heartbeat is accepted (got ' + ruBeat.status + ' ' + JSON.stringify(ruBeat.body) + ')');
+    const ruStatus = await call(bridge, { method: 'GET' });
+    assert(ruStatus.body.language === 'ru',
+      'the reported language keeps ru (got ' + ruStatus.body.language + ')');
+
+    const ruCopy = bridgeLib.copyFor('ru');
+    assert(ruCopy.language === 'ru', 'copyFor names the ru table (got ' + ruCopy.language + ')');
+    assert(ruCopy.approval === 'Запрос на подтверждение' && ruCopy.done === 'Ответ готов',
+      'the ru table speaks Russian (got ' + ruCopy.approval + ' / ' + ruCopy.done + ')');
+    assert(ruCopy.bodySeparator === ': ', 'ru uses the plain body separator');
+    assert(bridgeLib.pickLanguage('auto', 'ru') === 'ru',
+      'auto follows a page that reported ru');
+    assert(bridgeLib.pickLanguage('ru', 'zh') === 'ru',
+      'an explicit ru config wins over the page');
+  }
+
+  console.log('page bridge OK: status shape, lease, refusals, tunnel Host derivation, body limits, path collisions, port semantics, inactive halves, external switches, zh-TW, ru');
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

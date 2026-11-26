@@ -9,7 +9,7 @@ The Settings page is the first entry point; to script or bulk-edit preferences, 
 window.__dshNotifyMe.config                       // view current config
 window.__dshNotifyMe.setConfig({
   enabled: true,           // false = disable all reminders (master switch)
-  language: "auto",        // 'auto' follow the UI | 'zh' Simplified Chinese | 'zh-TW' Traditional Chinese | 'en' English
+  language: "auto",        // 'auto' follow the UI | 'zh' Simplified Chinese | 'zh-TW' Traditional Chinese | 'en' English | 'ru' Russian
   attentionHiddenOnly: false, // true = don't alert "needs you" while the page is visible
   currentHiddenOnly: true,    // true = waits in the conversation on screen keep only the title marker (replayed once away)
   donePolicy: "background",   // "reply finished" policy: 'background' only when away | 'smart' quiet only for the open one | 'always' always alert

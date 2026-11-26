@@ -2,6 +2,26 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.27.0] — 2026-11-26
+
+插件现在认识俄语：界面、设置页、通知正文与按钮、页面侧（主世界）的标题、以及三份 README 与两份控制台文档全部接入第五档语言。
+
+### 新增
+
+- **俄语界面与通知文案**（[#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60)，作者 aleXela17）：新增 `UI_ru`（191 个键，与 `UI_zh` / `UI_zhTW` / `UI_en` 一一对应）与 `TXT.ru`（23 个叶子，与另外三份同构），接进 `UI_DICTS`、`ctx.locale.register()`、`currentUILang()` / `effectiveLang()` 的多来源判定与 `langLabel()`；页面侧的 `LANGUAGES` 与 `copyFor()` 跟着扩到五档，审批 Toast 的标题与按钮文案也是俄语。设置页语言下拉框从四档变五档（自动 / 简体中文 / 繁體中文 / English / Русский），`language: "ru"` 在 `normalizeConfig()` 放行，`cordis.patch.yml` 与 `docs/console-config.md` / `.en.md` 的取值枚举同步。
+- **默认行为不变**：`auto` 仍按界面语言、再按文档语言挑选，两边都没有信号时回落简体中文；新增语言档不影响既有的语言记忆与实时切换。
+
+### 文档
+
+- 三份 README（简体 / 英文 / 繁体）的语言档位从四档改成五档，配置注释、`language` 说明、语言选择器与插件自带字典的注记同步；`docs/console-config.md` 与 `.en.md` 的 `language` 枚举补 `ru`。
+- 致谢表新增 aleXela17（[#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60)），头像存 `docs/contributors/aleXela17.png`；按仓库惯例以维护者提交落地，不挂 Co-authored-by。
+
+### 测试
+
+- `smoke/smoke-test.cjs`：新增 ru 用例——auto 下俄语界面选俄语、固定 `ru` 压过英文界面、只靠 `UI_ru` 也能画出俄语设置页；断言四份界面字典键集一致（191 键）与四份通知文案叶子一致（23）。
+- `smoke/page-bridge-test.mjs`：页面侧五档语言与 `ru` 心跳的断言。
+- `npm test` 九套全绿；`npm run pack` 清单仍为 22 个文件。
+
 ## [1.26.0] — 2026-11-25
 
 Windows 10 桌面端的审批按钮重新能点了：不再指望系统「没挂 COM 激活器就照 XML 派发协议点击」，改为装一个真实的 COM 激活器接住点击。1.21.3 起那边干脆不发带按钮的 Toast，这条回退在这次收掉。
