@@ -29,7 +29,7 @@ DSH Web / Desktop 的通知插件，让你敢不开完整访问，也不必一�
 - **人走开但窗口没走**：窗口留在最前台、人却离开座位，超过 3 分钟没有输入也算离开，该提醒的照常提醒；收到的那条通知不会在你回来之前自己消失，一回到页面（点任务栏、Alt+Tab、点通知都算）就收起（想让它在回到页面后继续留着，打开「回到页面也保留提醒」）。
 - **离开电脑时**：可选转发到 Discord、Bark、Gotify、飞书群机器人、Server酱、WxPusher、Telegram 或自己的 Webhook。
 - **拿手机看 DSH Web 时**：Android Chrome 不支持页面的 `new Notification()`（抛 `Illegal constructor`），插件自动改用页面自带的 Service Worker 发通知，点通知回对应对话；关掉快捷裁决也照样能收到。
-- **五档语言**：跟随界面 / 简体中文 / 繁體中文 / English / Русский——通知文字、`🔔 …` 标题标记与设置界面按同一档切换（宿主本身没有繁體与俄语语言包，这两档都由插件自带）。
+- **五档语言**：跟随界面 / 简体中文 / 繁體中文 / English / Русский——通知文字、`🔔 …` 标题标记与设置界面按同一档切换（宿主本身没有繁體与俄语语言包，这两档都由插件自带）。跟随界面时，界面语言若是插件没有语言包的（`ja`、`de` 之类），按英文给通知。
 - **不用盯着侧栏**：任务栏 / Dock 图标带角标，显示还有几个对话在等你（默认开）；打开对话、答掉等待或把它静音，数字就自己降下去，平台没有角标接口时不画。
 - **连页面都关掉时**：可选让宿主进程兜底——页面不在时宿主继续把「需要你操作」「回复完成」推到你的网关；也可以只开同源中继，让页面够到要认证的网关。两项默认关，配置写在 profile 的 patch 层（见[页面关闭后：宿主侧兜底与同源中继](#页面关闭后宿主侧兜底与同源中继)）。
 
@@ -272,7 +272,7 @@ profile 覆盖示例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 - `turnEndThrottleMs`（`15000`）：同一会话的「回复完成」在这个窗口内只推一条；窗口只在真发出去时才消耗，被租约挡掉的那次不算。节流只管 `completed`——`aborted` / `error` / `max-tokens` 这些收尾不节流，它们本来就少，而且往往是此刻最该看到的那一条；
 - **文案与页面通知逐字一致**：标题是 `<前缀> · 回复完成` / `<前缀> · 审批请求`，正文「回复完成」只有会话名、「审批请求」是 `会话名：工具名 · 原因`——不含任何用户消息正文（用户消息里常带注入的 `<system-reminder>`、记忆上下文与时间戳，复制进通知就没法读了）；非正常收尾（`aborted` / `error` / `max-tokens`…）会在正文尾部附一个短后缀，如 `（error）`；
 - `titlePrefix`（`DSH`）：标题是 `<前缀> · 审批请求` / `<前缀> · 回复完成`（与页面通知同一套标签）；
-- `language`（`auto`）：`auto` 用页面最近一次心跳报的语言，没有心跳才回落到中文；`zh` / `zh-TW` / `en` / `ru` 强制；
+- `language`（`auto`）：`auto` 用页面最近一次心跳报的语言；插件没有对应表的语言（`ja` / `de` / `es` 等）按英文处理；页面上完全没有语言信号时才回落到中文；`zh` / `zh-TW` / `en` / `ru` 强制；
 - `pageLeaseMs`（`60000`）：页面在线租约，见下面「去重」；
 - `healthPath`（`/__dsh-notify-me/host-fallback`）：只读健康探针的路径。
 
@@ -505,7 +505,7 @@ npm pack --dry-run               # 预览发布包
 
 `smoke/mac-notify-content-test.mjs` 跑通知内容：`splitNotificationBody()` 对每一种正文形状的结果（一行、两行、空行、首尾空白、CJK、缺字段）、页面自己抬好的 `subtitle` 优先生效、只有真有副标题时才传 `--subtitle`、正文永远不等于标题（回归）、回复摘要怎么从事件日志里取（跳过工具结果、压成一行、超长截断加省略号、空日志不报错、只在 `done` 且正文为空时读）、读日志失败仍照发提醒、以及拆分后再各自截断（正文 1000 字符、副标题 200 字符）。同样用假 spawn，不需要真的助手，在任何平台都会跑。
 
-语言各档与 Android 退路各自有独立用例：`smoke/smoke-test.cjs` 的 `languageModes()` 走 `auto` 的两条识别来源（宿主 locale 与 `document.documentElement.lang`）、`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都算繁體、`zh-CN` 仍是简体、无信息时回落简体、钉死某一档后通知与设置页都跟着变、四份字典键集完全一致；`androidWorkerFallback()` 三条：Android UA 下 `new Notification` 一次都不碰、只注册一个 Service Worker、通知参数（tag / renotify / silent / data）与「只注册一次」；桌面 UA 下构造器抛 `Illegal constructor` 时先照常调用、再回落 Worker 并记住失败；Worker 也拒收时错误进 `debug().lastToastReject` 而不是被吞。`smoke/page-bridge-test.mjs` 另钉住心跳带 `zh-TW` 被接受、未知语言被忽略、宿主兜底文案与 `pickLanguage` 的优先级。
+语言各档与 Android 退路各自有独立用例：`smoke/smoke-test.cjs` 的 `languageModes()` 走 `auto` 的两条识别来源（宿主 locale 与 `document.documentElement.lang`）、`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都算繁體、`zh-CN` 仍是简体、插件没有语言包的界面标签（`ja` / `de`）按英文、页面上毫无语言信号才回落简体、钉死某一档后通知与设置页都跟着变、四份字典键集完全一致；`androidWorkerFallback()` 三条：Android UA 下 `new Notification` 一次都不碰、只注册一个 Service Worker、通知参数（tag / renotify / silent / data）与「只注册一次」；桌面 UA 下构造器抛 `Illegal constructor` 时先照常调用、再回落 Worker 并记住失败；Worker 也拒收时错误进 `debug().lastToastReject` 而不是被吞。`smoke/page-bridge-test.mjs` 另钉住心跳带 `zh-TW` 被接受、未知语言被忽略、宿主兜底文案与 `pickLanguage` 的优先级。
 
 `smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面门控、`GET` 探针、`405` / `403` / `501` / `400` 的拒绝、审批 payload 与 base64 传递、首次发 Toast 前的六条注册命令（`HKCU\Software\Classes\dsh-notify-me` 的三条协议键、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 与 `CustomActivator`、以及只建不写 `LocalServer32` 的空 `CLSID\{…}` 存根）、Windows 10 分支再测七条注册（多出指向 `lib/win-toast-activator.ps1` 的 `LocalServer32`）、payload 里的 `comActivation`、以及激活器回调的 `LPWStr` 封送注解；approve / reject / open 动作单次认领、token 过期与 `{remove}` 撤回。它用假的 `spawn` 驱动 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外断言处理器脚本是 UTF-16LE + BOM、正文纯 ASCII、含 `ExpandEnvironmentStrings` 表达式、不烘入 profile 路径，且正文点击只发 `dsh-notify-me://open`（不得再出现 `dsh://open`）；`dsh-notify-me://open` 不带 session 时仍解析为一次纯抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
@@ -561,7 +561,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行应是 F
 | <a href="https://github.com/HowardXue7790"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/HowardXue7790.png" width="40" height="40" alt="@HowardXue7790"></a> | [#53](https://github.com/chromoany/dsh-notify-me/issues/53) / [#54](https://github.com/chromoany/dsh-notify-me/issues/54)：审批 Toast 在 Windows 上几秒就被收走（「从不关闭」同时失效）、点按钮弹 Microsoft Store 的报障，以及直接指到计时器与 VBS 那一行的定位（1.25.0 修复） |
 | <a href="https://github.com/dsadw"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dsadw.png" width="40" height="40" alt="@dsadw"></a> | [#55](https://github.com/chromoany/dsh-notify-me/issues/55) / [#56](https://github.com/chromoany/dsh-notify-me/pull/56)：任务栏 / Dock 未读角标的诉求与首版实现（1.25.0 收编，改成按会话计数） |
 | <a href="https://github.com/ceh-ylhy"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ceh-ylhy.png" width="40" height="40" alt="@ceh-ylhy"></a> | [#58](https://github.com/chromoany/dsh-notify-me/issues/58)：Windows 10 上原生审批按钮点不动的一手实测与改法建议（1.26.0 修复，顺带纠正 interface IID 与 `LPWStr` 封送两处） |
-| <a href="https://github.com/aleXela17"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/aleXela17.png" width="40" height="40" alt="@aleXela17"></a> | [#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60)：俄语界面、通知文案与五档语言的整套接线（1.27.0 收编） |
+| <a href="https://github.com/aleXela17"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/aleXela17.png" width="40" height="40" alt="@aleXela17"></a> | [#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60) / [#61](https://github.com/chromoany/dsh-notify-me/issues/61)：俄语界面、通知文案与五档语言的整套接线（1.27.0 收编），以及未知界面语言改为回落英文的提案（1.27.1 修复） |
 
 署名口径：本仓库收编外部 PR 时以维护者提交落地——不沿用原 commit、不挂 Co-authored-by，GitHub 的 contributors 图只显示维护者，贡献者以上面的致谢署名。
 

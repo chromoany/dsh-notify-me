@@ -29,7 +29,7 @@ DSH Web / Desktop 的通知插件，讓你敢不開完整存取，也不必一�
 - **人走開但視窗沒走**：視窗留在最前台、人卻離開座位，超過 3 分鐘沒有輸入也算離開，該提醒的照常提醒；收到的那條通知不會在你回來之前自己消失，一回到頁面（點工作列、Alt+Tab、點通知都算）就收起（想讓它在回到頁面後繼續留著，開啟「回到頁面也保留提醒」）。
 - **離開電腦時**：可選轉發到 Discord、Bark、Gotify、飛書群機器人、Server酱、WxPusher、Telegram 或自己的 Webhook。
 - **拿手機看 DSH Web 時**：Android Chrome 不支援頁面的 `new Notification()`（拋 `Illegal constructor`），插件自動改用頁面自帶的 Service Worker 發通知，點通知回對應對話；關掉快速裁決也照樣能收到。
-- **五檔語言**：跟隨介面 / 簡體中文 / 繁體中文 / English / Русский——通知文字、`🔔 …` 標題標記與設定介面按同一檔切換（宿主本身沒有繁體與俄語語言包，這兩檔都由插件自帶）。
+- **五檔語言**：跟隨介面 / 簡體中文 / 繁體中文 / English / Русский——通知文字、`🔔 …` 標題標記與設定介面按同一檔切換（宿主本身沒有繁體與俄語語言包，這兩檔都由插件自帶）。跟隨介面時，介面語言若是插件沒有語言包的（`ja`、`de` 之類），按英文給通知。
 - **不用盯著側欄**：工作列 / Dock 圖示帶角標，顯示還有幾個對話在等你（預設開）；開啟對話、答掉等待或把它靜音，數字就自己降下去，平台沒有角標介面時不畫。
 - **連頁面都關掉時**：可選讓宿主行程兜底——頁面不在時宿主繼續把「需要你操作」「回覆完成」推到你的閘道；也可以只開同源中繼，讓頁面夠到要認證的閘道。兩項預設關，設定寫在 profile 的 patch 層（見[頁面關閉後：宿主側兜底與同源中繼](#頁面關閉後宿主側兜底與同源中繼)）。
 
@@ -272,7 +272,7 @@ profile 覆蓋範例（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。**`conf
 - `turnEndThrottleMs`（`15000`）：同一對話的「回覆完成」在這個視窗內只推一條；視窗只在真發出去時才消耗，被租約擋掉的那次不算。節流只管 `completed`——`aborted` / `error` / `max-tokens` 這些收尾不節流，它們本來就少，而且往往是此刻最該看到的那一條；
 - **文案與頁面通知逐字一致**：標題是 `<字首> · 回覆完成` / `<字首> · 核准請求`，正文「回覆完成」只有對話名、「核准請求」是 `對話名：工具名 · 原因`——不含任何使用者訊息正文（使用者訊息裡常帶注入的 `<system-reminder>`、記憶上下文與時間戳，複製進通知就沒法讀了）；非正常收尾（`aborted` / `error` / `max-tokens`…）會在正文尾部附一個短後綴，如 `（error）`；
 - `titlePrefix`（`DSH`）：標題是 `<字首> · 核准請求` / `<字首> · 回覆完成`（與頁面通知同一套標籤）；
-- `language`（`auto`）：`auto` 用頁面最近一次心跳報的語言，沒有心跳才回落到中文；`zh` / `zh-TW` / `en` / `ru` 強制；
+- `language`（`auto`）：`auto` 用頁面最近一次心跳報的語言；插件沒有對應表的語言（`ja` / `de` / `es` 等）按英文處理；頁面上完全沒有語言信號時才回落到中文；`zh` / `zh-TW` / `en` / `ru` 強制；
 - `pageLeaseMs`（`60000`）：頁面線上租約，見下面「去重」；
 - `healthPath`（`/__dsh-notify-me/host-fallback`）：只讀健康探針的路徑。
 
@@ -505,7 +505,7 @@ npm pack --dry-run               # 預覽釋出包
 
 `smoke/mac-notify-content-test.mjs` 跑通知內容：`splitNotificationBody()` 對每一種正文形狀的結果（一行、兩行、空行、首尾空白、CJK、缺欄位）、頁面自己抬好的 `subtitle` 優先生效、只有真有副標題時才傳 `--subtitle`、正文永遠不等於標題（迴歸）、回覆摘要怎麼從事件日誌裡取（跳過工具結果、壓成一行、超長截斷加省略號、空日誌不報錯、只在 `done` 且正文為空時讀）、讀日誌失敗仍照發提醒、以及拆分後再各自截斷（正文 1000 字元、副標題 200 字元）。同樣用假 spawn，不需要真的助手，在任何平臺都會跑。
 
-語言五檔與 Android 退路各自有獨立用例：`smoke/smoke-test.cjs` 的 `languageModes()` 走 `auto` 的兩條識別來源（宿主 locale 與 `document.documentElement.lang`）、`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都算繁體、`zh-CN` 仍是簡體、無資訊時回落簡體、釘死某一檔後通知與設定頁都跟著變、四份字典鍵集完全一致；`androidWorkerFallback()` 三條：Android UA 下 `new Notification` 一次都不碰、只註冊一個 Service Worker、通知引數（tag / renotify / silent / data）與「只註冊一次」；桌面 UA 下建構子拋 `Illegal constructor` 時先照常呼叫、再回落 Worker 並記住失敗；Worker 也拒收時錯誤進 `debug().lastToastReject` 而不是被吞。`smoke/page-bridge-test.mjs` 另釘住心跳帶 `zh-TW` 被接受、未知語言被忽略、宿主兜底文案與 `pickLanguage` 的優先順序。
+語言五檔與 Android 退路各自有獨立用例：`smoke/smoke-test.cjs` 的 `languageModes()` 走 `auto` 的兩條識別來源（宿主 locale 與 `document.documentElement.lang`）、`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都算繁體、`zh-CN` 仍是簡體、插件沒有語言包的介面標籤（`ja` / `de`）按英文、頁面上毫無語言信號才回落簡體、釘死某一檔後通知與設定頁都跟著變、四份字典鍵集完全一致；`androidWorkerFallback()` 三條：Android UA 下 `new Notification` 一次都不碰、只註冊一個 Service Worker、通知引數（tag / renotify / silent / data）與「只註冊一次」；桌面 UA 下建構子拋 `Illegal constructor` 時先照常呼叫、再回落 Worker 並記住失敗；Worker 也拒收時錯誤進 `debug().lastToastReject` 而不是被吞。`smoke/page-bridge-test.mjs` 另釘住心跳帶 `zh-TW` 被接受、未知語言被忽略、宿主兜底文案與 `pickLanguage` 的優先順序。
 
 `smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面門控、`GET` 探針、`405` / `403` / `501` / `400` 的拒絕、核准 payload 與 base64 傳遞、首次發 Toast 前的七條註冊命令（`HKCU\Software\Classes\dsh-notify-me` 的三條協議鍵、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 與 `CustomActivator`、以及 `CLSID\{…}` 下指向 `lib/win-toast-activator.ps1` 的 `LocalServer32`）、payload 裡的 `comActivation`、啟用器回呼的 `LPWStr` 封送註解、approve / reject / open 動作單次認領、token 過期與 `{remove}` 撤回。它用假的 `spawn` 驅動 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外斷言處理器指令碼是 UTF-16LE + BOM、正文純 ASCII、含 `ExpandEnvironmentStrings` 表示式、不烘入 profile 路徑，且正文點選只發 `dsh-notify-me://open`（不得再出現 `dsh://open`）；`dsh-notify-me://open` 不帶 session 時仍解析為一次純抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 
@@ -561,7 +561,7 @@ powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行應是 F
 | <a href="https://github.com/HowardXue7790"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/HowardXue7790.png" width="40" height="40" alt="@HowardXue7790"></a> | [#53](https://github.com/chromoany/dsh-notify-me/issues/53) / [#54](https://github.com/chromoany/dsh-notify-me/issues/54)：核准 Toast 在 Windows 上幾秒就被收走（「從不關閉」同時失效）、點按鈕彈 Microsoft Store 的報障，以及直接指到計時器與 VBS 那一行的定位（1.25.0 修復） |
 | <a href="https://github.com/dsadw"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/dsadw.png" width="40" height="40" alt="@dsadw"></a> | [#55](https://github.com/chromoany/dsh-notify-me/issues/55) / [#56](https://github.com/chromoany/dsh-notify-me/pull/56)：工作列 / Dock 未讀角標的訴求與首版實作（1.25.0 收編，改成按對話計數） |
 | <a href="https://github.com/ceh-ylhy"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/ceh-ylhy.png" width="40" height="40" alt="@ceh-ylhy"></a> | [#58](https://github.com/chromoany/dsh-notify-me/issues/58)：Windows 10 上原生核准按鈕點不動的第一手實測與改法建議（1.26.0 修復，一併更正 interface IID 與 `LPWStr` 封送兩處） |
-| <a href="https://github.com/aleXela17"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/aleXela17.png" width="40" height="40" alt="@aleXela17"></a> | [#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60)：俄文介面、通知文案與五檔語言的整套接線（1.27.0 收編） |
+| <a href="https://github.com/aleXela17"><img src="https://raw.githubusercontent.com/chromoany/dsh-notify-me/main/docs/contributors/aleXela17.png" width="40" height="40" alt="@aleXela17"></a> | [#59](https://github.com/chromoany/dsh-notify-me/issues/59) / [#60](https://github.com/chromoany/dsh-notify-me/pull/60) / [#61](https://github.com/chromoany/dsh-notify-me/issues/61)：俄文介面、通知文案與五檔語言的整套接線（1.27.0 收編），以及未知介面語言改為回落英文的提案（1.27.1 修復） |
 
 署名口徑：本倉庫收編外部 PR 時以維護者提交落地——不沿用原 commit、不掛 Co-authored-by，GitHub 的 contributors 圖只顯示維護者，貢獻者以上面的致謝署名。
 

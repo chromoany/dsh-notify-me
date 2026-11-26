@@ -2710,7 +2710,9 @@ function settingsBoot(seedConfig, seedSound, opts) {
   // forwarding, runtime) behind one toggle; tests that assert on those rows
   // have to open it the way a user would.
   if (opts && opts.advanced) {
-    const d = dict && (dict[activeLocale] || dict.zh);
+    // An unshipped UI tag renders English (#61), so the label lookup has to
+    // follow the same resolution instead of falling straight back to zh.
+    const d = dict && (dict[activeLocale] || dict.en || dict.zh);
     pressAria((d && d.advanced) || '高级设置');
   }
   return {
@@ -5036,11 +5038,30 @@ function languageModes() {
     'a pinned zh-TW still draws Traditional copy (got ' + lastTitle(pinned) + ')');
   const plain = coreBoot();
   assert(apiOf(plain).debug().language === 'zh', 'with no locale information the default stays zh');
-  // An unrecognised UI language must not turn into English by accident: it is
-  // simply not one of the tables, so the zh default stands.
-  const unknownTag = coreBoot({ active: 'de' });
-  assert(apiOf(unknownTag).debug().language === 'zh',
-    'an unknown UI tag keeps the zh default (got ' + apiOf(unknownTag).debug().language + ')');
+  // #61: a UI tag the plugin ships no table for reads English, not Chinese.
+  const unknownTag = coreBoot({ active: 'ja' });
+  assert(apiOf(unknownTag).debug().language === 'en',
+    'an unknown UI tag reads English (got ' + apiOf(unknownTag).debug().language + ')');
+  apiOf(unknownTag).test('done');
+  assert(lastTitle(unknownTag) === 'DSH · Reply finished',
+    'the unknown-tag toast is English (got ' + lastTitle(unknownTag) + ')');
+  // The document language gets the same rule, and a missing tag is still "no
+  // signal": that keeps the legacy zh default rather than flipping to English.
+  const unknownDoc = coreBoot({ langAttr: 'de' });
+  assert(apiOf(unknownDoc).debug().language === 'en',
+    'an unknown documentElement.lang reads English (got ' + apiOf(unknownDoc).debug().language + ')');
+  const noDocTag = coreBoot({ langAttr: '' });
+  assert(apiOf(noDocTag).debug().language === 'zh',
+    'a page with no language tag keeps the zh default (got ' + apiOf(noDocTag).debug().language + ')');
+  // A pinned language still beats the detected one.
+  const pinnedOverUnknown = coreBoot({ active: 'ja', seed: { language: 'zh-TW' } });
+  apiOf(pinnedOverUnknown).test('done');
+  assert(lastTitle(pinnedOverUnknown) === 'DSH · 回覆完成',
+    'a pinned language beats an unknown UI tag (got ' + lastTitle(pinnedOverUnknown) + ')');
+  const unknownPage = settingsBoot(null, null, { locale: 'ja', advanced: true });
+  assert(unknownPage.text.includes('Restore defaults'),
+    'an unknown UI language renders the English settings page (got ' + unknownPage.text.slice(0, 160) + ')');
+  unknownPage.cleanup();
 
   // 5) The settings page renders its own zh-TW copy, keyset-identical to zh.
   //    The runtime / language / reset rows live behind the advanced toggle, so
@@ -5131,7 +5152,7 @@ function languageModes() {
   assert(!ruPage.text.includes('恢复默认设置'), 'the ru page does not mix Simplified copy in');
   ruPage.cleanup();
 
-  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, pinned wins, settings dictionary and picker, live switch, ru auto/pinned and its own settings page');
+  console.log('language modes OK: zh-TW / zh-HK / zh-MO / zh-Hant, doc-lang fallback, unshipped tags read English (#61), pinned wins, settings dictionary and picker, live switch, ru auto/pinned and its own settings page');
 }
 
 (async () => {

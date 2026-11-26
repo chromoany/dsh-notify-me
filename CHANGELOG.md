@@ -2,6 +2,19 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.27.1] — 2026-11-26
+
+界面语言是插件没有语言包的语种时，通知与设置页不再回落中文，改为英文。
+
+### 修复
+
+- **未知界面语言回落英文**（[#61](https://github.com/chromoany/dsh-notify-me/issues/61)，作者 aleXela17）：`currentUILang()` 以前只认 `zh*` / `en*` / `ru*`，其它标签一律返回 `null`，`effectiveLang()` 于是给 `zh`——日语、西班牙语、德语、葡萄牙语界面的用户收到中文通知与中文设置页，而插件本来就带英文。现在把「未知标签」与「完全没有信号」分开：未知标签按英文处理（宿主 locale 与 `document.documentElement.lang` 两条来源同一条规则），页面上根本没有语言标签时仍返回 `null`，保持原来的中文默认，老壳子的行为不变。钉死的 `language` 仍然压过识别结果，`zh` / `zh-TW` / `en` / `ru` 四档行为都不变。
+
+### 测试
+
+- `smoke/smoke-test.cjs` 的 `languageModes()`：`ja` 界面在 `auto` 下出英文通知与英文设置页、`documentElement.lang = "de"` 同样按英文、页面上没有任何语言标签时仍是中文默认、钉死的语言仍压过识别结果。
+- 设置页测试的「高级设置」定位改成跟随同一套语言回落，否则未知语言的用例找不到开关。
+
 ## [1.27.0] — 2026-11-26
 
 插件现在认识俄语：界面、设置页、通知正文与按钮、页面侧（主世界）的标题、以及三份 README 与两份控制台文档全部接入第五档语言。
