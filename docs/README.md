@@ -10,21 +10,24 @@
 | `screenshots/` | README 里的界面截图 | DSH 设置界面改版后重拍 |
 | [`compatibility.md`](compatibility.md) · [`compatibility.en.md`](compatibility.en.md) · [`compatibility.ru.md`](compatibility.ru.md) | 宿主兼容性全篇：逐版实测记录、代际形状差异、两个会静默失效的坑 | 适配新宿主版本后 |
 | [`console-config.md`](console-config.md) · [`console-config.en.md`](console-config.en.md) · [`console-config.ru.md`](console-config.ru.md) | 控制台配置键、`decide()` / `testExternal()` 接口、外部通知目标字段 | 新增或改名配置项时 |
+| [`testing.md`](testing.md) · [`testing.en.md`](testing.en.md) · [`testing.ru.md`](testing.ru.md) | 开发自检全篇：九套测试各自覆盖什么、手动检查、`cordis` 依赖怎么处置 | 新增、合并或改名测试套件时 |
 
-README 只保留这两节的摘要与链接，完整内容在对应的 `.md` / `.en.md` / `.ru.md` 里。
+README 只保留这三节的摘要与链接，完整内容在对应的 `.md` / `.en.md` / `.ru.md` 里。
 
 ## 截图
 
-四张图都取自本机 Windows 上的真实界面：三张 settings 图宽 648 px（1.23.0 重拍），`notify-toast.png` 宽 593 px：
+四张图都取自本机 Windows 上的真实界面：三张 settings 图宽 648 px，`notify-toast.png` 宽 593 px：
 
 | 文件 | 尺寸 | 内容 |
 | --- | --- | --- |
-| `settings-zh.png` | 648×1162 | 简体中文设置页完整面板（1.23.0） |
-| `settings-zh-tw.png` | 648×1162 | 繁體中文设置页完整面板（1.23.0，`README.zh-TW.md` 用） |
-| `settings-en.png` | 648×1180 | 英文设置页完整面板（1.23.0） |
+| `settings-zh.png` | 648×1162 | 简体中文设置页完整面板（1.24.0） |
+| `settings-zh-tw.png` | 648×1162 | 繁體中文设置页完整面板（1.24.0，`README.zh-TW.md` 用） |
+| `settings-en.png` | 648×1180 | 英文设置页完整面板（1.24.0；`README.en.md` 与 `README.ru.md` 共用，俄语还没有自己的截图） |
 | `notify-toast.png` | 593×239 | Edge 里的普通通知，不含审批按钮 |
 
-三张 settings 图 1.23.0 重拍：面板外观自 1.19.0 起只有页脚版本行变过（1.23.0 新增的繁體语言项在默认折叠的「高级」里，Android 的 Worker 退路不改变外观），这次按 1.23.0 重截，页脚是 `dsh-notify-me v1.23.0`。字号、间距与旧图一致，逐像素差异只在文字抗锯齿。设置界面再改版时按当版重截并同步上表。
+三张 settings 图摄于 1.24.0（页脚是 `dsh-notify-me v1.24.0`），四份 README 的图注也都写了这个版本。它们**落后于当前界面**三处：1.25.0 在「什么时候提醒」里加了一行角标开关、测试按钮从三个变成四个，1.27.0 的语言下拉从两档变成五档（`Русский` 在列）。所以图注只描述当时的样子，不要据此判断现在有哪些开关。
+
+重拍时的口径：四张（简体 / 繁體 / 英文 / 俄语各一张设置页）宽 648 px、只截插件自己的面板不带左侧导航、深色主题、页脚版本号是当版；俄语那张拍好后把 `README.ru.md` 的图注和这条表格一起改掉。设置界面再改版时同样按当版重截并同步上表。
 
 README 用的是 `raw.githubusercontent.com` 绝对地址，换图后 Markdown 里的链接不用改。
 

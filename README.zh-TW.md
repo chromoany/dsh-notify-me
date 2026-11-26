@@ -494,30 +494,7 @@ npm test                         # smoke-test（狀態機）+ host-route-test（
 npm pack --dry-run               # 預覽釋出包
 ```
 
-<details>
-<summary>各測試套件覆蓋範圍與手動檢查</summary>
-
-`smoke/smoke-test.cjs` 是離線狀態機測試：三代宿主 + 主開關 + 語言五檔用例 + 快速裁決橋（Service Worker 半側一併跑）+ 閒置判定與通知自收 + 回到頁面即收起殘留通知 + 通知標籤長度收口 + 頁面側 host-bridge 探測/心跳/釋放與 `debug().hostBridge` 形狀 + 外部推送（含 Telegram 的報文形狀、`ok` / `error_code` 判決、429 與 5xx 重試、4096 截斷、半設定目標被剪掉、設定頁的權杖與聊天 ID 輸入框）+ Goal 中間輪不報「回覆完成」（有 Goal 投影時靜默、Goal 停後報最後一條、沒有投影的老宿主照舊報），外加兩條桌面原生通道用例——Windows 原生核准 Toast 正文點選只走宿主 focus 路由才切對話（無 session 時只抬窗不切），macOS 前台點選只靠 1 秒輪詢切對話並在讀走後停止。角標用例按對話計數：兩個等待對話報 2、同一快照重複不重畫、目前對話不算、靜音或關掉開關歸零、宿主沒有 `setAppBadge` 時靜默不報錯。`dockBadgeHostFailures()` 再補一組失敗面：宿主快照拋例外時設定頁開關照樣生效、錯誤記進 `debug().dockBadgeError`、儲存恢復後重畫真數，只暴露 `setAppBadge` 的宿主改用它清零。它還釘住清單：`package.json` 的 `dsh.client.inject` 必須為空、執行時那句 `inject = ["sessions", "locale", "slots"]` 必須原樣保留（[#44](https://github.com/chromoany/dsh-notify-me/issues/44)：載入器把清單讀成「先到達這些整包」，目標到不了，整個條目靜默不跑）。`smoke/host-route-test.mjs` 不需要本機 DSH，`lib/index.js` 的路由、探針與 403/405/501 閘門在任何平臺都會跑。
-
-新增的三個套件同樣自帶假 `ctx`、不聯網、不需要本機 DSH：`smoke/page-bridge-test.mjs` 跑頁面橋接路由的狀態回包形狀、心跳與釋放、缺意圖頭 `403`、跨源 `403`、壞 JSON `400`、超長 `413`，以及 `allowedOrigins` 派生的 `Host`（模擬隧道）放行與路徑衝突；`smoke/host-fallback-test.mjs` 跑宿主兜底——核准去重、`turn/end` 節流、子代理跳過、Goal 還 `active` 時中間輪不投遞（`complete` / `pause` / `block` 之後照常投遞，重啟後能從對話日誌裡補出 Goal 狀態）、租約新鮮時不發、租約過期後發、`alive:false` 後立刻發、語言跟隨心跳、401 後重讀憑證、健康探針；`smoke/relay-route-test.mjs` 跑中繼——`GET` 探針、`405`、跨源 `403`、`413`、`400`、`503`、`200` / `502` 對映與「401 只重試一次」、`relay.bodyTemplate` 的模板渲染與 JSON 轉義、壞模板啟動即不註冊、渲染體積上限；1.24.0 又加了兩組：完成提醒的正文由宿主從對話日誌補齊（保留換行、夾緊後截斷、頁面已給多行正文不覆蓋、`attention` 不動），以及 `snippetLimit: 0` 時只轉對話名、從公網名字進來的請求過了閘門也不讀日誌。
-
-`smoke/mac-notify-test.mjs` 跑 macOS 通知路由：只在 macOS 桌面宿主註冊、探測、`405` / `403` / `501` / `400` 的拒絕、傳給助手的引數（含 `--id` / `--sound` 與 `{remove:id}` 撤回）、點選回傳只被取走一次。它用假的平臺與 Electron 版本號驅動，不需要真的編譯助手，在任何平臺都會跑。
-
-`smoke/mac-notify-content-test.mjs` 跑通知內容：`splitNotificationBody()` 對每一種正文形狀的結果（一行、兩行、空行、首尾空白、CJK、缺欄位）、頁面自己抬好的 `subtitle` 優先生效、只有真有副標題時才傳 `--subtitle`、正文永遠不等於標題（迴歸）、回覆摘要怎麼從事件日誌裡取（跳過工具結果、壓成一行、超長截斷加省略號、空日誌不報錯、只在 `done` 且正文為空時讀）、讀日誌失敗仍照發提醒、以及拆分後再各自截斷（正文 1000 字元、副標題 200 字元）。同樣用假 spawn，不需要真的助手，在任何平臺都會跑。
-
-語言五檔與 Android 退路各自有獨立用例：`smoke/smoke-test.cjs` 的 `languageModes()` 走 `auto` 的兩條識別來源（宿主 locale 與 `document.documentElement.lang`）、`zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant` 都算繁體、`zh-CN` 仍是簡體、插件沒有語言包的介面標籤（`ja` / `de`）按英文、頁面上毫無語言信號才回落簡體、釘死某一檔後通知與設定頁都跟著變、四份字典鍵集完全一致；`androidWorkerFallback()` 三條：Android UA 下 `new Notification` 一次都不碰、只註冊一個 Service Worker、通知引數（tag / renotify / silent / data）與「只註冊一次」；桌面 UA 下建構子拋 `Illegal constructor` 時先照常呼叫、再回落 Worker 並記住失敗；Worker 也拒收時錯誤進 `debug().lastToastReject` 而不是被吞。`smoke/page-bridge-test.mjs` 另釘住心跳帶 `zh-TW` 被接受、未知語言被忽略、宿主兜底文案與 `pickLanguage` 的優先順序。
-
-`smoke/win-toast-test.mjs` 跑 Windows 原生 Toast 路由：Windows 桌面門控、`GET` 探針、`405` / `403` / `501` / `400` 的拒絕、核准 payload 與 base64 傳遞、首次發 Toast 前的七條註冊命令（`HKCU\Software\Classes\dsh-notify-me` 的三條協議鍵、`AppUserModelId\dsh-notify-me` 的 `DisplayName` 與 `CustomActivator`、以及 `CLSID\{…}` 下指向 `lib/win-toast-activator.ps1` 的 `LocalServer32`）、payload 裡的 `comActivation`、啟用器回呼的 `LPWStr` 封送註解、approve / reject / open 動作單次認領、token 過期與 `{remove}` 撤回。它用假的 `spawn` 驅動 `reg.exe` / `powershell.exe`，不需要真的 Windows 桌面宿主。另外斷言處理器指令碼是 UTF-16LE + BOM、正文純 ASCII、含 `ExpandEnvironmentStrings` 表示式、不烘入 profile 路徑，且正文點選只發 `dsh-notify-me://open`（不得再出現 `dsh://open`）；`dsh-notify-me://open` 不帶 session 時仍解析為一次純抬窗（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
-
-改到 `lib/focus-window.ps1` 時（僅 Windows），另需手動跑一次：
-
-```powershell
-powershell -NoProfile -File lib/focus-window.ps1 -ProcessId 0   # 末行應是 FOCUSED=1
-```
-
-`cordis-host-test.mjs` 會從本機 DSH 安裝借 `@deepseek-ai/cordis`（依次探測 npm 全域性目錄、`~/.dsh/profiles/web/node_modules` 與 `~/.dsh/profiles/node_modules` 平鋪回退目錄）；原始碼 checkout 裡沒有 profile 依賴時，用 `DSH_CORDIS_PATH=<checkout>/vendor/cordis/lib/index.js` 指定即可。
-
-</details>
+各套件覆蓋範圍、手動檢查與失敗排查見 [docs/testing.md](docs/testing.md)。
 
 ## 致謝與貢獻須知
 
