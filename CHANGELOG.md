@@ -2,6 +2,12 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [Unreleased]
+
+### 修复
+
+- **DSH 0.2.x 桌面端从不触发「需要你」与「回复完成」的提醒**：`apply()` 启动时 `bindUiSession()` 读取 `uiSession.sessionStatus`，而在把 `uiSession` 解析为 scoped 代理的宿主上，这个嵌套服务的读取仍被 cordis 守卫抛出 `cannot get property "uiSession.sessionStatus" without inject`；异常冒泡到 watcher 外层 `catch`，`init failed` 直接把整个提醒 watcher 关掉，`debug().uiSession` 恒为 `unbound`。现在 `interactionStore()` 对 `sessionStatus` / `pendingInteractions` 各自 try/catch，读不到 `sessionStatus` 就回退旧的 `pendingInteractions`；启动处 `bindUiSession()` 也加了 try/catch，一次绑定失败不再拖垮控制器路径与 1.5 秒重试。不改 `inject`，对没有 `uiSession` 的 0.1.0/0.1.1 宿主仍走原来的控制器路径。
+
 ## [1.28.1] — 2026-11-26
 
 文档修正，无行为变化：1.28.0 的致谢表在四份 README 里多了两个空行，新加的两行（[#64](https://github.com/chromoany/dsh-notify-me/pull/64)、[#66](https://github.com/chromoany/dsh-notify-me/issues/66)）因此脱离表格、按普通段落渲染，`|` 分隔符露在正文里。现在两行接回表格，GitHub 与 npm 包页都正常显示。
