@@ -11,9 +11,10 @@
 #                 notification gateway the browser cannot talk to.
 #
 # Native notification helpers ride along with the same entry: the macOS helper
-# (macos/DSH Notify.app) is used when it has been built, and Windows approval
-# toasts are posted by the host by default — `winToast: { enabled: false }`
-# turns the Windows ones off.
+# (macos/DSH Notify.app) is used when it has been built, and on Windows the host
+# posts the native toasts by default — approvals with Approve / Reject buttons,
+# and the button-less "needs you" / "reply finished" alerts alike.
+# `winToast: { enabled: false }` turns the Windows ones off.
 #
 # HOW TO OVERRIDE
 # A profile patch row that names the same id REPLACES the entry's `config`
@@ -85,10 +86,12 @@
           target: ''
           credentialsFile: ''
           bodyTemplate: ''      # optional JSON template, see "Same-origin relay"
-        # Native Windows approval toasts with real Approve / Reject buttons. On
-        # by default whenever the host runs the Windows desktop shell: the host
-        # posts the toast through WinRT and registers a HKCU protocol handler on
-        # the first one (no admin rights needed). Set enabled: false to keep
-        # approval alerts on the page's own button-less notification channel.
+        # Native Windows toasts posted by the host. On by default whenever the
+        # host runs the Windows desktop shell: the host posts them through
+        # WinRT — approvals with Approve / Reject buttons, "needs you" and
+        # "reply finished" without buttons — and registers the HKCU protocol
+        # handler plus the AppUserModelId identity (with IconUri) on the first
+        # one (no admin rights needed). Set enabled: false to keep all three
+        # alerts on the page's own notification channel.
         winToast:
           enabled: true

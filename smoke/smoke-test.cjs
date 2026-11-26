@@ -2238,6 +2238,124 @@ async function winNativeToastClick() {
   console.log('Windows native toast OK: a body click raises via the host route, with or without a session');
 }
 
+// ── #64: the button-less alerts ("needs you", "reply finished") are native too.
+// They carry no approval key, so nothing used to poll the host for the click on
+// their body — the alert appeared and that was the end of it. A click is one
+// action, so the poll stops as soon as the host hands one back.
+async function winNativeButtonless() {
+  console.log('\n— Windows native toast: button-less alerts come back too —');
+  const WIN_ROUTE = '/__dsh-notify-me/win-toast';
+  const state = { actions: [], gets: 0, posts: [], raises: 0, reject: 0 };
+  const reply = (status, body) => Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  });
+  const stub = (url, opts) => {
+    const u = String(url);
+    const method = (opts && opts.method) || 'GET';
+    if (u.indexOf(WIN_ROUTE) !== -1) {
+      if (method === 'GET') {
+        state.gets += 1;
+        const actions = state.actions;
+        state.actions = [];
+        return reply(200, { ok: true, enabled: true, actions });
+      }
+      const sent = JSON.parse(opts.body);
+      state.posts.push(sent);
+      if (state.reject > 0) {
+        state.reject -= 1;
+        return reply(500, { ok: false });
+      }
+      return reply(200, { ok: true, enabled: true, id: 'h' + state.posts.length, token: sent.approvalKey ? 'tok' : '' });
+    }
+    if (u.indexOf(FOCUS_ROUTE) !== -1) {
+      state.raises += 1;
+      return reply(200, { ok: true, focused: true, platform: 'win32' });
+    }
+    return reply(404, { ok: false });
+  };
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox) {
+      sandbox.location = { origin: 'dsh-app://app', protocol: 'dsh-app:' };
+      sandbox.navigator = { ...(sandbox.navigator || {}), userAgent: WINDOWS_UA };
+      sandbox.fetch = stub;
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  await sleep(40);
+  b.doc.hidden = true;
+  b.doc.visibilityState = 'hidden';
+  host.setList({
+    ids: ['s1', 's2'],
+    byId: { s1: { displayTitle: '当前会话', retainedBy: { mainView: 1 } }, s2: { displayTitle: '后台任务', retainedBy: {} } },
+    phase: 'ready',
+  });
+  host.notifyList();
+  host.setStatus(new Map([['s2', statusRow(question('question:win:9', { sessionId: 's2' }))]]));
+  host.notifyStatus();
+  assert(state.posts.length === 1, 'the question went out as one native toast, got ' + state.posts.length);
+  assert(state.posts[0].approvalKey === '', 'a question toast carries no approval key');
+  assert(state.posts[0].persist === false, 'the default policy lets the platform close the toast');
+
+  // No buttons means no token, and no token used to mean no poll: the click on
+  // that toast was recorded by the handler and never read back.
+  await sleep(1600);
+  assert(state.gets >= 2, 'a button-less toast still probes the host for a click, got ' + state.gets);
+  state.actions.push({ action: 'open', sessionId: 's2' });
+  await sleep(1800);
+  assert(state.raises === 1, 'the body click raises the window once, got ' + state.raises);
+  assert(host.opened.indexOf('s2') !== -1,
+    'the click switches the alerted session, opened=' + JSON.stringify(host.opened));
+  const getsAfterClick = state.gets;
+  await sleep(1800);
+  assert(state.gets === getsAfterClick,
+    'one click ends the poll, went from ' + getsAfterClick + ' to ' + state.gets + ' probes');
+
+  // "never close" now rides on the toast scenario: the platform has to keep it
+  // up, because the page cannot hold a native toast the way it holds a Notification.
+  b.win.__dshNotifyMe.setConfig({ autoDismiss: 'never' });
+  b.win.__dshNotifyMe.test('done');
+  const done = state.posts[state.posts.length - 1];
+  assert(state.posts.length === 2 && done.persist === true,
+    '"never close" asks the host to keep the done toast up, got ' + JSON.stringify(done && done.persist));
+
+  // The route can die between the probe and the post (a crashed shell, a script
+  // that stopped being installed). The alert must not vanish with it.
+  state.reject = 1;
+  b.win.__dshNotifyMe.test('done');
+  await sleep(80);
+  assert(state.posts.length === 3, 'the failed post was still attempted, got ' + state.posts.length);
+  const fallback = b.lastNotification();
+  assert(fallback, 'a refused native toast falls back to the page channel');
+  assert(String(fallback.title).length > 0, 'the fallback carries the alert title, got ' + fallback.title);
+
+  for (const c of [...host.cleanups]) c();
+  console.log('button-less native toast OK: the click comes back, the poll stops, a refused post falls back');
+}
+
+// ── #66: the toast icon used to be the DSH page favicon, a black whale that
+// disappears on a dark notification. The plugin bell is served by the host now.
+function notifyIcon() {
+  console.log('\n— #66: notifications carry the plugin bell, not the page favicon —');
+  const b = bootBundle({ withNotification: true });
+  const host = buildHost({ withUiSession: false });
+  host.setFace({ sessionId: 's1', running: false, pending: [], nodes: [], partial: null });
+  b.mod.apply(host.ctx);
+  b.doc.hidden = true;
+  b.doc.visibilityState = 'hidden';
+  b.win.__dshNotifyMe.test('done');
+  const note = b.lastNotification();
+  assert(note, 'the done alert raised a notification');
+  const icon = String(note.config.icon || '');
+  assert(icon.endsWith('/__dsh-notify-me/icon.png'),
+    'the toast points at the plugin icon route, got ' + icon);
+  assert(icon.indexOf('/favicon.svg') === -1, 'the DSH page favicon is gone from the icon slot');
+  console.log('notify icon OK: /__dsh-notify-me/icon.png');
+}
+
 // ── #43: the page must not hold an output device it is not playing through ──
 // Firefox keeps an output device open for every *running* AudioContext, silent
 // or not, so a context created on the first click and never released pinned the
@@ -2259,8 +2377,8 @@ async function winNativeToastClick() {
   const toneBody = bodyOf('tone');
   const stop = toneBody.indexOf('osc.stop(');
   assert(stop !== -1, 'tone() still stops the oscillator');
-  assert(toneBody.indexOf('suspendAfterCue(') > stop, 'the cue arms its wake-back after the last oscillator');
-  assert(toneBody.indexOf('audioCtx.resume()') < stop, 'tone() wakes a sleeping context before scheduling');
+  assert(toneBody.indexOf('sleepAfterCue(') > stop, 'the cue arms its wake-back after the last oscillator');
+  assert(toneBody.indexOf('wakeAudio()') < stop, 'tone() wakes a sleeping context before scheduling');
   const custom = bodyOf('playCustomSound');
   assert(custom.indexOf('suspendAfterCue(') > custom.indexOf('var started = el.play();'),
     'a picked file sleeps the context right after it starts: the element does not need the context');
@@ -2495,6 +2613,86 @@ async function audioSleepWake() {
 
   for (const c of [...host.cleanups]) c();
   console.log('audio sleep/wake OK: dropped before activation, scheduled once awake');
+}
+
+// ── #67: a cold context starts its clock only after resume() lands, so parking
+// on a wall-clock tail cut the last note in half. The deadline now sits on the
+// audio clock: late wake-up or not, the device is released after the cue rang out.
+async function audioLateWake() {
+  console.log('\n— #67: the cue is parked after its last note, not after a guess —');
+  const cue = { stops: [], parked: null };
+  const WAKE_MS = 420; // a cold device: the clock starts only once this lands
+  class LateAudioContext {
+    constructor() {
+      this.state = 'suspended';
+      this.banked = 0; // audio seconds from earlier runs
+      this.since = 0;  // wall clock when the current run started
+      this.destination = {};
+    }
+    get currentTime() {
+      return this.state === 'running' ? this.banked + (Date.now() - this.since) / 1000 : this.banked;
+    }
+    resume() {
+      if (this.state === 'running') return Promise.resolve();
+      return new Promise((resolve) => setTimeout(() => {
+        if (this.state !== 'running') { this.state = 'running'; this.since = Date.now(); }
+        resolve();
+      }, WAKE_MS));
+    }
+    suspend() {
+      this.banked = this.currentTime;
+      this.state = 'suspended';
+      cue.parked = { clock: this.banked, wall: Date.now() };
+      return Promise.resolve();
+    }
+    createOscillator() {
+      const osc = {
+        type: null,
+        frequency: { value: 0 },
+        connect: (next) => next,
+        start(at) { osc.begins = at; },
+        stop(at) { osc.ends = at; cue.stops.push(at); },
+      };
+      return osc;
+    }
+    createGain() {
+      return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect: (next) => next };
+    }
+  }
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox, windowStub) { windowStub.AudioContext = LateAudioContext; },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  const api = b.win.__dshNotifyMe;
+
+  // 1) Cold start: the cue is queued once resume() lands, then parked by clock.
+  api.test('done');
+  await sleep(1400);
+  assert(cue.stops.length === 2, 'the done pair played, got ' + cue.stops.length);
+  const firstEnd = Math.max(...cue.stops);
+  assert(cue.parked && cue.parked.clock >= firstEnd - 0.01,
+    'the first cue parks after its last note, parked at ' + (cue.parked ? cue.parked.clock.toFixed(3) : 'never') +
+    ' vs end ' + firstEnd.toFixed(3));
+
+  // 2) The bug: the context has been woken before and went back to sleep, so the
+  //    next cue is queued against the frozen clock while resume() is still out.
+  cue.stops.length = 0;
+  cue.parked = null;
+  api.test('done');
+  assert(cue.stops.length === 2, 'a woken context queues without waiting, got ' + cue.stops.length);
+  const end = Math.max(...cue.stops);
+  await sleep(700); // the old wall-clock timer fired right here, mid-note
+  assert(!cue.parked, 'still playing at 700 ms: a late wake-up must not shorten the cue');
+  await sleep(900);
+  assert(cue.parked, 'the context is parked once the cue has rung out');
+  assert(cue.parked.clock >= end - 0.01,
+    'parked after the last note on the audio clock, parked at ' + cue.parked.clock.toFixed(3) +
+    ' vs end ' + end.toFixed(3));
+
+  for (const c of [...host.cleanups]) c();
+  console.log('audio late wake OK: parked on the audio clock, not on a wall-clock guess');
 }
 
 // ── issue #15: repeated toasts must not share a tag ────────────────────────
@@ -5239,8 +5437,11 @@ function languageModes() {
   await desktopRaiseChannel();
   await macNativeClickPoll();
   await winNativeToastClick();
+  await winNativeButtonless();
+  notifyIcon();
   await soundSources();
   await audioSleepWake();
+  await audioLateWake();
   uniqueToastTags();
   toastTagLimits();
   await androidWorkerFallback();

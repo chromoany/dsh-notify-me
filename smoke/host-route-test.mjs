@@ -1,9 +1,10 @@
-// Host-half route test: the one loopback route lib/index.js registers on the
-// web server. It lives in its own file because the route needs nothing from
-// cordis — before this, every assertion about it sat behind the "is a DSH
+// Host-half route test: the loopback routes lib/index.js registers on the web
+// server — the focus route the page posts to, and the toast icon the notification
+// platform fetches. It lives in its own file because the routes need nothing from
+// cordis — before this, every assertion about them sat behind the "is a DSH
 // installation present" probe in cordis-host-test.mjs, so `npm test` on a
-// machine without DSH was green while the route (the only security boundary
-// the plugin opens) had never been exercised at all.
+// machine without DSH was green while the routes (the only security boundary the
+// plugin opens) had never been exercised at all.
 //
 // What is pinned here: the exact path, the read-only GET probe, 405 for
 // anything but GET/HEAD/POST, 403 for a foreign peer / Host / Origin, and 501
@@ -22,6 +23,7 @@ function assert(cond, msg) { if (!cond) throw new Error('ASSERT FAILED: ' + msg)
 const host = await import(pathToFileURL(path.join(ROOT, 'lib', 'index.js')).href);
 assert(typeof host.apply === 'function' && host.name === 'dsh-notify-me', 'the host half exports a cordis plugin');
 assert(host.FOCUS_ROUTE === '/__dsh-notify-me/focus-window', 'FOCUS_ROUTE is the path the page posts to');
+assert(host.ICON_ROUTE === '/__dsh-notify-me/icon.png', 'ICON_ROUTE is where the toast icon is served from');
 
 // Minimal cordis stand-in: apply() only asks for a webServer service and an
 // effect(); register() hands back a disposer exactly like dsh-host-webserver.
@@ -44,10 +46,12 @@ const ctx = {
   },
 };
 host.apply(ctx);
-assert(routes.length === 1, 'the host half registers exactly one route (got ' + routes.length + ')');
-const route = routes[0];
-assert(route.kind === 'exact', 'the focus route is exact, got ' + route.kind);
-assert(route.path === host.FOCUS_ROUTE, 'the focus route path is ' + host.FOCUS_ROUTE + ', got ' + route.path);
+assert(routes.length === 2, 'the host half registers the focus and icon routes (got ' + routes.length + ')');
+const focusRoute = routes.filter((r) => r.path === host.FOCUS_ROUTE)[0];
+const iconRoute = routes.filter((r) => r.path === host.ICON_ROUTE)[0];
+assert(focusRoute && iconRoute, 'both routes are registered under their exported paths');
+assert(focusRoute.kind === 'exact', 'the focus route is exact, got ' + focusRoute.kind);
+assert(iconRoute.kind === 'exact', 'the icon route is exact, got ' + iconRoute.kind);
 
 // Drive the handler with the two globals it touches: method and headers.
 function callRoute(spec) {
@@ -70,7 +74,7 @@ function callRoute(spec) {
       resume() {},
     };
     try {
-      const out = route.handler(req, res);
+      const out = focusRoute.handler(req, res);
       if (out && typeof out.catch === 'function') out.catch((e) => done({ error: String(e) }));
     } catch (e) { done({ error: String(e) }); }
   });
@@ -222,3 +226,52 @@ try {
   delete process.env.DSH_NOTIFY_ME_FOCUS_SCRIPT;
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
+
+// The toast icon (issue #66): a plain static PNG the notification platform
+// fetches by URL. It carries no session data, so it is served without the focus
+// route's gate — the platform's image fetch sends no page headers to match.
+function callIcon(spec) {
+  return new Promise((resolve) => {
+    const res = {
+      statusCode: 0,
+      headers: {},
+      writeHead(status, headers) { this.statusCode = status; this.headers = headers || {}; },
+      setHeader(key, value) { this.headers[key.toLowerCase()] = value; },
+      end(payload) { resolve({ status: this.statusCode, headers: this.headers, bytes: payload }); },
+    };
+    const req = {
+      method: spec.method,
+      headers: Object.assign({ host: '127.0.0.1:3080' }, spec.headers || {}),
+      socket: { remoteAddress: spec.remoteAddress || '127.0.0.1' },
+      resume() {},
+    };
+    try {
+      const out = iconRoute.handler(req, res);
+      if (out && typeof out.catch === 'function') out.catch((e) => resolve({ error: String(e) }));
+    } catch (e) { resolve({ error: String(e) }); }
+  });
+}
+
+const icon = await callIcon({ method: 'GET' });
+assert(icon.status === 200, 'the icon route answers 200 (got ' + icon.status + ')');
+assert(Buffer.isBuffer(icon.bytes) || typeof icon.bytes === 'string', 'the icon body is bytes');
+const iconBytes = Buffer.from(icon.bytes);
+assert(iconBytes.length > 100, 'the icon has real bytes, got ' + iconBytes.length);
+assert(iconBytes[0] === 0x89 && iconBytes[1] === 0x50 && iconBytes[2] === 0x4e && iconBytes[3] === 0x47,
+  'the icon body is a PNG');
+assert(String(icon.headers['content-type']).indexOf('image/png') === 0,
+  'the icon is served as image/png, got ' + icon.headers['content-type']);
+assert(Number(icon.headers['content-length']) === iconBytes.length,
+  'the content-length matches the body, got ' + icon.headers['content-length']);
+assert(String(icon.headers['cache-control'] || '').indexOf('max-age') !== -1, 'the icon is cacheable');
+assert(String(icon.headers['x-content-type-options'] || '') === 'nosniff', 'the icon is sent with nosniff');
+// No gate: the platform fetches the image itself, with none of the page's headers.
+assert(icon.status === 200, 'a request without the page header still gets the icon');
+
+const head = await callIcon({ method: 'HEAD' });
+assert(head.status === 200 && !head.bytes && Number(head.headers['content-length']) === iconBytes.length,
+  'HEAD answers the headers without the body');
+
+const iconPost = await callIcon({ method: 'POST' });
+assert(iconPost.status === 405, 'a POST to the icon route answers 405 (got ' + iconPost.status + ')');
+console.log('host icon route OK: PNG bytes, content-type/length, cacheable, HEAD without body, 405');

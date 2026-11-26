@@ -113,8 +113,9 @@ try {
   // 1) The promise the whole merge makes: nothing changes for a bare install.
   for (const config of [undefined, {}, { gateway: { target: 'https://gw.example/hook' } }, { hostFallback: { enabled: false } }]) {
     const dflt = boot(config);
-    assert(dflt.routes.length === 1, 'a disabled composition registers exactly one route (got ' + dflt.routes.length + ' for ' + JSON.stringify(config) + ')');
-    assert(dflt.routes[0].path === host.FOCUS_ROUTE, 'that one route is the focus route');
+    assert(dflt.routes.length === 2, 'a disabled composition registers only the focus and icon routes (got ' + dflt.routes.length + ' for ' + JSON.stringify(config) + ')');
+    assert(dflt.routes[0].path === host.FOCUS_ROUTE, 'that first route is the focus route');
+    assert(dflt.routes[1].path === host.ICON_ROUTE, 'the second is the notification icon, which needs no gateway');
     assert(dflt.subscriptions.length === 0, 'a disabled composition subscribes to no session events');
     assert(dflt.warnings.length === 0, 'a disabled composition warns about nothing (got ' + JSON.stringify(dflt.warnings) + ')');
   }
@@ -123,8 +124,8 @@ try {
   const fallbackOnly = boot({
     hostFallback: { enabled: true, target: 'https://gw.example/hook', credentialsFile: credFile, pageLeaseMs: 400 },
   });
-  assert(fallbackOnly.routes.length === 3,
-    'hostFallback adds the bridge and health routes only (got ' + fallbackOnly.routes.map((r) => r.path).join(', ') + ')');
+  assert(fallbackOnly.routes.length === 4,
+    'hostFallback adds the bridge and health routes only, next to focus and icon (got ' + fallbackOnly.routes.map((r) => r.path).join(', ') + ')');
   assert(fallbackOnly.subscriptions.filter((s) => s.type === 'session/event').length === 1,
     'hostFallback subscribes to the session feed once');
 

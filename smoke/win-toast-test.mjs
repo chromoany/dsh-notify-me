@@ -39,9 +39,11 @@ assert(toastPs1.includes('launch="dsh-notify-me://open"'), 'the toast body launc
 // few seconds. It is the approval's shape, not the generic one, and reminder
 // toasts loop their sound unless told not to.
 const scenarioBlock = toastPs1.slice(toastPs1.indexOf('$scenario ='), toastPs1.indexOf('$xml ='));
-assert(scenarioBlock.includes('$payload.approveToken') && scenarioBlock.includes('scenario="reminder"'),
-  'only an approval asks for the reminder scenario, got ' + JSON.stringify(scenarioBlock));
+assert(scenarioBlock.includes('$payload.approveToken') && scenarioBlock.includes('$payload.persist')
+  && scenarioBlock.includes('scenario="reminder"'),
+  'an approval or a "never close" alert asks for the reminder scenario, got ' + JSON.stringify(scenarioBlock));
 assert(scenarioBlock.includes('<audio loop="false"/>'), 'a reminder that keeps its sound chimes once, not forever');
+assert(scenarioBlock.includes('<audio silent="true"/>'), 'a reminder with the sound off stays silent');
 assert(toastPs1.includes("'<toast' + $scenario + $launch"), 'the scenario attribute reaches the toast element');
 // Windows 10 has no protocol activation for unpackaged apps: there the buttons
 // and the body activate in the background, into the COM server the AUMID names.
@@ -183,8 +185,9 @@ try {
   assert(payload.approveText === '同意' && payload.rejectText === '拒绝', 'button labels reach the helper');
   assert(payload.sound === false, 'the sound flag is off unless the cue is system');
   assert(payload.comActivation === false, 'Windows 11 keeps protocol activation, not COM');
+  assert(payload.persist === false, 'an approval is not a "never close" reminder');
 
-  assert(execCalls.length === 6, 'the first toast registers the protocol, the AUMID and the activator stub');
+  assert(execCalls.length === 7, 'the first toast registers the protocol, the AUMID, the activator stub and the icon');
   const regs = execCalls.map((c) => c.args.join(' '));
   assert(execCalls[0].file === 'reg' && regs[0].includes('HKCU\\Software\\Classes\\dsh-notify-me'),
     'the protocol is registered under HKCU\\Software\\Classes');
@@ -194,6 +197,10 @@ try {
     'the AUMID names the activator stub');
   assert(regs[5] === 'add HKCU\\Software\\Classes\\CLSID\\' + win.ACTIVATOR_CLSID + ' /f',
     'the activator CLSID is created empty: with no LocalServer32 Windows dispatches the protocol (issue #41)');
+  // Issue #66: the toast header icon is read from the AUMID's IconUri, and never
+  // extracted from a program — without it every toast shows a blank app mark.
+  assert(regs[6].includes('IconUri') && regs[6].includes(path.join('assets', 'toast-icon.png')),
+    'the AUMID names the packaged bell as its IconUri, got ' + JSON.stringify(regs[6]));
   assert(!regs.some((line) => line.includes('LocalServer32')), 'no COM server is installed');
   const handlerVbs = path.join(tmp, 'dsh-notify-me', 'notify-handler.vbs');
   assert(fs.existsSync(handlerVbs), 'the protocol handler script is written');
@@ -296,11 +303,29 @@ try {
   const plain = mount({}, { aumid: '' }); // '' falls back to the module default
   const plainSent = JSON.parse((await post(plain[0].handler, { title: 'DSH waiting for input', body: 'session: bash', tag: 'q-1' })).body);
   assert(plainSent.ok === true && plainSent.token === '', 'a toast without an approval key carries no token');
-  const plainSpawned = spawned.length;
-  const plainRegs = execCalls.slice(-6).map((c) => c.args.join(' '));
+  const plainPayload = decodePayload(spawned[spawned.length - 1]);
+  assert(plainPayload.approveToken === '' && plainPayload.persist === false,
+    'a button-less toast posts no tokens and leaves the duration to the platform');
+  const plainRegs = execCalls.slice(-7).map((c) => c.args.join(' '));
   assert(plainRegs.some((line) => line.includes('HKCU\\Software\\Classes\\AppUserModelId\\' + win.AUMID)),
     'without an injected AUMID the registration writes the plugin-owned one');
   assert(!plainRegs.some((line) => line.includes('electron.app')), 'the DSH shell AUMID is never registered here');
+
+  // A "never close" alert asks the helper for the reminder scenario instead of
+  // the platform's few seconds: the page cannot hold a native toast open.
+  const kept = mount({});
+  const keptSent = JSON.parse((await post(kept[0].handler, { title: 'DSH needs you', body: 'session: bash', tag: 'q-2', persist: true })).body);
+  assert(keptSent.ok === true && keptSent.token === '', 'a persistent button-less toast still carries no token');
+  const keptPayload = decodePayload(spawned[spawned.length - 1]);
+  assert(keptPayload.persist === true, 'a "never close" alert tells the helper to keep the toast up');
+
+  // A package that lost the asset (a stale install, a hand-copied lib/) still
+  // registers and posts: the header falls back to the platform's blank mark.
+  const lost = mount({}, { iconPath: path.join(tmp, 'gone.png') });
+  const lostSent = JSON.parse((await post(lost[0].handler, { title: 'DSH needs you', body: 'session: bash', tag: 'q-3' })).body);
+  assert(lostSent.ok === true, 'a missing icon asset still posts the toast');
+  assert(execCalls.slice(-6).every((c) => !c.args.join(' ').includes('IconUri')),
+    'a missing icon asset skips the IconUri value instead of failing the registration');
 
   // 3i. Windows 10: it has no protocol activation for an unpackaged app, so the
   // same route registers a real COM server as the AUMID's activator and the
@@ -321,11 +346,11 @@ try {
   const tenPayload = decodePayload(spawned[spawned.length - 1]);
   assert(tenPayload.comActivation === true, 'the helper is told the click comes back through COM');
   const tenRegs = execCalls.slice(regsBeforeTen).map((c) => c.args.join(' '));
-  assert(tenRegs.length === 7, 'Windows 10 registers one more key: the local server');
-  assert(tenRegs[6].startsWith('add HKCU\\Software\\Classes\\CLSID\\' + win.ACTIVATOR_CLSID + '\\LocalServer32'),
+  assert(tenRegs.length === 8, 'Windows 10 registers one more key: the local server');
+  assert(tenRegs[7].startsWith('add HKCU\\Software\\Classes\\CLSID\\' + win.ACTIVATOR_CLSID + '\\LocalServer32'),
     'the activator CLSID gains a LocalServer32 on Windows 10');
-  assert(tenRegs[6].includes('win-toast-activator.ps1'), 'the local server is the activator script');
-  assert(tenRegs[6].includes(actionsDir), 'the local server is pointed at the actions directory');
+  assert(tenRegs[7].includes('win-toast-activator.ps1'), 'the local server is the activator script');
+  assert(tenRegs[7].includes(actionsDir), 'the local server is pointed at the actions directory');
   // The callback's strings are LPWStr on the wire. .NET marshals a bare string
   // as a BSTR by default, so without the annotation the shell's call arrives
   // with an empty appUserModelId and an empty invokedArgs: the click reaches the

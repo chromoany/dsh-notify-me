@@ -5,13 +5,14 @@
 #       -Base64 <base64 JSON payload> [-RemoveTag <history tag>]
 #
 # The toast is posted under dsh-notify-me's own AUMID: lib/win-toast.js
-# registers it (a DisplayName plus a CustomActivator) before the first toast goes
-# out. Borrowing the DSH shell's AUMID instead made Windows route every
-# activation to DSH's COM activator, which silently dropped it — the buttons only
-# dismissed the toast (issue #41). On Windows 11 the CustomActivator names an
-# empty CLSID and clicks come back through the dsh-notify-me:// handler registered
-# in HKCU; on Windows 10 it names a real COM server (lib/win-toast-activator.ps1)
-# and the buttons activate in the background instead.
+# registers it (a DisplayName, an IconUri app logo and a CustomActivator) before
+# the first toast goes out. Borrowing the DSH shell's AUMID instead made Windows
+# route every activation to DSH's COM activator, which silently dropped it — the
+# buttons only dismissed the toast (issue #41). On Windows 11 the CustomActivator
+# names an empty CLSID and clicks come back through the dsh-notify-me:// handler
+# registered in HKCU; on Windows 10 it names a real COM server
+# (lib/win-toast-activator.ps1) and the buttons activate in the background
+# instead.
 
 param(
     [Parameter(Mandatory = $true)][string]$Base64,
@@ -71,15 +72,16 @@ if ($payload.session) {
     $launch = ' launch="dsh-notify-me://open"' + $activationAttribute
 }
 
-# An approval is the one alert that has to outlive the next few seconds: the
-# "reminder" scenario is the only toast shape Windows does not fold into Action
-# Center after its short duration, so an unanswered wait stays on screen until
-# it is answered (issue #53). Reminder toasts loop their sound unless told not
-# to, so the cue is pinned either way: silent while the plugin owns the audio, a
-# single default chime when the platform does.
+# Two alerts have to outlive the platform's own few seconds: an unanswered
+# approval, and any alert under the "never close" policy — the page channel used
+# to hold those itself. The "reminder" scenario is the only toast shape Windows
+# does not fold into Action Center after its short duration, so those stay on
+# screen until the page withdraws them (issue #53). Reminder toasts loop their
+# sound unless told not to, so the cue is pinned either way: silent while the
+# plugin owns the audio, a single default chime when the platform does.
 $scenario = ""
 $audio = ""
-if ($payload.approveToken) {
+if ($payload.approveToken -or $payload.persist) {
     $scenario = ' scenario="reminder"'
     if ($payload.sound) { $audio = '<audio loop="false"/>' } else { $audio = '<audio silent="true"/>' }
 } elseif (-not $payload.sound) {

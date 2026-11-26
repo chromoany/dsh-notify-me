@@ -52,7 +52,7 @@ window.__dshNotifyMe.testExternal()               // 显式外发测试：向有
 >
 > `macNotify` 不是 localStorage 里的页面偏好，而是 profile patch 层里 `- id: notify-me` 的配置：`macNotify: { enabled: false }` 关掉 macOS 桌面端的原生通知，`macNotify: { appPath: "/path/to/DSH Notify.app" }` 指到别处编译的助手（默认用包内的）。`debug().macNative` 报本页是否走这条通道，`debug().macNativeLast` 是最近一次投递的结果。
 
-> `winToast` 同理是 profile patch 层配置：`winToast: { enabled: false }` 关掉 Windows 桌面端由宿主发出的原生审批 Toast（带「同意 / 拒绝」按钮），退回页面自己的通知（不带按钮）。宿主第一次发带按钮的通知时会顺手在 `HKCU\Software\Classes\dsh-notify-me` 注册协议处理器（把按钮动作写回本机、再打开 `dsh://open`），不需要管理员权限；没有审批提醒、或只走本地 `dsh-app://` 页面的安装不会触发注册。`debug().winNative` 报本页是否走这条通道，`debug().winNativeLast` 是最近一次投递或动作的结果。
+> `winToast` 同理是 profile patch 层配置：`winToast: { enabled: false }` 关掉 Windows 桌面端由宿主发出的原生 Toast（审批带「同意 / 拒绝」按钮，「需要你」与「回复完成」不带按钮），三种提醒都退回页面自己的通知（审批没有按钮）。宿主第一次发原生通知时会顺手在 `HKCU\Software\Classes\AppUserModelId\dsh-notify-me` 写通知身份与 `IconUri`、在 `HKCU\Software\Classes\dsh-notify-me` 注册协议处理器（把点到的动作写回本机，不启动任何程序），不需要管理员权限；没有这些提醒、或只走本地 `dsh-app://` 页面的安装不会触发注册。`debug().winNative` 报本页是否走这条通道，`debug().winNativeLast` 是最近一次投递或动作的结果。
 
 > `debug().hostBridge` 是宿主协调的只读快照：`state`（`idle` 还没探到；`active` 宿主有兜底、本页正用心跳占住租约；`unavailable` 宿主在但没有兜底，默认安装即如此——路由没注册的 404 也算这一档，不是故障；`error` 宿主答不出可用回包，或被闸门直接拒了）、`leaseMs`（宿主授予的租约，毫秒）、`relayEnabled` 与 `relayPath`（宿主启用了中继时给出它的路径）、`relayUpstreamHost` / `relayUpstreamPath`（中继上游网关的主机名与路径，即会被折叠的那个端点）、`lastReason`（上一次探测失败的原因，如 `bad-host` / `cross-origin` / `http-403`，正常时为 `null`）、`lastProbeAt` / `lastBeaconAt`（最近一次探测与心跳的时间，ISO 字符串或 `null`）。闸门拒绝算 `error` 而不是「未启用」，因为那是能自己修的配置：把本页来源补进 profile 里 `- id: notify-me` 顶层的 `allowedOrigins`。
 

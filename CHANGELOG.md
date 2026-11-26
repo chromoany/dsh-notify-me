@@ -2,6 +2,34 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.28.0] — 2026-11-26
+
+Windows 桌面端的原生通道补齐三处（[#64](https://github.com/chromoany/dsh-notify-me/pull/64) 由 Yan-Jack-jie 提出，[#66](https://github.com/chromoany/dsh-notify-me/issues/66)、[#67](https://github.com/chromoany/dsh-notify-me/issues/67)）：不带按钮的提醒也走宿主、通知图标换成插件自己的、合成音不再被迟到唤醒截断。
+
+### 修复
+
+- **「需要你」与「回复完成」在 Windows 桌面端发不出来**：打包的 DSH 桌面壳没有注册自己的 AppUserModelID，页面 `new Notification()` 交出去的通知在 Windows 上要么被折叠、要么连通知中心都不进——审批之所以正常，是因为它早就改由宿主发原生 Toast。现在这两类无按钮提醒也走同一条宿主路由，正文点击走 `dsh-notify-me://open`，页面每 1.5 秒取回一次动作、抬窗并切会话（最多 60 秒，点过就停）。宿主拒发（`powershell.exe` 缺失、激活器脚本缺失、路由 5xx）时退回页面通道，不再静默丢一条。
+- **通知图标是 DSH 的黑底鲸鱼**：三处通知构造都拿 `location.origin + "/favicon.svg"` 当图标，深色通知上看不清，而插件包内本来就没有图片。现在随包发一张透明底的铃铛（`assets/toast-icon.png`，由宿主以 `/__dsh-notify-me/icon.png` 提供），页面通道用它；原生 Toast 的图标改由 AUMID 注册项的 `IconUri` 指向同一文件——通知平台不读页面的 `icon` 字段。
+- **「回复完成」的第二声被截断**：合成音按墙钟在最后一声后 0.25 秒挂起音频上下文，但页面在后台时 `resume()` 要等设备唤醒才生效；唤醒慢于 0.25 秒、又快于挂起时刻时，`suspend()` 正好切在第二声中间（实测 260 ms 的尾音只剩 113 ms，间隔越久、设备越冷越容易）。现在挂起改按音频时钟，等 `currentTime` 越过末声结束再 `suspend()`；唤醒迟迟不落地时由计时器兜底（约 12 秒后照常挂起，不占着设备）。
+- **「从不关闭」在原生通道不成立**：无按钮提醒按 `persist` 标记随 `scenario="reminder"` 发，跟页面通道一样常驻到点掉或回到页面。
+
+### 文档
+
+- 四份 README 的渠道表与 Windows 节同步：原生通道覆盖三类提醒、图标来源、`IconUri` 注册、无按钮提醒的轮询时长。
+- `docs/console-config` 三份改准 `winToast: { enabled: false }` 的影响面与注册项。
+- `docs/testing` 三份同步注册命令条数与新增用例。
+
+### 测试
+
+- 新增：无按钮原生 Toast 的 POST 形状、轮询取回 `open` 后停、`persist` 标记、宿主 5xx 回退；通知图标走宿主路由；迟到唤醒下最后一声完整。
+- `smoke/win-toast-test.mjs` 补 `IconUri`、`persist`、缺图标与 Windows 10 第八条注册；`smoke/host-route-test.mjs` 补图标路由。
+
+### 致谢
+
+- Yan-Jack-jie（[#64](https://github.com/chromoany/dsh-notify-me/pull/64)）：定位到打包壳没有注册 AUMID，并在真实 Windows 桌面上做了改前 / 改后对照。
+- SummerRay160（[#66](https://github.com/chromoany/dsh-notify-me/issues/66)）：图标与「只有声音、没弹窗」的现场记录。
+- ceh-ylhy（[#67](https://github.com/chromoany/dsh-notify-me/issues/67)）：给出截断的量化复现，以及按音频时钟等待的补丁方向。
+
 ## [1.27.3] — 2026-11-26
 
 俄语文档与一处标签命名（[#63](https://github.com/chromoany/dsh-notify-me/pull/63)，作者 aleXela17）：俄语 README 重写为可读版本，并把「回复完成」的智能策略标签改成能读懂的说法。
