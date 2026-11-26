@@ -2149,6 +2149,64 @@ async function macNativeClickPoll() {
   console.log('macOS click poll OK: a frontmost click switches via the poll, then the poll stops');
 }
 
+// ── Windows native toast: a button-less question alert goes native too ──────
+// The packaged shell registers no AppUserModelID, so a renderer notification is
+// not surfaced and a "needs you" (question) alert used to vanish on the desktop.
+// `showToast` now routes attention/done through the host toast route as well.
+// Drive it through the real sessionStatus feed so detection is covered: a hidden
+// page, one question pending on a background session, one POST with no
+// approvalKey — hence no token and no 1.5 s poll — while the attention title and
+// the question body ride through unchanged.
+async function winNativeQuestionToast() {
+  console.log('\n— Windows native toast: a button-less question alert goes native —');
+  const WIN_ROUTE = '/__dsh-notify-me/win-toast';
+  const posts = [];
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+  const stub = (url, opts) => {
+    const u = String(url);
+    if (u.indexOf(WIN_ROUTE) !== -1) {
+      if (((opts && opts.method) || 'GET') === 'GET') return reply(200, { ok: true, enabled: true, actions: [] });
+      let sent = {};
+      try { sent = JSON.parse((opts && opts.body) || '{}') || {}; } catch (e) {}
+      posts.push(sent);
+      // The real host only mints a token for an approval; a question toast must
+      // not arm the poll.
+      return reply(200, { ok: true, enabled: true, id: 'h1', token: sent.approvalKey ? 'tok' : '' });
+    }
+    return reply(404, { ok: false });
+  };
+  const b = bootBundle({
+    withNotification: true,
+    extend(sandbox) {
+      sandbox.location = { origin: 'dsh-app://app', protocol: 'dsh-app:' };
+      sandbox.navigator = { ...(sandbox.navigator || {}), userAgent: WINDOWS_UA };
+      sandbox.fetch = stub;
+    },
+  });
+  const host = buildHost({ withSessionStatus: true, withWorkspace: true });
+  b.mod.apply(host.ctx);
+  await sleep(40);
+  assert(b.win.__dshNotifyMe.debug().winNative === true, 'the native route is reported enabled');
+
+  b.doc.hidden = true;
+  b.doc.visibilityState = 'hidden';
+  host.setList({
+    ids: ['s1', 's2'],
+    byId: { s1: { displayTitle: '当前会话', retainedBy: { mainView: 1 } }, s2: { displayTitle: '后台任务', retainedBy: {} } },
+    phase: 'ready',
+  });
+  host.notifyList();
+  host.setStatus(new Map([['s2', statusRow(question('question:win:1', { sessionId: 's2' }))]]));
+  host.notifyStatus();
+  await sleep(80);
+
+  assert(posts.length === 1, 'the question went out as one native toast, got ' + posts.length);
+  assert(posts[0].approvalKey === '' && String(posts[0].title).indexOf('提问') !== -1,
+    'a question toast carries no approval key and keeps the attention title, got ' + JSON.stringify(posts[0]));
+  for (const c of [...host.cleanups]) c();
+  console.log('Windows native question toast OK: a background question posts a button-less native toast');
+}
+
 // ── Windows native approval toast: a body click raises the window ───────────
 // The body click is recorded by the HKCU protocol handler, which then launches
 // dsh://open; that launch cannot raise a minimized or tray-hidden window on
@@ -5239,6 +5297,7 @@ function languageModes() {
   await desktopRaiseChannel();
   await macNativeClickPoll();
   await winNativeToastClick();
+  await winNativeQuestionToast();
   await soundSources();
   await audioSleepWake();
   uniqueToastTags();

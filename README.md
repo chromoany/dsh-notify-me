@@ -344,7 +344,7 @@ YAML 的单引号里模板原样保留；页面设置里把「自定义 Webhook�
 
 | 渠道 | 表现 |
 | --- | --- |
-| 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；macOS 桌面端由宿主拉起 `DSH Notify.app` 发（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）；Windows 桌面端的审批提醒由宿主发原生 Toast，带「同意 / 拒绝」按钮（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）；Web 端可带「同意 / 拒绝」 |
+| 系统通知 | 经浏览器进 Windows / macOS / Linux 的系统通知中心，点击回到对应对话；macOS 桌面端由宿主拉起 `DSH Notify.app` 发（见 [macOS 桌面端怎么发系统通知](#macos-桌面端怎么发系统通知)）；Windows 桌面端的提醒（审批、需要你、回复完成）由宿主发原生 Toast：审批带「同意 / 拒绝」按钮，提问 / 回复完成不带按钮（见 [Windows 桌面端怎么发带按钮的通知](#windows-桌面端怎么发带按钮的通知)）；Web 端可带「同意 / 拒绝」 |
 | 手机浏览器 | Android Chrome 不能 `new Notification()`（`Illegal constructor`），插件改用页面自带的 Service Worker 发通知，点一下回对应对话；`debug().bridge` 与 `debug().lastToastReject` 会说明是走了 Worker 还是被拒 |
 | 提示音 | 默认 WebAudio 合成音，「需要你」与「完成」音型不同；可换自定义音频，或交给系统通知音 |
 | 标签页标题 | `🔔 需要你 · …` / `✅ 回复完成 · …`（随通知语言切换），打开对应会话即消失；两种标记可同时出现 |
@@ -434,7 +434,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 ### Windows 桌面端怎么发带按钮的通知
 
-页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast。Windows 11 与 Windows 10 走两条不同的激活路线：Windows 11 在 AUMID 不挂 COM 激活器时，系统仍会按 XML 派发协议点击；Windows 10 不派发，必须把 AUMID 指向一个真实的 COM 激活器、按钮用后台激活（[#58](https://github.com/chromoany/dsh-notify-me/issues/58)）。
+页面里的 `new Notification()` 在 Windows 桌面端不会被拒，但它带不了按钮：Electron 的渲染进程收到通知请求后只把 title / body / tag / icon / silent 抄给平台，`actions` 数组整个丢掉（`shell/browser/notifications/platform_notification_service.cc` 的 `DisplayNotification()`）；`dsh-app://` 页面又注册不了 Service Worker，而按钮通知只有 Service Worker 才画得出来。于是插件把审批提醒改由宿主发原生 Toast；而打包的 DSH 桌面壳没有注册自己的 AppUserModelID，页面 `new Notification()` 发出的提问 / 回复完成提醒在 Windows 上根本不显示，所以这些不带按钮的提醒现在也走同一条原生通道。Windows 11 与 Windows 10 走两条不同的激活路线：Windows 11 在 AUMID 不挂 COM 激活器时，系统仍会按 XML 派发协议点击；Windows 10 不派发，必须把 AUMID 指向一个真实的 COM 激活器、按钮用后台激活（[#58](https://github.com/chromoany/dsh-notify-me/issues/58)）。
 
 - **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到插件自己的 AUMID `dsh-notify-me` 下，走同一套系统通知设置。**不能借 DSH 的 AUMID**：那个 AUMID 挂着 COM Toast 激活器，Windows 会把每次点击都交给 DSH 本体，Toast 上的协议按钮永远等不到派发（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
 - **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个只把点到的 URL 写进动作目录的 VBS，不启动任何程序——[#54](https://github.com/chromoany/dsh-notify-me/issues/54)），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。这条链路要求 Toast 挂在自己的 AUMID 下，否则点击会被别的应用的激活器截走。

@@ -2,6 +2,17 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [Unreleased]
+
+### 修复
+
+- **Windows 桌面端的「需要你操作」与「回复完成」提醒不再消失**：打包的 DSH 桌面壳没有注册自己的 AppUserModelID，页面里的 `new Notification()` 被交给 Windows 通知平台时落在一个不会显示的标识下，于是提问 / 方案确认 / 回复完成这些**不带按钮**的提醒在桌面端点了也什么都不弹（审批因为早就改走宿主原生 Toast 不受影响）。现在这类提醒也走同一条 `winToast` 原生通道——`lib/client.js` 的 `showToast` 在 `winNative.enabled && isWindowsDesktopPage()` 时对 `attention` / `done` 与审批一样调用 `showWinToast`，仅 `quick` 审批才附加按钮；`winToast: { enabled: false }` 仍可关掉整条通道、退回页面通知。
+- **按钮无关的行为不变**：不带 `approvalKey` 的 Toast 不挂 token、不启动 1.5 秒轮询，沿用平台自身的短时长，回到页面时由 `withdrawToasts()` 收起。
+
+### 文档
+
+- `lib/win-toast.js` 头注释、`cordis.patch.yml` 注释与 README 提醒渠道说明同步：Windows 桌面端不仅审批走原生 Toast，需要你 / 回复完成这些无按钮提醒也走同一条路。
+
 ## [1.27.3] — 2026-11-26
 
 俄语文档与一处标签命名（[#63](https://github.com/chromoany/dsh-notify-me/pull/63)，作者 aleXela17）：俄语 README 重写为可读版本，并把「回复完成」的智能策略标签改成能读懂的说法。
