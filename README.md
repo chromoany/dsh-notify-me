@@ -79,7 +79,7 @@ dsh plugin --profile web add dsh-notify-me
 2. 打开 **设置 → 通知提醒**，确认出现该分区及底部插件版本号，保持「启用提醒」「提示音」开启。
 3. 点击设置页的「测试『回复完成』」按钮：应出现一条测试通知，并按当前音效设置播放声音。这个本地测试不会转发到外部通知端点，也不受「窗口在前台时也提醒」开关限制。
 
-Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。Windows 桌面端由宿主发原生 Toast，同样带按钮——Windows 11 走协议派发，Windows 10 由 Toast 挂的 COM 激活器接住点击（见[下文](#windows-桌面端怎么发带按钮的通知)）；macOS 桌面端只发普通通知（渠道差异见[提醒渠道](#提醒渠道)）。
+Web 用户可再测审批按钮，通知上会带「同意 / 拒绝」。Windows 桌面端由宿主发原生 Toast，同样带按钮，左右顺序与 dsh 审批卡一致（拒绝在左、同意在右），build 19041 及以上的 Windows 还会给两个按钮上红 / 绿两色——Windows 11 走协议派发，Windows 10 由 Toast 挂的 COM 激活器接住点击（见[下文](#windows-桌面端怎么发带按钮的通知)）；macOS 桌面端只发普通通知（渠道差异见[提醒渠道](#提醒渠道)）。
 
 <details>
 <summary>控制台验证（可选）</summary>
@@ -129,7 +129,7 @@ dsh-notify-me 把「监督」和「守在屏幕前」解耦：只在真的出现
 
 - **启用提醒** 总开关：关闭后不弹通知、不响提示音，也不改标签页标题；
 - **提示音 / 音量**：开关直接切；音量滑块收在该行里，点一下标题（▸ 变成 ▾）展开。具体播什么由「高级设置 → 音效来源」决定；
-- **审批通知上直接裁决**（默认开）：审批带「同意 / 拒绝」，点一下即完成裁决，不用切回页面。Web 走带按钮的系统通知；Windows 桌面端由宿主发原生 Toast，按钮是真的原生按钮（Windows 11 走协议派发，Windows 10 走 COM 激活器）；macOS 桌面端 `dsh-app://` 注册不了 Service Worker、原生助手也不带按钮，点通知回到对话里裁决。设置页「试一试」下面那行会如实说明当前环境能不能给按钮。
+- **审批通知上直接裁决**（默认开）：审批带「同意 / 拒绝」，点一下即完成裁决，不用切回页面。Web 走带按钮的系统通知；Windows 桌面端由宿主发原生 Toast，按钮是真的原生按钮（Windows 11 走协议派发，Windows 10 走 COM 激活器），1.28.3 起与页内卡片同序（拒绝在左），build 19041 及以上再上红 / 绿两色；macOS 桌面端 `dsh-app://` 注册不了 Service Worker、原生助手也不带按钮，点通知回到对话里裁决。设置页「试一试」下面那行会如实说明当前环境能不能给按钮。
 
 ### 什么时候提醒
 
@@ -442,6 +442,7 @@ Windows 的激活顺序是实的：已经在前台就什么都不做（最常见
 
 - **谁去弹**：宿主半（`lib/index.js`）注册 `POST /__dsh-notify-me/win-toast`，由它起一次 `powershell.exe` 跑 `lib/win-toast.ps1`，用 WinRT `ToastNotificationManager` 把通知发到插件自己的 AUMID `dsh-notify-me` 下，走同一套系统通知设置。**不能借 DSH 的 AUMID**：那个 AUMID 挂着 COM Toast 激活器，Windows 会把每次点击都交给 DSH 本体，Toast 上的协议按钮永远等不到派发（[#41](https://github.com/chromoany/dsh-notify-me/issues/41)，1.21.2 修）。
 - **按钮怎么裁决**：Toast 的两个按钮是 `activationType="protocol"`，分别指向 `dsh-notify-me://approve?token=…` / reject。点按钮后系统调起注册在这个协议下的处理器（一个只把点到的 URL 写进动作目录的 VBS，不启动任何程序——[#54](https://github.com/chromoany/dsh-notify-me/issues/54)），宿主在页面下一次探针时把动作交回页面；页面仍走审批面板里同一个 `decidePending()`——「同意」就是「允许一次」，不多放行任何东西。这条链路要求 Toast 挂在自己的 AUMID 下，否则点击会被别的应用的激活器截走。
+- **按钮的左右与颜色**：XML 里先声明「拒绝」、再声明「同意」，Windows 按声明顺序从左往右画，所以 Toast 上拒绝在左、同意在右，和页内审批卡一致——1.28.2 及以前先声明「同意」，最左边那个按钮成了「同意」，习惯卡片位置的人一点就放行（[#70](https://github.com/chromoany/dsh-notify-me/issues/70)）。1.28.3 起，build 19041 及以上的 Windows 还给 `<toast>` 加 `useButtonStyle="true"`、两个按钮分别带 `hint-buttonStyle="Critical"`（红）/ `"Success"`（绿）；更老的系统不认这些属性，保持无样式，Toast 照发。
 - **点正文也会抬窗**：正文点击统一走 `dsh-notify-me://open`（有会话时带 `?session=`，没有会话也保留为一次纯抬窗），不再把 `dsh://open` 当 Windows 抬窗手段——那条深链拉不起最小化窗口，更拉不起 `SW_HIDE` 到托盘的窗口。等待审批期间页面每 1.5 秒取一次动作，取到 `open` 先 POST 宿主 focus 路由抬窗、再切会话；不带按钮的提醒也按同样的间隔取，只是最多取 60 秒，点过正文就停（审批取到裁决为止，上限 180 秒）。托盘隐藏的窗口由 `focus-window.ps1` 先 `SW_SHOW` 再激活（[#40](https://github.com/chromoany/dsh-notify-me/issues/40)）。
 - **Windows 10 的点击走 COM 激活器**：AUMID 的 `CustomActivator` 指向 `{F0C6A9D2-4B7E-4D1A-9C53-8E2B6F7A0D41}`，这个 CLSID 的 `LocalServer32` 是 `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File lib/win-toast-activator.ps1 -ActionDir <动作目录>`，按钮改成 `activationType="background"`。点下去时系统按需拉起这个脚本（冷启动几十毫秒，不需要开机常驻，10 分钟没有新点击就自己退出），脚本用 `CoRegisterClassObject(REGCLS_MULTIPLEUSE)` 注册 `INotificationActivationCallback`（IID `53E31837-6600-4A81-9395-75CFFE746F94`，系统自带封送，不用自建 proxy/stub），把 `dsh-notify-me://<参数>` 写进同一个动作目录；之后的认领、token 校验与 `decidePending()` 跟 Windows 11 共用一套。回调的两个字符串必须按 `LPWStr` 封送——.NET 默认按 BSTR 解释，会让 `appUserModelId` 与 `invokedArgs` 都变成空串：点击明明到了服务器，审批参数却是空的，这是整条链路里最容易卡住的一步。
 - **中文用户名等非 ASCII profile**：处理器脚本按 UTF-16LE + BOM 写盘，动作目录在点击时才用 `sh.ExpandEnvironmentStrings("%LOCALAPPDATA%")` 解析——脚本正文因此全是 ASCII，不会再被 WSH 按系统 ANSI 代码页解码后把路径弄乱（此前每次点按钮都弹 `800A004C` 脚本错误，[#36](https://github.com/chromoany/dsh-notify-me/issues/36)），1.20.1 起修复。升级后重启桌面端即可，第一次发带按钮的 Toast 时会重写这份脚本，不用手动清旧文件。
