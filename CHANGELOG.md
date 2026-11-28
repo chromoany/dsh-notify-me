@@ -2,6 +2,23 @@
 
 All notable changes to **dsh-notify-me** are documented here.
 
+## [1.28.3] — 2026-11-28
+
+Windows 原生审批 Toast 的按钮顺序与 dsh 页内审批卡对齐，并给两个按钮上色（[#70](https://github.com/chromoany/dsh-notify-me/issues/70)）；俄语文档跟进 1.28.x 的 relay 措辞（[#69](https://github.com/chromoany/dsh-notify-me/pull/69)，作者 aleXela17）。
+
+### 修复
+
+- **原生审批 Toast 的「同意 / 拒绝」与 dsh 卡片左右相反**（[#70](https://github.com/chromoany/dsh-notify-me/issues/70)）：页内审批卡把「拒绝」放在左边，Windows 原生 Toast 却按 approve 在前声明 actions，Windows 又从左往右画，最左边那个按钮成了「同意」——习惯卡片位置的人一点就放行。现在原生 XML 与 Web 通知的 actions 都改成 reject 在前，和卡片一致。Windows 10 build 19041 以上再给两个按钮上色：拒绝 `hint-buttonStyle="Critical"`（红）、同意 `"Success"`（绿），并加 `useButtonStyle="true"`；更老的系统不认这些属性，保持无样式，不因为一个渲染属性把 Toast 发丢。
+
+### 测试
+
+- `smoke/win-toast-test.mjs` 钉住 actions 块里 reject 在 approve 之前、两种 `hint-buttonStyle` 与 `-ge 19041` 门槛、`$toastStyle` 进了 `<toast>`；`smoke/smoke-test.cjs` 的 Web 通道断言从 approve/reject 改为 reject/approve。
+
+### 文档
+
+- 俄语 README 与 testing 文档同步 1.28.x 的 relay 措辞（`соберёт` / `собирается` / `страница` / `предупреждение`），保留原文的 `« »` 引号风格，只取措辞（[#69](https://github.com/chromoany/dsh-notify-me/pull/69)，作者 aleXela17）。
+- 致谢表把 #69 记到 aleXela17 行；README 致谢区去掉上方的引导句，补上 blue-bottle 的 #57 报障记录（[#57](https://github.com/chromoany/dsh-notify-me/issues/57)）。
+
 ## [1.28.2] — 2026-11-27
 
 一次代码复查的七处收口（清单由 chromoany 提供；其中「DSH 0.2.x 桌面壳上整条通知链静默」一处由 [Yan-Jack-jie](https://github.com/Yan-Jack-jie) 在 [#68](https://github.com/chromoany/dsh-notify-me/pull/68) 中定位并修复）：宿主侧两个可选模块各一处健壮性缺口、一条启动即熔断的绑定路径、Windows 原生通道一处静默失效、模板与包页各一处文档缺口。
