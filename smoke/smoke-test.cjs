@@ -1470,8 +1470,10 @@ async function quickActionsHost() {
   assert(note.title === 'DSH · 审批请求', 'approval toast title, got ' + note.title);
   const acts = note.opts.actions;
   assert(Array.isArray(acts) && acts.length === 2, 'toast carries two actions, got ' + JSON.stringify(acts));
-  assert(acts[0].action === 'approve' && acts[1].action === 'reject', 'action ids are approve/reject');
-  assert(acts[0].title === '同意' && acts[1].title === '拒绝', 'zh button labels, got ' + JSON.stringify(acts));
+  // The page approval card renders the reject button first (left); a toast
+  // that renders approve there trains the opposite click (issue #70).
+  assert(acts[0].action === 'reject' && acts[1].action === 'approve', 'action ids are reject/approve (issue #70)');
+  assert(acts[0].title === '拒绝' && acts[1].title === '同意', 'zh button labels, got ' + JSON.stringify(acts));
   assert(note.opts.data && note.opts.data.key === 'approval:200', 'toast data carries the interaction key');
   assert(note.opts.data.sessionId === 's1', 'toast data carries the session id');
   assert(b.lastNotification() === null, 'no plain constructor toast on the button path');

@@ -52,11 +52,30 @@ $activation = "protocol"
 if ($payload.comActivation) { $activation = "background" }
 $activationAttribute = ' activationType="' + $activation + '"'
 
+# Windows 10 19041+ can tint one button green ("Success") and another red
+# ("Critical"); older shells do not know the attribute, so those keep the plain
+# buttons. The declaration order is reject first on purpose: the page approval
+# card puts "reject" on the left, and a toast that put "approve" there trained
+# the opposite click (issue #70).
+$buttonStyles = $false
+try { $buttonStyles = [Environment]::OSVersion.Version.Build -ge 19041 } catch { $buttonStyles = $false }
+
 $actions = ""
+$toastStyle = ""
 if ($payload.approveToken) {
     $approveArgs = "dsh-notify-me://approve?token=" + $payload.approveToken
     $rejectArgs = "dsh-notify-me://reject?token=" + $payload.rejectToken
-    $actions = '<actions><action content="' + (XmlEscape $payload.approveText) + '"' + $activationAttribute + ' arguments="' + $approveArgs + '"/><action content="' + (XmlEscape $payload.rejectText) + '"' + $activationAttribute + ' arguments="' + $rejectArgs + '"/></actions>'
+    $approveStyle = ""
+    $rejectStyle = ""
+    if ($buttonStyles) {
+        $approveStyle = ' hint-buttonStyle="Success"'
+        $rejectStyle = ' hint-buttonStyle="Critical"'
+        $toastStyle = ' useButtonStyle="true"'
+    }
+    $actions = '<actions>'
+    $actions += '<action content="' + (XmlEscape $payload.rejectText) + '"' + $activationAttribute + $rejectStyle + ' arguments="' + $rejectArgs + '"/>'
+    $actions += '<action content="' + (XmlEscape $payload.approveText) + '"' + $activationAttribute + $approveStyle + ' arguments="' + $approveArgs + '"/>'
+    $actions += '</actions>'
 }
 
 # Body click: always go through our own protocol handler. The host records the
@@ -88,7 +107,7 @@ if ($payload.approveToken -or $payload.persist) {
     $audio = '<audio silent="true"/>'
 }
 
-$xml = '<toast' + $scenario + $launch + '>' + $visual + $actions + $audio + '</toast>'
+$xml = '<toast' + $toastStyle + $scenario + $launch + '>' + $visual + $actions + $audio + '</toast>'
 
 $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
 $doc.LoadXml($xml)

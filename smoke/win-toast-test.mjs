@@ -44,7 +44,19 @@ assert(scenarioBlock.includes('$payload.approveToken') && scenarioBlock.includes
   'an approval or a "never close" alert asks for the reminder scenario, got ' + JSON.stringify(scenarioBlock));
 assert(scenarioBlock.includes('<audio loop="false"/>'), 'a reminder that keeps its sound chimes once, not forever');
 assert(scenarioBlock.includes('<audio silent="true"/>'), 'a reminder with the sound off stays silent');
-assert(toastPs1.includes("'<toast' + $scenario + $launch"), 'the scenario attribute reaches the toast element');
+assert(toastPs1.includes("'<toast' + $toastStyle + $scenario + $launch"), 'the scenario attribute reaches the toast element');
+// Issue #70: the page approval card puts reject on the left, so the toast
+// declares it first (Windows draws the actions in order) and tints the two
+// buttons apart where the shell supports it (Windows 10 19041+).
+const actionsBlock = toastPs1.slice(toastPs1.indexOf('$actions ='), toastPs1.indexOf('$scenario ='));
+assert(actionsBlock.includes('$payload.rejectText') && actionsBlock.includes('$payload.approveText'),
+  'the approval toast has both buttons');
+assert(actionsBlock.indexOf('$payload.rejectText') < actionsBlock.indexOf('$payload.approveText'),
+  'the approval toast declares reject before approve (issue #70)');
+assert(toastPs1.includes('hint-buttonStyle="Critical"') && toastPs1.includes('hint-buttonStyle="Success"'),
+  'reject is critical and approve is success where button styles exist');
+assert(toastPs1.includes('useButtonStyle="true"') && toastPs1.includes('-ge 19041'),
+  'button styles are gated to Windows 10 19041+');
 // Windows 10 has no protocol activation for unpackaged apps: there the buttons
 // and the body activate in the background, into the COM server the AUMID names.
 assert(toastPs1.includes('if ($payload.comActivation) { $activation = "background" }'),
